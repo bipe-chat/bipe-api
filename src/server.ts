@@ -18,6 +18,7 @@ const db = openDb(config.DATABASE_URL);
 await migrate(db);
 const mas = new Mas(config);
 const auth = new MatrixAuth(config);
+const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
 
 const limits = {
   signup: new RateLimiter(5, 3_600_000),
@@ -31,7 +32,8 @@ const limits = {
 };
 
 const SignupBody = z.object({
-  invite_code: z.string().max(64).optional(),
+  // A code, an invite link or a whole pasted message: the server finds the code in it.
+  invite_code: z.string().max(2048).optional(),
   email: z.email().max(254),
   password: z.string().min(8).max(256),
   handle: z.string().max(64).optional(),
@@ -73,13 +75,13 @@ app.get("/v1/invites/:code", async (c) => {
 
 app.get("/v1/me/invites", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
-  return c.json(await myInvites(db, userId, config.INVITES_PER_USER));
+  return c.json(await myInvites(db, userId, invitePolicy));
 });
 
 app.post("/v1/me/invites", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.inviteCreate.check(userId);
-  return c.json(await createPersonalInvite(db, userId, config.INVITES_PER_USER, config.PUBLIC_SITE_URL), 201);
+  return c.json(await createPersonalInvite(db, userId, invitePolicy, config.PUBLIC_SITE_URL), 201);
 });
 
 app.delete("/v1/me/invites/:id", async (c) => {

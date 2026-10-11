@@ -119,6 +119,13 @@
     "proseio_trust_step_pix_body": "A R$0.01 Pix from your bank account confirms your name.",
     "proseio_trust_step_govbr": "gov.br",
     "proseio_trust_step_govbr_body": "A signature with your gov.br account confirms your name.",
-    "proseio_trust_coming_soon": "Coming soon"
+    "proseio_trust_coming_soon": "Coming soon",
+    "proseio_invites_next": "Next invite on %1$s",
+    "proseio_voice_transcript_title": "Transcript",
+    "proseio_voice_transcribing": "Transcribing…",
+    "proseio_voice_transcript_placeholder": "Check the text before you send",
+    "proseio_voice_transcript_unavailable": "No transcript. This phone can't transcribe this language offline.",
+    "proseio_action_show_more": "Show more",
+    "proseio_action_show_less": "Show less"
   }
 }

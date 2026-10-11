@@ -11,9 +11,19 @@ export function newInviteCode(): string {
   return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
 }
 
-// Users type codes by hand: ignore case, spaces and dashes.
+// Rule and cases: proseio-shared/test-vectors/invite-codes.json. iOS and Android pass the same vectors.
+const INVITE_CODE_PATTERN =
+  /(?<![A-Z0-9])([A-HJKMNP-Z2-9]{4})[ \-\u2010-\u2014\u2212]?([A-HJKMNP-Z2-9]{4})[ \-\u2010-\u2014\u2212]?([A-HJKMNP-Z2-9]{4})(?![A-Z0-9])/;
+
+/** The invite code in anything a user pasted or typed: a code, an invite link or a whole message. Null when none. */
+export function extractInviteCode(text: string): string | null {
+  const m = INVITE_CODE_PATTERN.exec(text.slice(0, 2048).toUpperCase());
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/** Hash of a code already normalised by extractInviteCode (or created by newInviteCode). */
 export function inviteHash(code: string): string {
-  return createHash("sha256").update(code.toUpperCase().replace(/[\s-]/g, "")).digest("hex");
+  return createHash("sha256").update(code.replace(/-/g, "")).digest("hex");
 }
 
 export async function createInvite(db: Db, uses: number, days: number, note?: string): Promise<string> {
@@ -26,7 +36,9 @@ export async function createInvite(db: Db, uses: number, days: number, note?: st
 }
 
 /** Takes one use. Returns the invite id, or null when the code is unknown, used up, expired or revoked. */
-export async function takeInviteUse(db: Db, code: string): Promise<number | null> {
+export async function takeInviteUse(db: Db, text: string): Promise<number | null> {
+  const code = extractInviteCode(text);
+  if (!code) return null;
   const { rows } = await db.query<{ id: string }>(
     `UPDATE invites SET uses_left = uses_left - 1
      WHERE code_hash = $1 AND uses_left > 0 AND expires_at > now() AND revoked_at IS NULL
@@ -51,6 +63,25 @@ interface InviteRow {
   expires_at: Date;
   revoked_at: Date | null;
   joined_user_id: string | null;
+  joined_at: Date | null;
+}
+
+export interface InvitePolicy {
+  perUser: number;
+  respawnDays: number;
+}
+
+const DAY_MS = 86_400_000;
+
+/** When an invite gives its slot back, or null when it holds none. Pending: at expiry. Used: respawnDays after the join. */
+function slotReleaseAt(row: InviteRow, now: Date, respawnDays: number): Date | null {
+  const status = statusOf(row, now);
+  if (status === "pending") return row.expires_at;
+  if (status === "used" && row.joined_at) {
+    const release = new Date(row.joined_at.getTime() + respawnDays * DAY_MS);
+    return release > now ? release : null;
+  }
+  return null;
 }
 
 function statusOf(row: InviteRow, now: Date): InviteStatus {
@@ -64,27 +95,29 @@ async function quotaOf(db: Db | pg.PoolClient, userId: string, base: number): Pr
   return base + (rows[0]?.extra ?? 0);
 }
 
-// Pending and used invites hold a slot. Expired or revoked unused invites give it back.
-async function slotsTaken(db: Db | pg.PoolClient, userId: string): Promise<number> {
+// Pending invites hold a slot until they expire or are revoked. Used invites hold it for respawnDays after the join.
+async function slotsTaken(db: Db | pg.PoolClient, userId: string, respawnDays: number): Promise<number> {
   const { rows } = await db.query<{ n: string }>(
     `SELECT count(*) AS n FROM invites i
      WHERE i.created_by = $1
-       AND (EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)
-            OR (i.revoked_at IS NULL AND i.expires_at > now()))`,
-    [userId],
+       AND (EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id AND s.created_at > now() - make_interval(days => $2))
+            OR (i.revoked_at IS NULL AND i.expires_at > now()
+                AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)))`,
+    [userId, respawnDays],
   );
   return Number(rows[0]?.n ?? 0);
 }
 
-export async function myInvites(db: Db, userId: string, base: number) {
+export async function myInvites(db: Db, userId: string, policy: InvitePolicy) {
   const { rows } = await db.query<InviteRow>(
-    `SELECT i.id, i.created_at, i.expires_at, i.revoked_at, s.user_id AS joined_user_id
+    `SELECT i.id, i.created_at, i.expires_at, i.revoked_at, s.user_id AS joined_user_id, s.created_at AS joined_at
      FROM invites i LEFT JOIN signups s ON s.invite_id = i.id
      WHERE i.created_by = $1 ORDER BY i.created_at DESC LIMIT 200`,
     [userId],
   );
-  const quota = await quotaOf(db, userId, base);
+  const quota = await quotaOf(db, userId, policy.perUser);
   const now = new Date();
+  const releases = rows.map((r) => slotReleaseAt(r, now, policy.respawnDays)).filter((d): d is Date => d !== null);
   const invites = rows.map((r) => {
     const status = statusOf(r, now);
     return {
@@ -95,17 +128,19 @@ export async function myInvites(db: Db, userId: string, base: number) {
       ...(status === "used" && r.joined_user_id ? { joined_user_id: r.joined_user_id } : {}),
     };
   });
-  const taken = invites.filter((i) => i.status === "pending" || i.status === "used").length;
-  return { quota, available: Math.max(0, quota - taken), invites };
+  const available = Math.max(0, quota - releases.length);
+  // Only useful when nothing is available: the next moment a slot comes back.
+  const next = available === 0 && releases.length > 0 ? new Date(Math.min(...releases.map((d) => d.getTime()))) : null;
+  return { quota, available, ...(next ? { next_available_at: next.toISOString() } : {}), invites };
 }
 
-export async function createPersonalInvite(db: Db, userId: string, base: number, siteUrl: string) {
+export async function createPersonalInvite(db: Db, userId: string, policy: InvitePolicy, siteUrl: string) {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
     // One creation at a time per user, so two requests cannot both take the last slot.
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [userId]);
-    if ((await slotsTaken(client, userId)) >= (await quotaOf(client, userId, base))) {
+    if ((await slotsTaken(client, userId, policy.respawnDays)) >= (await quotaOf(client, userId, policy.perUser))) {
       throw new ApiError("invite_quota_exhausted");
     }
     const code = newInviteCode();
@@ -143,8 +178,9 @@ export async function revokePersonalInvite(db: Db, userId: string, inviteId: str
 }
 
 /** Validity and, for a personal invite, the inviter's handle. Never says why a code is invalid. */
-export async function previewInvite(db: Db, code: string) {
-  if (code.length > 64) return { valid: false };
+export async function previewInvite(db: Db, text: string) {
+  const code = extractInviteCode(text);
+  if (!code) return { valid: false };
   const { rows } = await db.query<{ handle: string | null }>(
     `SELECT h.handle FROM invites i LEFT JOIN handles h ON h.user_id = i.created_by
      WHERE i.code_hash = $1 AND i.uses_left > 0 AND i.expires_at > now() AND i.revoked_at IS NULL`,

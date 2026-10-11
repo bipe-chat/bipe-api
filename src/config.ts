@@ -15,7 +15,9 @@ const Env = z.object({
   // Global ceiling on sign-ups per hour, on top of the per-IP limit.
   SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   // Personal invites each user may hold (pending plus used), before admin grants.
-  INVITES_PER_USER: z.coerce.number().int().nonnegative().default(5),
+  INVITES_PER_USER: z.coerce.number().int().nonnegative().default(10),
+  // A used invite gives its slot back this many days after the invitee joined.
+  INVITE_RESPAWN_DAYS: z.coerce.number().int().positive().default(7),
   PUBLIC_SITE_URL: z.url().default("https://proseio.com.br"),
 });
 
