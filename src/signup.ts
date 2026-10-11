@@ -38,7 +38,8 @@ export async function signup(db: Db, mas: Mas, config: Config, input: SignupInpu
     let localpart = "";
     for (let attempt = 0; attempt < 3 && !masUserId; attempt++) {
       localpart = randomLocalpart();
-      masUserId = await mas.createUser(localpart, input.display_name?.trim() || undefined);
+      // Without a display name, clients fall back to the random Matrix ID. The handle is the next best name.
+      masUserId = await mas.createUser(localpart, input.display_name?.trim() || wanted?.handle);
     }
     if (!masUserId) throw new ApiError("internal");
     if (!(await mas.setPassword(masUserId, input.password))) throw new ApiError("password_weak");
