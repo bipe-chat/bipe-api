@@ -33,6 +33,7 @@ const MIGRATIONS = [
      user_id text NOT NULL,
      hold_until timestamptz NOT NULL
    );`,
+  `ALTER TABLE signups ALTER COLUMN invite_id DROP NOT NULL;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

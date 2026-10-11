@@ -10,6 +10,10 @@ const Env = z.object({
   MAS_ADMIN_URL: z.url(),
   MAS_CLIENT_ID: z.string().min(1),
   MAS_CLIENT_SECRET: z.string().min(16),
+  // Beta: sign-up without an invite code (MZ, 11 October 2026). Anything but "false" requires one.
+  SIGNUP_INVITE_REQUIRED: z.string().default("true").transform((v) => v !== "false"),
+  // Global ceiling on sign-ups per hour, on top of the per-IP limit.
+  SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
 });
 
 export type Config = z.infer<typeof Env>;

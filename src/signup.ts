@@ -14,7 +14,7 @@ export function randomLocalpart(): string {
 }
 
 export interface SignupInput {
-  invite_code: string;
+  invite_code?: string;
   email: string;
   password: string;
   handle?: string;
@@ -27,8 +27,11 @@ export async function signup(db: Db, mas: Mas, config: Config, input: SignupInpu
   if (wanted && !(await skeletonFree(db, wanted.skeleton, null))) throw new ApiError("handle_taken");
   if (await mas.emailInUse(email)) throw new ApiError("email_taken");
 
-  const inviteId = await takeInviteUse(db, input.invite_code);
-  if (inviteId === null) throw new ApiError("invite_invalid");
+  // A code is used when given, and required only when SIGNUP_INVITE_REQUIRED is on.
+  const code = input.invite_code?.trim();
+  const inviteId = code ? await takeInviteUse(db, code) : null;
+  if (code && inviteId === null) throw new ApiError("invite_invalid");
+  if (!code && config.SIGNUP_INVITE_REQUIRED) throw new ApiError("invite_invalid");
 
   let masUserId: string | null = null;
   try {
@@ -57,7 +60,7 @@ export async function signup(db: Db, mas: Mas, config: Config, input: SignupInpu
   } catch (e) {
     // Undo: MAS users cannot be deleted, only deactivated. Give the invite use back.
     if (masUserId) await mas.deactivate(masUserId).catch(() => console.error("signup: deactivate after failure failed"));
-    await returnInviteUse(db, inviteId).catch(() => console.error("signup: invite refund failed"));
+    if (inviteId !== null) await returnInviteUse(db, inviteId).catch(() => console.error("signup: invite refund failed"));
     throw e;
   }
 }

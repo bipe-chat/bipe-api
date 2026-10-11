@@ -19,6 +19,7 @@ const auth = new MatrixAuth(config);
 
 const limits = {
   signup: new RateLimiter(5, 3_600_000),
+  signupGlobal: new RateLimiter(config.SIGNUP_MAX_PER_HOUR, 3_600_000),
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
@@ -26,7 +27,7 @@ const limits = {
 };
 
 const SignupBody = z.object({
-  invite_code: z.string().min(1).max(64),
+  invite_code: z.string().max(64).optional(),
   email: z.email().max(254),
   password: z.string().min(8).max(256),
   handle: z.string().max(64).optional(),
@@ -54,6 +55,7 @@ app.get("/healthz", (c) => c.text("ok"));
 
 app.post("/v1/signup", async (c) => {
   limits.signup.check(clientIp(c));
+  limits.signupGlobal.check("all");
   return c.json(await signup(db, mas, config, await parse(c, SignupBody)), 201);
 });
 
