@@ -13,3 +13,7 @@ Proseio API: invite sign-up and the handle directory (docs/usernames.md option A
 - Personal invites (`/v1/me/invites`): `created_by` set, single use, 30 days. Pending and used invites hold a slot; expired or revoked unused ones give it back. Quota = `INVITES_PER_USER` + `invite_grants.extra`. Creation takes a per-user advisory lock so two requests cannot take the last slot.
 - `GET /v1/invites/{code}` is public with CORS for `PUBLIC_SITE_URL` (the invite page reads it). It never says why a code is invalid.
 - Write docs in ASD-STE100 style.
+
+## Decisions
+
+Product and architecture decisions for all Proseio repos are ADRs in the umbrella repo: `../proseio/docs/adr/` (index: `README.md`). Check them before changing a decided behaviour. A new decision gets an ADR there, not a note in this repo.
