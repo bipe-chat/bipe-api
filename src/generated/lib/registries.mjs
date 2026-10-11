@@ -38,6 +38,12 @@ function validate(reg) {
       try { new RegExp(p.regex); } catch (e) { fail(`${group}.${p.id} regex: ${e.message}`); }
     }
   }
+  const s = reg.scam;
+  for (const list of ["urgencyPhrases", "receiptKeywords", "pixKeyContextWords", "newNumberPhrases"]) {
+    for (const t of s[list]) if (normalize(t, {}) !== t) fail(`${list} entry "${t}" is not normalised`);
+  }
+  for (const p of s.newNumberPhrases) if (!s.urgencyPhrases.includes(p)) fail(`newNumberPhrases entry "${p}" is not in urgencyPhrases`);
+  if ([...s.warningKindPriority].sort().join() !== [...SCAM_WARNING_KINDS].sort().join()) fail(`warningKindPriority must list each of ${SCAM_WARNING_KINDS.join(", ")} once`);
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   try { new RegExp(h.pattern); new RegExp(h.skeletonStrip, "g"); } catch (e) { fail(`handles regex: ${e.message}`); }
@@ -49,6 +55,40 @@ function validate(reg) {
     const ph = (v) => [...v.matchAll(/%(\d+)\$s/g)].map((m) => m[1]).sort().join();
     if (ph(value) !== ph(reg.stringsEn.strings[key])) fail(`placeholders differ for ${key}`);
   }
+}
+
+const SCAM_WARNING_KINDS = ["pixCode", "boleto", "pixKey", "receipt", "newNumber", "urgency"];
+const SCAM_PATTERN_GROUPS = ["pixKeyPatterns", "pixCopyPastePatterns", "boletoPatterns"];
+
+// Match IDs in reference order: `<patternGroup>:<id>` for regexes on the raw
+// message, then `urgency:<phrase>`, then `receipt:<keyword>` on normalize(message)
+// without homoglyph folding.
+export function scamMatchIDs(message, reg) {
+  const ids = [];
+  for (const g of SCAM_PATTERN_GROUPS) for (const p of reg.scam[g]) if (new RegExp(p.regex).test(message)) ids.push(`${g}:${p.id}`);
+  const n = normalize(message, {});
+  for (const phrase of reg.scam.urgencyPhrases) if (n.includes(phrase)) ids.push(`urgency:${phrase}`);
+  for (const kw of reg.scam.receiptKeywords) if (n.includes(kw)) ids.push(`receipt:${kw}`);
+  return ids;
+}
+
+// The one warning to show for a message, or null: the first kind in
+// warningKindPriority whose rule applies.
+export function scamWarningKind(text, reg) {
+  const s = reg.scam;
+  const ids = scamMatchIDs(text, reg);
+  const groups = new Set(ids.map((id) => id.slice(0, id.indexOf(":"))));
+  const phrases = ids.filter((id) => id.startsWith("urgency:")).map((id) => id.slice("urgency:".length));
+  const applies = {
+    pixCode: () => groups.has("pixCopyPastePatterns"),
+    boleto: () => groups.has("boletoPatterns"),
+    // A phone number or e-mail alone is normal chat. Warn only when the message also talks about Pix.
+    pixKey: () => groups.has("pixKeyPatterns") && s.pixKeyContextWords.some((w) => normalize(text, {}).includes(w)),
+    receipt: () => groups.has("receipt"),
+    newNumber: () => phrases.some((p) => s.newNumberPhrases.includes(p)),
+    urgency: () => phrases.length > 0,
+  };
+  return s.warningKindPriority.find((kind) => applies[kind]()) ?? null;
 }
 
 // NFKD, strip combining marks, lowercase, fold homoglyphs, collapse whitespace.
