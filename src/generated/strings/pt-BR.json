@@ -84,6 +84,24 @@
     "proseio_scam_warning_boleto": "A mensagem tem um código de boleto. Boleto falso é um golpe comum. Antes de pagar, confira no app do banco quem vai receber.",
     "proseio_scam_warning_receipt": "A mensagem fala de comprovante. Print de comprovante não prova pagamento. Confira no app do seu banco se o dinheiro caiu.",
     "proseio_scam_warning_new_number": "Golpistas costumam dizer que trocaram de número e fingir que são da família. Ligue para o número antigo da pessoa e confirme que é ela.",
-    "proseio_scam_warning_urgency": "Pressa e pedido de dinheiro aparecem muito em golpes. Antes de fazer qualquer coisa, confirme com a pessoa por outro meio."
+    "proseio_scam_warning_urgency": "Pressa e pedido de dinheiro aparecem muito em golpes. Antes de fazer qualquer coisa, confirme com a pessoa por outro meio.",
+    "proseio_signup_invite_code": "Código de convite (opcional)",
+    "proseio_signup_invited_by": "Convite de @%1$s",
+    "proseio_invite_already_signed_in": "Você já tem uma conta. O convite é para quem ainda não está no Proseio.",
+    "proseio_invites_title": "Convidar pessoas",
+    "proseio_invites_available": "Convites disponíveis: %1$s",
+    "proseio_invites_explainer": "Cada convite serve para uma pessoa e vale por 30 dias. Convide quem você conhece.",
+    "proseio_invites_create": "Criar convite",
+    "proseio_invites_share_message": "Entra no Proseio comigo: %1$s",
+    "proseio_invites_none_left": "Você usou todos os seus convites.",
+    "proseio_invites_empty": "Você ainda não convidou ninguém.",
+    "proseio_invites_expires": "Vale até %1$s",
+    "proseio_invites_status_pending": "Aguardando",
+    "proseio_invites_status_used": "Aceito",
+    "proseio_invites_status_expired": "Expirado",
+    "proseio_invites_status_revoked": "Cancelado",
+    "proseio_invites_revoke": "Cancelar convite",
+    "proseio_invites_chat": "Conversar",
+    "proseio_error_invite_quota": "Você não tem convites disponíveis."
   }
 }

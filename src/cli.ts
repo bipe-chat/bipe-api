@@ -2,9 +2,11 @@
 //   node dist/cli.js invite create --uses 10 --days 12 [--note "amigos"]
 //   node dist/cli.js invite list
 //   node dist/cli.js invite revoke <id>
+//   node dist/cli.js invite grant <user_id> <n>      (n extra personal invites)
+//   node dist/cli.js invite revoke-user <user_id>    (all pending invites of a user)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
-import { createInvite } from "./invites.js";
+import { createInvite, grantInvites, revokeAllOf } from "./invites.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -15,7 +17,7 @@ const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, note: { type: "string" } },
 });
-const [group, command, arg] = positionals;
+const [group, command, arg, arg2] = positionals;
 
 try {
   if (group === "invite" && command === "create") {
@@ -25,14 +27,21 @@ try {
     console.log(await createInvite(db, uses, days, values.note));
   } else if (group === "invite" && command === "list") {
     const { rows } = await db.query(
-      "SELECT id, uses_left, expires_at, revoked_at, note, (SELECT count(*) FROM signups s WHERE s.invite_id = i.id) AS signups FROM invites i ORDER BY id",
+      "SELECT id, created_by, uses_left, expires_at, revoked_at, note, (SELECT count(*) FROM signups s WHERE s.invite_id = i.id) AS signups FROM invites i ORDER BY id",
     );
     console.table(rows);
   } else if (group === "invite" && command === "revoke" && arg) {
     await db.query("UPDATE invites SET revoked_at = now() WHERE id = $1", [Number(arg)]);
     console.log(`revoked ${arg}`);
+  } else if (group === "invite" && command === "grant" && arg?.startsWith("@") && arg2) {
+    const n = Number(arg2);
+    if (!(Number.isInteger(n) && n > 0)) throw new Error("n must be a positive integer");
+    await grantInvites(db, arg, n);
+    console.log(`granted ${n} to ${arg}`);
+  } else if (group === "invite" && command === "revoke-user" && arg?.startsWith("@")) {
+    console.log(`revoked ${await revokeAllOf(db, arg)} pending invites of ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user");
     process.exitCode = 2;
   }
 } finally {

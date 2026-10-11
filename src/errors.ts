@@ -2,6 +2,7 @@
 export type ErrorId =
   | "bad_request"
   | "invite_invalid"
+  | "invite_quota_exhausted"
   | "email_taken"
   | "handle_invalid"
   | "handle_taken"
@@ -15,6 +16,7 @@ export type ErrorId =
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500> = {
   bad_request: 400,
   invite_invalid: 403,
+  invite_quota_exhausted: 403,
   email_taken: 409,
   handle_invalid: 400,
   handle_taken: 409,

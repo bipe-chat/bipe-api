@@ -3,7 +3,7 @@ import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { skeletonFree, validHandle } from "./handles.js";
-import { returnInviteUse, takeInviteUse } from "./invites.js";
+import { inviterOf, returnInviteUse, takeInviteUse } from "./invites.js";
 import type { Mas } from "./mas.js";
 
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
@@ -57,7 +57,8 @@ export async function signup(db: Db, mas: Mas, config: Config, input: SignupInpu
       );
       if (res.rowCount === 1) handle = wanted.handle;
     }
-    return { user_id: userId, ...(handle ? { handle } : {}) };
+    const inviter = inviteId !== null ? await inviterOf(db, inviteId) : null;
+    return { user_id: userId, ...(handle ? { handle } : {}), ...(inviter ? { inviter_user_id: inviter } : {}) };
   } catch (e) {
     // Undo: MAS users cannot be deleted, only deactivated. Give the invite use back.
     if (masUserId) await mas.deactivate(masUserId).catch(() => console.error("signup: deactivate after failure failed"));

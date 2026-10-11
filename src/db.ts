@@ -34,6 +34,13 @@ const MIGRATIONS = [
      hold_until timestamptz NOT NULL
    );`,
   `ALTER TABLE signups ALTER COLUMN invite_id DROP NOT NULL;`,
+  // Personal invites (docs/growth.md "Throttle"): created_by is NULL for admin invites.
+  `ALTER TABLE invites ADD COLUMN created_by text;
+   CREATE INDEX invites_created_by ON invites (created_by) WHERE created_by IS NOT NULL;
+   CREATE TABLE invite_grants (
+     user_id text PRIMARY KEY,
+     extra integer NOT NULL CHECK (extra >= 0)
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

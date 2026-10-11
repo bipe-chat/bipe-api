@@ -1,5 +1,7 @@
 import { createHash, randomInt } from "node:crypto";
+import type pg from "pg";
 import type { Db } from "./db.js";
+import { ApiError } from "./errors.js";
 
 // Unambiguous uppercase alphabet: no 0/O, 1/I/L.
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -36,4 +38,143 @@ export async function takeInviteUse(db: Db, code: string): Promise<number | null
 
 export async function returnInviteUse(db: Db, inviteId: number): Promise<void> {
   await db.query("UPDATE invites SET uses_left = uses_left + 1 WHERE id = $1", [inviteId]);
+}
+
+// Personal invites: single use, 30 days, revocable while pending (docs/growth.md "Throttle").
+const PERSONAL_INVITE_DAYS = 30;
+
+type InviteStatus = "pending" | "used" | "expired" | "revoked";
+
+interface InviteRow {
+  id: string;
+  created_at: Date;
+  expires_at: Date;
+  revoked_at: Date | null;
+  joined_user_id: string | null;
+}
+
+function statusOf(row: InviteRow, now: Date): InviteStatus {
+  if (row.joined_user_id) return "used";
+  if (row.revoked_at) return "revoked";
+  return row.expires_at > now ? "pending" : "expired";
+}
+
+async function quotaOf(db: Db | pg.PoolClient, userId: string, base: number): Promise<number> {
+  const { rows } = await db.query<{ extra: number }>("SELECT extra FROM invite_grants WHERE user_id = $1", [userId]);
+  return base + (rows[0]?.extra ?? 0);
+}
+
+// Pending and used invites hold a slot. Expired or revoked unused invites give it back.
+async function slotsTaken(db: Db | pg.PoolClient, userId: string): Promise<number> {
+  const { rows } = await db.query<{ n: string }>(
+    `SELECT count(*) AS n FROM invites i
+     WHERE i.created_by = $1
+       AND (EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)
+            OR (i.revoked_at IS NULL AND i.expires_at > now()))`,
+    [userId],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+export async function myInvites(db: Db, userId: string, base: number) {
+  const { rows } = await db.query<InviteRow>(
+    `SELECT i.id, i.created_at, i.expires_at, i.revoked_at, s.user_id AS joined_user_id
+     FROM invites i LEFT JOIN signups s ON s.invite_id = i.id
+     WHERE i.created_by = $1 ORDER BY i.created_at DESC LIMIT 200`,
+    [userId],
+  );
+  const quota = await quotaOf(db, userId, base);
+  const now = new Date();
+  const invites = rows.map((r) => {
+    const status = statusOf(r, now);
+    return {
+      id: String(r.id),
+      status,
+      created_at: r.created_at.toISOString(),
+      expires_at: r.expires_at.toISOString(),
+      ...(status === "used" && r.joined_user_id ? { joined_user_id: r.joined_user_id } : {}),
+    };
+  });
+  const taken = invites.filter((i) => i.status === "pending" || i.status === "used").length;
+  return { quota, available: Math.max(0, quota - taken), invites };
+}
+
+export async function createPersonalInvite(db: Db, userId: string, base: number, siteUrl: string) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    // One creation at a time per user, so two requests cannot both take the last slot.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [userId]);
+    if ((await slotsTaken(client, userId)) >= (await quotaOf(client, userId, base))) {
+      throw new ApiError("invite_quota_exhausted");
+    }
+    const code = newInviteCode();
+    const { rows } = await client.query<{ id: string; expires_at: Date }>(
+      `INSERT INTO invites (code_hash, uses_left, expires_at, created_by)
+       VALUES ($1, 1, now() + make_interval(days => $2), $3) RETURNING id, expires_at`,
+      [inviteHash(code), PERSONAL_INVITE_DAYS, userId],
+    );
+    await client.query("COMMIT");
+    const row = rows[0]!;
+    return {
+      id: String(row.id),
+      code,
+      url: `${siteUrl.replace(/\/$/, "")}/convite/${code}`,
+      expires_at: row.expires_at.toISOString(),
+    };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/** Revokes a pending invite of the caller. Used, expired and foreign invites are not_found. */
+export async function revokePersonalInvite(db: Db, userId: string, inviteId: string): Promise<void> {
+  if (!/^[0-9]{1,18}$/.test(inviteId)) throw new ApiError("not_found");
+  const { rowCount } = await db.query(
+    `UPDATE invites i SET revoked_at = now()
+     WHERE i.id = $1 AND i.created_by = $2 AND i.revoked_at IS NULL AND i.expires_at > now()
+       AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)`,
+    [inviteId, userId],
+  );
+  if (rowCount !== 1) throw new ApiError("not_found");
+}
+
+/** Validity and, for a personal invite, the inviter's handle. Never says why a code is invalid. */
+export async function previewInvite(db: Db, code: string) {
+  if (code.length > 64) return { valid: false };
+  const { rows } = await db.query<{ handle: string | null }>(
+    `SELECT h.handle FROM invites i LEFT JOIN handles h ON h.user_id = i.created_by
+     WHERE i.code_hash = $1 AND i.uses_left > 0 AND i.expires_at > now() AND i.revoked_at IS NULL`,
+    [inviteHash(code)],
+  );
+  if (!rows[0]) return { valid: false };
+  return rows[0].handle ? { valid: true, inviter_handle: rows[0].handle } : { valid: true };
+}
+
+/** The user who created an invite, or null for admin invites. */
+export async function inviterOf(db: Db, inviteId: number): Promise<string | null> {
+  const { rows } = await db.query<{ created_by: string | null }>("SELECT created_by FROM invites WHERE id = $1", [inviteId]);
+  return rows[0]?.created_by ?? null;
+}
+
+export async function grantInvites(db: Db, userId: string, extra: number): Promise<void> {
+  await db.query(
+    `INSERT INTO invite_grants (user_id, extra) VALUES ($1, $2)
+     ON CONFLICT (user_id) DO UPDATE SET extra = invite_grants.extra + EXCLUDED.extra`,
+    [userId, extra],
+  );
+}
+
+/** Revokes every pending invite a user created. For abuse handling. */
+export async function revokeAllOf(db: Db, userId: string): Promise<number> {
+  const { rowCount } = await db.query(
+    `UPDATE invites i SET revoked_at = now()
+     WHERE i.created_by = $1 AND i.revoked_at IS NULL AND i.expires_at > now()
+       AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)`,
+    [userId],
+  );
+  return rowCount ?? 0;
 }

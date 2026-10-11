@@ -9,5 +9,7 @@ Proseio API: invite sign-up and the handle directory (docs/usernames.md option A
 - MAS admin API: client_credentials with scope `urn:mas:admin`. The client ID and secret come from `.env` on the node; never log or print them. MAS cannot delete users: a failed sign-up deactivates the MAS user and refunds the invite use.
 - Never log request bodies, emails, passwords, tokens or invite codes. Invite codes are stored only as SHA-256 hashes.
 - Rate limits are in memory: one instance only.
-- Admin CLI (in the container): `node dist/cli.js invite create --uses 10 --days 12 --note amigos`, `invite list`, `invite revoke <id>`.
+- Admin CLI (in the container): `node dist/cli.js invite create --uses 10 --days 12 --note amigos`, `invite list`, `invite revoke <id>`, `invite grant @user:proseio.com.br 5` (extra personal invites), `invite revoke-user @user:proseio.com.br` (all pending invites of a user).
+- Personal invites (`/v1/me/invites`): `created_by` set, single use, 30 days. Pending and used invites hold a slot; expired or revoked unused ones give it back. Quota = `INVITES_PER_USER` + `invite_grants.extra`. Creation takes a per-user advisory lock so two requests cannot take the last slot.
+- `GET /v1/invites/{code}` is public with CORS for `PUBLIC_SITE_URL` (the invite page reads it). It never says why a code is invalid.
 - Write docs in ASD-STE100 style.

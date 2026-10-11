@@ -1,12 +1,14 @@
 import { serve } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { cors } from "hono/cors";
 import { z } from "zod";
 import { MatrixAuth } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { migrate, openDb } from "./db.js";
 import { ApiError } from "./errors.js";
 import { availability, lookup, myHandle, resolve, setHandle } from "./handles.js";
+import { createPersonalInvite, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
 import { signup } from "./signup.js";
@@ -24,6 +26,8 @@ const limits = {
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
   setHandle: new RateLimiter(10, 3_600_000),
+  invitePreview: new RateLimiter(30, 60_000),
+  inviteCreate: new RateLimiter(20, 3_600_000),
 };
 
 const SignupBody = z.object({
@@ -57,6 +61,31 @@ app.post("/v1/signup", async (c) => {
   limits.signup.check(clientIp(c));
   limits.signupGlobal.check("all");
   return c.json(await signup(db, mas, config, await parse(c, SignupBody)), 201);
+});
+
+// The invite page on the public site reads the preview from the browser.
+app.use("/v1/invites/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+
+app.get("/v1/invites/:code", async (c) => {
+  limits.invitePreview.check(clientIp(c));
+  return c.json(await previewInvite(db, c.req.param("code")));
+});
+
+app.get("/v1/me/invites", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await myInvites(db, userId, config.INVITES_PER_USER));
+});
+
+app.post("/v1/me/invites", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.inviteCreate.check(userId);
+  return c.json(await createPersonalInvite(db, userId, config.INVITES_PER_USER, config.PUBLIC_SITE_URL), 201);
+});
+
+app.delete("/v1/me/invites/:id", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await revokePersonalInvite(db, userId, c.req.param("id"));
+  return c.body(null, 204);
 });
 
 app.get("/v1/handles/:handle/availability", async (c) => {

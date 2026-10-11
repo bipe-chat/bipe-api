@@ -14,6 +14,9 @@ const Env = z.object({
   SIGNUP_INVITE_REQUIRED: z.string().default("true").transform((v) => v !== "false"),
   // Global ceiling on sign-ups per hour, on top of the per-IP limit.
   SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
+  // Personal invites each user may hold (pending plus used), before admin grants.
+  INVITES_PER_USER: z.coerce.number().int().nonnegative().default(5),
+  PUBLIC_SITE_URL: z.url().default("https://proseio.com.br"),
 });
 
 export type Config = z.infer<typeof Env>;
