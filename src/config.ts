@@ -13,6 +13,10 @@ const Env = z.object({
   // Beta: sign-up without an invite code (MZ, 11 October 2026). Anything but "false" requires one.
   SIGNUP_INVITE_REQUIRED: z.string().default("true").transform((v) => v !== "false"),
   // Global ceiling on sign-ups per hour, on top of the per-IP limit.
+  // App Attest on sign-up (docs/adr). Anything but "false" requires a valid attestation.
+  SIGNUP_ATTEST_REQUIRED: z.string().default("true").transform((v) => v !== "false"),
+  // App IDs (TEAMID.bundleid) whose attestations are accepted, comma separated.
+  APP_ATTEST_APP_IDS: z.string().default("992N457T8D.br.com.proseio.app.dev").transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean)),
   SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   // Personal invites each user may hold (pending plus used), before admin grants.
   INVITES_PER_USER: z.coerce.number().int().nonnegative().default(10),

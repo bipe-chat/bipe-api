@@ -8,6 +8,7 @@ export type ErrorId =
   | "handle_taken"
   | "handle_cooldown"
   | "password_weak"
+  | "attestation_invalid"
   | "unauthorized"
   | "not_found"
   | "rate_limited"
@@ -22,6 +23,7 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500> = {
   handle_taken: 409,
   handle_cooldown: 429,
   password_weak: 400,
+  attestation_invalid: 403,
   unauthorized: 401,
   not_found: 404,
   rate_limited: 429,

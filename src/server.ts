@@ -11,6 +11,7 @@ import { availability, lookup, myHandle, resolve, setHandle } from "./handles.js
 import { createPersonalInvite, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
+import { newChallenge } from "./attest.js";
 import { signup } from "./signup.js";
 
 const config = loadConfig();
@@ -29,6 +30,7 @@ const limits = {
   setHandle: new RateLimiter(10, 3_600_000),
   invitePreview: new RateLimiter(30, 60_000),
   inviteCreate: new RateLimiter(20, 3_600_000),
+  attestChallenge: new RateLimiter(20, 3_600_000),
 };
 
 const SignupBody = z.object({
@@ -38,6 +40,13 @@ const SignupBody = z.object({
   password: z.string().min(8).max(256),
   handle: z.string().max(64).optional(),
   display_name: z.string().max(100).optional(),
+  attestation: z
+    .object({
+      key_id: z.string().min(1).max(128),
+      attestation_object: z.string().min(1).max(16_384),
+      challenge: z.string().min(1).max(128),
+    })
+    .optional(),
 });
 const HandleBody = z.object({ handle: z.string().max(64) });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
@@ -58,6 +67,11 @@ const app = new Hono();
 app.use("*", bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) }));
 
 app.get("/healthz", (c) => c.text("ok"));
+
+app.post("/v1/attest/challenge", (c) => {
+  limits.attestChallenge.check(clientIp(c));
+  return c.json({ challenge: newChallenge() });
+});
 
 app.post("/v1/signup", async (c) => {
   limits.signup.check(clientIp(c));

@@ -1,6 +1,7 @@
 import { randomInt } from "node:crypto";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
+import { type Attestation, verifyAttestation } from "./attest.js";
 import { ApiError } from "./errors.js";
 import { skeletonFree, validHandle } from "./handles.js";
 import { inviterOf, returnInviteUse, takeInviteUse } from "./invites.js";
@@ -19,9 +20,14 @@ export interface SignupInput {
   password: string;
   handle?: string;
   display_name?: string;
+  attestation?: Attestation;
 }
 
 export async function signup(db: Db, mas: Mas, config: Config, input: SignupInput) {
+  // App Attest first: it is the cheapest check that stops scripted sign-ups. A given attestation must be valid.
+  if (input.attestation) verifyAttestation(input.attestation, config.APP_ATTEST_APP_IDS);
+  else if (config.SIGNUP_ATTEST_REQUIRED) throw new ApiError("attestation_invalid");
+
   const email = input.email.trim().toLowerCase();
   const wanted = input.handle ? validHandle(input.handle) : null;
   if (wanted && !(await skeletonFree(db, wanted.skeleton, null))) throw new ApiError("handle_taken");
