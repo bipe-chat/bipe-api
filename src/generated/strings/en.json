@@ -102,6 +102,23 @@
     "proseio_invites_status_revoked": "Cancelled",
     "proseio_invites_revoke": "Cancel invite",
     "proseio_invites_chat": "Message",
-    "proseio_error_invite_quota": "You have no invites left."
+    "proseio_error_invite_quota": "You have no invites left.",
+    "proseio_trust_title": "Trust profile",
+    "proseio_trust_progress": "%1$s of %2$s",
+    "proseio_trust_footer": "Only you can see this profile.",
+    "proseio_trust_step_account": "Account",
+    "proseio_trust_step_account_body": "You created your account.",
+    "proseio_trust_step_profile": "Profile",
+    "proseio_trust_step_profile_body": "Name, username and photo.",
+    "proseio_trust_step_profile_add_name": "Add your name",
+    "proseio_trust_step_profile_add_handle": "Choose a username",
+    "proseio_trust_step_profile_add_photo": "Add a photo",
+    "proseio_trust_step_email": "Email confirmed",
+    "proseio_trust_step_email_body": "Open a link we send to your email.",
+    "proseio_trust_step_pix": "Pix",
+    "proseio_trust_step_pix_body": "A R$0.01 Pix from your bank account confirms your name.",
+    "proseio_trust_step_govbr": "gov.br",
+    "proseio_trust_step_govbr_body": "A signature with your gov.br account confirms your name.",
+    "proseio_trust_coming_soon": "Coming soon"
   }
 }

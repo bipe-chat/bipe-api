@@ -102,6 +102,23 @@
     "proseio_invites_status_revoked": "Cancelado",
     "proseio_invites_revoke": "Cancelar convite",
     "proseio_invites_chat": "Conversar",
-    "proseio_error_invite_quota": "Você não tem convites disponíveis."
+    "proseio_error_invite_quota": "Você não tem convites disponíveis.",
+    "proseio_trust_title": "Perfil de confiança",
+    "proseio_trust_progress": "%1$s de %2$s",
+    "proseio_trust_footer": "Só você vê este perfil.",
+    "proseio_trust_step_account": "Conta",
+    "proseio_trust_step_account_body": "Você criou sua conta.",
+    "proseio_trust_step_profile": "Perfil",
+    "proseio_trust_step_profile_body": "Nome, nome de usuário e foto.",
+    "proseio_trust_step_profile_add_name": "Adicionar nome",
+    "proseio_trust_step_profile_add_handle": "Escolher nome de usuário",
+    "proseio_trust_step_profile_add_photo": "Adicionar foto",
+    "proseio_trust_step_email": "E-mail confirmado",
+    "proseio_trust_step_email_body": "Abra um link que mandamos para o seu e-mail.",
+    "proseio_trust_step_pix": "Pix",
+    "proseio_trust_step_pix_body": "Um Pix de R$ 0,01 da sua conta no banco confirma seu nome.",
+    "proseio_trust_step_govbr": "gov.br",
+    "proseio_trust_step_govbr_body": "Uma assinatura com sua conta gov.br confirma seu nome.",
+    "proseio_trust_coming_soon": "Em breve"
   }
 }
