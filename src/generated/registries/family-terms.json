@@ -1,0 +1,12 @@
+{
+  "$comment": "Relationship terms that trigger the mismatch check when a chat uses them and the verified name does not match the contact (security.md rule 3). Compared after normalisation. Starter list: review before launch.",
+  "version": 1,
+  "terms": [
+    "mae", "mamae", "mainha", "pai", "papai", "painho",
+    "filho", "filha", "filhao", "filhinho", "filhinha",
+    "vo", "vovo", "avo", "vozinha", "vozinho",
+    "tio", "tia", "irmao", "irma", "mano", "mana",
+    "neto", "neta", "sobrinho", "sobrinha", "primo", "prima",
+    "amor", "meu amor", "querido", "querida", "esposo", "esposa", "marido", "mulher"
+  ]
+}

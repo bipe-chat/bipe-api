@@ -1,0 +1,10 @@
+{
+  "$comment": "Username (handle) rules, docs/usernames.md layer 2. The skeleton is normalize(handle) with separators removed; two handles with the same skeleton cannot both exist. ASCII-explicit pattern, portable to ICU, java.util.regex and V8.",
+  "version": 1,
+  "minLength": 3,
+  "maxLength": 30,
+  "pattern": "^[a-z0-9](?:[a-z0-9_]|\\.(?!\\.))*[a-z0-9_]$",
+  "skeletonStrip": "[._]",
+  "changeCooldownDays": 30,
+  "releaseHoldDays": 90
+}
