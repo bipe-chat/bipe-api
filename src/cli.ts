@@ -4,6 +4,10 @@
 //   node dist/cli.js invite revoke <id>
 //   node dist/cli.js invite grant <user_id> <n>      (n extra personal invites)
 //   node dist/cli.js invite revoke-user <user_id>    (all pending invites of a user)
+//   node dist/cli.js waitlist count
+//   node dist/cli.js waitlist export <platform>      (CSV email,lang for the launch email)
+//   node dist/cli.js waitlist clear <platform>       (after the launch email: deletes those rows)
+//   node dist/cli.js waitlist forget <email>         (LGPD deletion request)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, revokeAllOf } from "./invites.js";
@@ -40,8 +44,21 @@ try {
     console.log(`granted ${n} to ${arg}`);
   } else if (group === "invite" && command === "revoke-user" && arg?.startsWith("@")) {
     console.log(`revoked ${await revokeAllOf(db, arg)} pending invites of ${arg}`);
+  } else if (group === "waitlist" && command === "count") {
+    const { rows } = await db.query("SELECT platform, lang, count(*)::int AS n FROM waitlist GROUP BY 1, 2 ORDER BY 1, 2");
+    console.table(rows);
+  } else if (group === "waitlist" && command === "export" && arg) {
+    const { rows } = await db.query<{ email: string; lang: string }>("SELECT email, lang FROM waitlist WHERE platform = $1 ORDER BY created_at", [arg]);
+    console.log("email,lang");
+    for (const r of rows) console.log(`${r.email},${r.lang}`);
+  } else if (group === "waitlist" && command === "clear" && arg) {
+    const { rowCount } = await db.query("DELETE FROM waitlist WHERE platform = $1", [arg]);
+    console.log(`deleted ${rowCount} ${arg} rows`);
+  } else if (group === "waitlist" && command === "forget" && arg) {
+    const { rowCount } = await db.query("DELETE FROM waitlist WHERE email = $1", [arg.trim().toLowerCase()]);
+    console.log(`deleted ${rowCount} rows`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL");
     process.exitCode = 2;
   }
 } finally {

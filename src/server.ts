@@ -13,6 +13,7 @@ import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
 import { newChallenge } from "./attest.js";
 import { signup } from "./signup.js";
+import { joinWaitlist, WaitlistBody } from "./waitlist.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -31,6 +32,8 @@ const limits = {
   invitePreview: new RateLimiter(30, 60_000),
   inviteCreate: new RateLimiter(20, 3_600_000),
   attestChallenge: new RateLimiter(20, 3_600_000),
+  waitlist: new RateLimiter(5, 3_600_000),
+  waitlistGlobal: new RateLimiter(500, 3_600_000),
 };
 
 const SignupBody = z.object({
@@ -81,6 +84,16 @@ app.post("/v1/signup", async (c) => {
 
 // The invite page on the public site reads the preview from the browser.
 app.use("/v1/invites/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+
+// The waitlist form on the public site posts from the browser.
+app.use("/v1/waitlist", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
+
+app.post("/v1/waitlist", async (c) => {
+  limits.waitlist.check(clientIp(c));
+  limits.waitlistGlobal.check("all");
+  await joinWaitlist(db, await parse(c, WaitlistBody));
+  return c.body(null, 202);
+});
 
 app.get("/v1/invites/:code", async (c) => {
   limits.invitePreview.check(clientIp(c));

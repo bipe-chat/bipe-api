@@ -41,6 +41,15 @@ const MIGRATIONS = [
      user_id text PRIMARY KEY,
      extra integer NOT NULL CHECK (extra >= 0)
    );`,
+  // Waitlist (ADR 0025): one row per address and platform, deleted after the launch email.
+  `CREATE TABLE waitlist (
+     email text NOT NULL,
+     platform text NOT NULL CHECK (platform IN ('android', 'ios', 'other')),
+     lang text NOT NULL CHECK (lang IN ('pt', 'en')),
+     source text,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (email, platform)
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
