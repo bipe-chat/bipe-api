@@ -74,6 +74,16 @@
     "proseio_profile_qr_title": "Your QR code",
     "proseio_profile_qr_footer": "Anyone who scans this code opens your Proseio profile.",
     "proseio_invite_friends_text": "Chat with me on Proseio: %1$s",
-    "proseio_link_handle_not_found": "We could not find anyone with @%1$s."
+    "proseio_link_handle_not_found": "We could not find anyone with @%1$s.",
+    "proseio_requests_title": "Requests",
+    "proseio_requests_row_body": "People who want to chat with you",
+    "proseio_request_unverified_body": "There is no way yet to know who is behind this account. Only accept if you know this person.",
+    "proseio_scam_warning_title": "This looks like a common scam",
+    "proseio_scam_warning_pix_key": "The message has something that looks like a Pix key. Before you pay, check with the person another way, like a phone call.",
+    "proseio_scam_warning_pix_code": "The message has a Pix copy-and-paste code. Before you pay, check with the person another way and look at the name your bank shows.",
+    "proseio_scam_warning_boleto": "The message has a boleto code. Fake boletos are a common scam. Before you pay, check in your bank app who gets the money.",
+    "proseio_scam_warning_receipt": "The message mentions a payment receipt. A screenshot of a receipt does not prove payment. Check in your bank app that the money arrived.",
+    "proseio_scam_warning_new_number": "Scammers often say they have a new number and pretend to be family. Call the person's old number and check that it is them.",
+    "proseio_scam_warning_urgency": "Rush and money requests show up a lot in scams. Before you do anything, check with the person another way."
   }
 }

@@ -74,6 +74,16 @@
     "proseio_profile_qr_title": "Seu QR code",
     "proseio_profile_qr_footer": "Quem escanear este código abre o seu perfil no Proseio.",
     "proseio_invite_friends_text": "Fala comigo no Proseio: %1$s",
-    "proseio_link_handle_not_found": "Não achamos ninguém com @%1$s."
+    "proseio_link_handle_not_found": "Não achamos ninguém com @%1$s.",
+    "proseio_requests_title": "Pedidos",
+    "proseio_requests_row_body": "Pessoas que querem conversar com você",
+    "proseio_request_unverified_body": "Ainda não dá para saber quem está por trás desta conta. Só aceite se você conhece a pessoa.",
+    "proseio_scam_warning_title": "Parece um golpe comum",
+    "proseio_scam_warning_pix_key": "A mensagem tem algo que parece uma chave Pix. Antes de pagar, confirme com a pessoa por outro meio, como uma ligação.",
+    "proseio_scam_warning_pix_code": "A mensagem tem um código Pix copia e cola. Antes de pagar, confirme com a pessoa por outro meio e confira o nome que o banco mostra.",
+    "proseio_scam_warning_boleto": "A mensagem tem um código de boleto. Boleto falso é um golpe comum. Antes de pagar, confira no app do banco quem vai receber.",
+    "proseio_scam_warning_receipt": "A mensagem fala de comprovante. Print de comprovante não prova pagamento. Confira no app do seu banco se o dinheiro caiu.",
+    "proseio_scam_warning_new_number": "Golpistas costumam dizer que trocaram de número e fingir que são da família. Ligue para o número antigo da pessoa e confirme que é ela.",
+    "proseio_scam_warning_urgency": "Pressa e pedido de dinheiro aparecem muito em golpes. Antes de fazer qualquer coisa, confirme com a pessoa por outro meio."
   }
 }
