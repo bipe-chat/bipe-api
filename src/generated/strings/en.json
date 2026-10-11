@@ -67,6 +67,8 @@
     "proseio_error_unauthorized": "Your session expired. Sign out and sign in again.",
     "proseio_error_network": "Cannot reach Proseio. Check your connection and try again.",
     "proseio_error_generic": "Something went wrong. Try again.",
+    "proseio_error_attestation_invalid": "We couldn't confirm this is the official Proseio app. Update the app and try again.",
+    "proseio_error_attestation_failed": "We couldn't check this phone with Apple. Check your connection and try again.",
     "proseio_signup_display_name_footer": "This is the name people see in chats. You can change it later.",
     "proseio_start_chat_handle_not_found": "Nobody on Proseio uses @%1$s. Check the spelling.",
     "proseio_profile_share": "Share profile",
@@ -124,7 +126,7 @@
     "proseio_voice_transcript_title": "Transcript",
     "proseio_voice_transcribing": "Transcribing…",
     "proseio_voice_transcript_placeholder": "Check the text before you send",
-    "proseio_voice_transcript_unavailable": "No transcript. This phone can't transcribe this language offline.",
+    "proseio_voice_transcript_unavailable": "No transcript. The audio goes without text.",
     "proseio_action_show_more": "Show more",
     "proseio_action_show_less": "Show less"
   }
