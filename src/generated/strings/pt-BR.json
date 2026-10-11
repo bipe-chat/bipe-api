@@ -43,7 +43,7 @@
     "proseio_signup_password_mismatch": "As senhas não são iguais.",
     "proseio_signup_handle": "Nome de usuário (opcional)",
     "proseio_signup_handle_footer": "É assim que as pessoas acham você. Dá para escolher depois.",
-    "proseio_signup_display_name": "Seu nome (opcional)",
+    "proseio_signup_display_name": "Seu nome",
     "proseio_signup_submit": "Criar conta",
     "proseio_signup_success": "Conta criada. Agora entre com seu e-mail e senha.",
     "proseio_handle_placeholder": "ex.: ana.souza",
@@ -66,6 +66,14 @@
     "proseio_error_rate_limited": "Muitas tentativas. Espere um pouco e tente de novo.",
     "proseio_error_unauthorized": "Sua sessão expirou. Saia e entre de novo.",
     "proseio_error_network": "Sem conexão com o Proseio. Confira a internet e tente de novo.",
-    "proseio_error_generic": "Algo deu errado. Tente de novo."
+    "proseio_error_generic": "Algo deu errado. Tente de novo.",
+    "proseio_signup_display_name_footer": "É o nome que aparece nas conversas. Dá para mudar depois.",
+    "proseio_start_chat_handle_not_found": "Ninguém usa @%1$s no Proseio. Confira se digitou certo.",
+    "proseio_profile_share": "Compartilhar perfil",
+    "proseio_profile_qr_action": "QR code",
+    "proseio_profile_qr_title": "Seu QR code",
+    "proseio_profile_qr_footer": "Quem escanear este código abre o seu perfil no Proseio.",
+    "proseio_invite_friends_text": "Fala comigo no Proseio: %1$s",
+    "proseio_link_handle_not_found": "Não achamos ninguém com @%1$s."
   }
 }

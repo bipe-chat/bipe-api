@@ -43,7 +43,7 @@
     "proseio_signup_password_mismatch": "The passwords do not match.",
     "proseio_signup_handle": "Username (optional)",
     "proseio_signup_handle_footer": "This is how people find you. You can pick one later.",
-    "proseio_signup_display_name": "Your name (optional)",
+    "proseio_signup_display_name": "Your name",
     "proseio_signup_submit": "Create account",
     "proseio_signup_success": "Account created. Now sign in with your email and password.",
     "proseio_handle_placeholder": "e.g. ana.souza",
@@ -66,6 +66,14 @@
     "proseio_error_rate_limited": "Too many tries. Wait a bit and try again.",
     "proseio_error_unauthorized": "Your session expired. Sign out and sign in again.",
     "proseio_error_network": "Cannot reach Proseio. Check your connection and try again.",
-    "proseio_error_generic": "Something went wrong. Try again."
+    "proseio_error_generic": "Something went wrong. Try again.",
+    "proseio_signup_display_name_footer": "This is the name people see in chats. You can change it later.",
+    "proseio_start_chat_handle_not_found": "Nobody on Proseio uses @%1$s. Check the spelling.",
+    "proseio_profile_share": "Share profile",
+    "proseio_profile_qr_action": "QR code",
+    "proseio_profile_qr_title": "Your QR code",
+    "proseio_profile_qr_footer": "Anyone who scans this code opens your Proseio profile.",
+    "proseio_invite_friends_text": "Chat with me on Proseio: %1$s",
+    "proseio_link_handle_not_found": "We could not find anyone with @%1$s."
   }
 }
