@@ -45,10 +45,14 @@ function validate(reg) {
     }
   }
   const s = reg.scam;
-  for (const list of ["urgencyPhrases", "receiptKeywords", "pixKeyContextWords", "newNumberPhrases", "newAccountPhrases", ...DELIVERY_WORD_LISTS]) {
+  for (const list of ["urgencyPhrases", "receiptKeywords", "pixKeyContextWords", "newNumberPhrases", "newAccountPhrases", ...DELIVERY_WORD_LISTS, ...BANK_ALERT_WORD_LISTS]) {
     for (const t of s[list]) if (normalize(t, {}) !== t) fail(`${list} entry "${t}" is not normalised`);
   }
   for (const p of s.newNumberPhrases) if (!s.urgencyPhrases.includes(p)) fail(`newNumberPhrases entry "${p}" is not in urgencyPhrases`);
+  // Tokens match folded hosts without dots and hyphens, so they must be unchanged by host folding.
+  const hostFold = hostHomoglyphs(reg);
+  for (const t of s.lookalikeBrandTokens) if (!/^[0-9a-z]+$/.test(t) || normalize(t, hostFold) !== t) fail(`lookalikeBrandTokens entry "${t}" must be [0-9a-z] and unchanged by host folding`);
+  for (const d of s.officialDomains) if (!/^[0-9a-z-]+(\.[0-9a-z-]+)+$/.test(d)) fail(`officialDomains entry "${d}"`);
   if ([...s.warningKindPriority].sort().join() !== [...SCAM_WARNING_KINDS].sort().join()) fail(`warningKindPriority must list each of ${SCAM_WARNING_KINDS.join(", ")} once`);
   const reservedAll = new Set(Object.values(reg.reserved.categories).flat());
   for (const [name, roots] of Object.entries(reg.owners.owners)) {
@@ -75,6 +79,10 @@ function validate(reg) {
   if (!(Number.isInteger(ph.maxInputLength) && ph.maxInputLength > 0)) fail("phones: maxInputLength");
   if (!(Number.isInteger(ph.internationalMinDigits) && ph.internationalMinDigits > 0 && ph.internationalMaxDigits >= ph.internationalMinDigits)) fail("phones: international digit range");
   for (const k of Object.keys(reg.homoglyphs.map)) if ([...k].length !== 1) fail(`homoglyph key "${k}" must be one character`);
+  // Link hosts map a range of the folded message onto the plain message, so folding must keep every UTF-16 index.
+  for (const [k, v] of Object.entries(reg.homoglyphs.map)) {
+    if (k.length !== 1 || v.length !== 1 || /\s/.test(k) || /\s/.test(v)) fail(`homoglyph "${k}" -> "${v}" must be one UTF-16 unit each, not whitespace`);
+  }
   for (const key of Object.keys(reg.strings.strings)) if (!/^proseio_[a-z0-9_]+$/.test(key)) fail(`string key "${key}"`);
   const pt = Object.keys(reg.strings.strings).sort().join(), en = Object.keys(reg.stringsEn.strings).sort().join();
   if (pt !== en) fail("strings/pt-BR.json and strings/en.json must have the same keys");
@@ -84,9 +92,37 @@ function validate(reg) {
   }
 }
 
-const SCAM_WARNING_KINDS = ["pixCode", "boleto", "pixKey", "deliveryFee", "receipt", "newNumber", "urgency"];
+const SCAM_WARNING_KINDS = ["pixCode", "boleto", "pixKey", "deliveryFee", "lookalikeLink", "bankAlert", "receipt", "newNumber", "urgency"];
 const SCAM_PATTERN_GROUPS = ["pixKeyPatterns", "pixCopyPastePatterns", "boletoPatterns", "linkPatterns"];
 const DELIVERY_WORD_LISTS = ["deliveryParcelWords", "deliveryHoldWords", "deliveryFeeWords"];
+const BANK_ALERT_WORD_LISTS = ["bankAlertSubjectWords", "bankAlertThreatWords"];
+
+// registries/homoglyphs.json without its ASCII keys outside [0-9a-z]: "@", "$" and "|" cannot be part of a
+// host name, and folding "@" would join an e-mail's user and domain into one host.
+export function hostHomoglyphs(reg) {
+  return Object.fromEntries(Object.entries(reg.homoglyphs.map).filter(([k]) => !/^[\x00-\x7f]$/.test(k) || /^[0-9a-z]$/.test(k)));
+}
+
+// Every link host in the message: { folded, plain }. `folded` is a linkPatterns match on the host-folded
+// message. `plain` is the same UTF-16 range of normalize(message) without folding, so it keeps homoglyphs.
+export function linkHosts(message, reg) {
+  const plain = normalize(message, {});
+  const folded = normalize(message, hostHomoglyphs(reg));
+  const hosts = [];
+  for (const p of reg.scam.linkPatterns) {
+    for (const m of folded.matchAll(new RegExp(p.regex, "g"))) {
+      hosts.push({ folded: m[0], plain: plain.length === folded.length ? plain.slice(m.index, m.index + m[0].length) : "" });
+    }
+  }
+  return hosts;
+}
+
+// True when the host copies a brand: its folded form names a brand and its plain form is not that brand's domain.
+function isLookalikeHost(host, s) {
+  const squashed = host.folded.replace(/[.-]/g, "");
+  if (!s.lookalikeBrandTokens.some((t) => squashed.includes(t))) return false;
+  return !s.officialDomains.some((d) => host.plain === d || host.plain.endsWith(`.${d}`));
+}
 
 // Match IDs in reference order: `<patternGroup>:<id>` for regexes on the raw
 // message, then `urgency:<phrase>`, then `receipt:<keyword>` on normalize(message)
@@ -108,13 +144,18 @@ export function scamWarningKind(text, reg) {
   const groups = new Set(ids.map((id) => id.slice(0, id.indexOf(":"))));
   const phrases = ids.filter((id) => id.startsWith("urgency:")).map((id) => id.slice("urgency:".length));
   const n = normalize(text, {});
+  const hosts = linkHosts(text, reg);
   const applies = {
     pixCode: () => groups.has("pixCopyPastePatterns"),
     boleto: () => groups.has("boletoPatterns"),
     // A phone number or e-mail alone is normal chat. Warn only when the message also talks about Pix.
     pixKey: () => groups.has("pixKeyPatterns") && s.pixKeyContextWords.some((w) => n.includes(w)),
     // The fake-delivery fee scam: a link, and the message talks about a held parcel and a fee.
-    deliveryFee: () => groups.has("linkPatterns") && DELIVERY_WORD_LISTS.every((list) => s[list].some((w) => n.includes(w))),
+    deliveryFee: () => hosts.length > 0 && DELIVERY_WORD_LISTS.every((list) => s[list].some((w) => n.includes(w))),
+    // A link that copies a bank, government or company address, also when spelled with homoglyphs.
+    lookalikeLink: () => hosts.some((h) => isLookalikeHost(h, s)),
+    // The fake bank alert: a link, and the message says the account, card or Pix is blocked or needs an update.
+    bankAlert: () => hosts.length > 0 && BANK_ALERT_WORD_LISTS.every((list) => s[list].some((w) => n.includes(w))),
     receipt: () => groups.has("receipt"),
     // The falso parente opener. On Bipe it says new account, which is normal chat without a family term or urgency.
     newNumber: () => phrases.some((p) => s.newNumberPhrases.includes(p))
