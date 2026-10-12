@@ -226,8 +226,19 @@ export async function inviteConnections(db: Db, userId: string) {
  * Inviters ranked by joins, for growth strategy (docs/growth.md). sent: personal invites created.
  * joined: people who signed up with them. downstream: everyone in the invite tree below the user.
  */
-export async function inviterReport(db: Db, limit: number) {
-  const { rows } = await db.query(
+export interface InviterStats {
+  user_id: string;
+  handle: string | null;
+  sent: number;
+  joined: number;
+  rate_pct: number | null;
+  downstream: number;
+  depth: number;
+  last_join: Date | null;
+}
+
+export async function inviterReport(db: Db, limit: number): Promise<InviterStats[]> {
+  const { rows } = await db.query<InviterStats>(
     `WITH RECURSIVE edges AS (
        SELECT i.created_by AS inviter, s.user_id AS invitee
        FROM invites i JOIN signups s ON s.invite_id = i.id WHERE i.created_by IS NOT NULL

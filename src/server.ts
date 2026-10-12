@@ -3,12 +3,12 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
-import { MatrixAuth } from "./auth.js";
+import { MatrixAuth, StaffGate } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { migrate, openDb } from "./db.js";
 import { ApiError } from "./errors.js";
 import { availability, lookup, myHandle, resolve, setHandle } from "./handles.js";
-import { createPersonalInvite, inviteConnections, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
+import { createPersonalInvite, inviteConnections, inviterReport, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
 import { newChallenge } from "./attest.js";
@@ -27,6 +27,7 @@ const db = openDb(config.DATABASE_URL);
 await migrate(db);
 const mas = new Mas(config);
 const auth = new MatrixAuth(config);
+const staff = new StaffGate(auth, mas);
 const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
 
@@ -331,6 +332,17 @@ app.post("/v1/me/business/domains/:domain/check", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.businessDomain.check(userId);
   return c.json(await checkDomain(db, userId, c.req.param("domain")));
+});
+
+// Staff report (ADR 0056) for the page proseio.com.br/admin/convites/.
+app.use("/v1/admin/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"], allowHeaders: ["authorization"] }));
+
+app.get("/v1/admin/inviters", async (c) => {
+  await staff.userId(c.req.header("authorization"));
+  const limit = z.coerce.number().int().min(1).max(1000).default(200).safeParse(c.req.query("limit"));
+  if (!limit.success) throw new ApiError("bad_request");
+  const rows = await inviterReport(db, limit.data);
+  return c.json({ inviters: rows.map((r) => ({ ...r, last_join: r.last_join?.toISOString() ?? null })) });
 });
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));

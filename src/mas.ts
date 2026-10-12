@@ -13,6 +13,14 @@ export class Mas {
     return { id: (await this.json(res)).data.id };
   }
 
+  /** True only when MAS marks the user admin (mas-cli manage promote-admin) and the user is active. */
+  async isAdmin(username: string): Promise<boolean> {
+    const res = await this.call("GET", `/users/by-username/${encodeURIComponent(username)}`);
+    if (res.status === 404) return false;
+    const { attributes: a } = (await this.json(res)).data;
+    return a.admin === true && !a.locked_at && !a.deactivated_at;
+  }
+
   /** Returns the MAS user id, or null when the username already exists. */
   async createUser(username: string, displayname?: string): Promise<string | null> {
     const res = await this.call("POST", "/users", { username, ...(displayname ? { displayname } : {}) });
