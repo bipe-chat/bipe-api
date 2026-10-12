@@ -143,6 +143,14 @@
     "proseio_group_missed_poll": "Falta você votar: %1$s",
     "proseio_group_missed_pinned": "Fixada: %1$s",
     "proseio_group_missed_more": "Outras mensagens: %1$s",
-    "proseio_invites_joined": "%1$s entrou com seu convite"
+    "proseio_invites_joined": "%1$s entrou com seu convite",
+    "proseio_stickers_import_action": "Importar do WhatsApp",
+    "proseio_stickers_import_help": "No WhatsApp, mande os stickers para um grupo só seu. Depois use Exportar conversa, escolha Anexar mídia e salve o arquivo. Aqui, escolha esse arquivo.",
+    "proseio_stickers_import_help_folder_android": "Você também pode escolher os arquivos na pasta WhatsApp Stickers.",
+    "proseio_stickers_import_note": "Os stickers importados ficam no servidor do Proseio sem criptografia de ponta a ponta. Importe só o que você pode compartilhar.",
+    "proseio_stickers_import_progress": "Importando stickers",
+    "proseio_stickers_import_done": "Stickers adicionados: %1$s",
+    "proseio_stickers_import_none": "Nenhum sticker novo nesse arquivo.",
+    "proseio_stickers_import_failed": "A importação não deu certo. Tente de novo."
   }
 }
