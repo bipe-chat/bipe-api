@@ -60,6 +60,7 @@ function validate(reg) {
   if (!(Number.isInteger(ph.mobileLength) && ph.mobileLength > 0)) fail("phones: mobileLength");
   if (!/^[0-9]$/.test(ph.mobilePrefix)) fail("phones: mobilePrefix");
   if (!(Number.isInteger(ph.maxInputLength) && ph.maxInputLength > 0)) fail("phones: maxInputLength");
+  if (!(Number.isInteger(ph.internationalMinDigits) && ph.internationalMinDigits > 0 && ph.internationalMaxDigits >= ph.internationalMinDigits)) fail("phones: international digit range");
   for (const k of Object.keys(reg.homoglyphs.map)) if ([...k].length !== 1) fail(`homoglyph key "${k}" must be one character`);
   for (const key of Object.keys(reg.strings.strings)) if (!/^proseio_[a-z0-9_]+$/.test(key)) fail(`string key "${key}"`);
   const pt = Object.keys(reg.strings.strings).sort().join(), en = Object.keys(reg.stringsEn.strings).sort().join();
@@ -111,11 +112,12 @@ export function extractInviteCode(text, reg) {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
-// A Brazilian mobile number in E.164 ("+5511987654321") from an address-book entry, or null.
+// A phone number in E.164 from an address-book entry, or null: Brazilian mobiles in any local format,
+// other countries only when written with "+" or "00".
 // Rule in registries/phone-numbers.json.
 export function normalizePhone(text, reg) {
   const ph = reg.phones;
-  const head = text.slice(0, ph.maxInputLength).trim();
+  const head = text.slice(0, ph.maxInputLength).replace(/\(0\)/g, "").trim();
   let plus = head.replace(/[^0-9+]/g, "").startsWith("+");
   let digits = head.replace(/[^0-9]/g, "");
   if (!plus && digits.startsWith("00")) {
@@ -124,7 +126,11 @@ export function normalizePhone(text, reg) {
   }
   const national = ph.mobileLength + 2;
   if (plus) {
-    if (!digits.startsWith(ph.countryCode)) return null;
+    if (!digits.startsWith(ph.countryCode)) {
+      // Another country: E.164 as written, length checked only.
+      const ok = digits.length >= ph.internationalMinDigits && digits.length <= ph.internationalMaxDigits && !digits.startsWith("0");
+      return ok ? `+${digits}` : null;
+    }
     digits = digits.slice(ph.countryCode.length);
   } else if (digits.length === national + 3 && digits.startsWith("0")) {
     digits = digits.slice(3); // trunk 0 + carrier code
