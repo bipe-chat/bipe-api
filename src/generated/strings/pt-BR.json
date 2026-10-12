@@ -151,6 +151,10 @@
     "proseio_stickers_import_progress": "Importando stickers",
     "proseio_stickers_import_done": "Stickers adicionados: %1$s",
     "proseio_stickers_import_none": "Nenhum sticker novo nesse arquivo.",
-    "proseio_stickers_import_failed": "A importação não deu certo. Tente de novo."
+    "proseio_stickers_import_failed": "A importação não deu certo. Tente de novo.",
+    "proseio_action_save_sticker": "Salvar nos meus stickers",
+    "proseio_sticker_saved": "Sticker salvo em Meus stickers",
+    "proseio_sticker_save_failed": "O sticker não foi salvo. Tente de novo.",
+    "proseio_stickers_from_photo": "Criar de uma foto"
   }
 }
