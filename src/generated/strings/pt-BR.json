@@ -103,7 +103,7 @@
     "proseio_scam_warning_pix_code": "A mensagem tem um código Pix copia e cola. Antes de pagar, confirme com a pessoa por outro meio e confira o nome que o banco mostra.",
     "proseio_scam_warning_boleto": "A mensagem tem um código de boleto. Boleto falso é um golpe comum. Antes de pagar, confira no app do banco quem vai receber.",
     "proseio_scam_warning_receipt": "A mensagem fala de comprovante. Print de comprovante não prova pagamento. Confira no app do seu banco se o dinheiro caiu.",
-    "proseio_scam_warning_new_number": "Golpista costuma dizer que trocou de número e se passar por alguém da família. Ligue pro número antigo da pessoa e confirme que é ela.",
+    "proseio_scam_warning_new_number": "Golpista costuma se passar por alguém da família e dizer que está com número ou conta nova. Ligue pro número que você já tem da pessoa e confirme que é ela.",
     "proseio_scam_warning_urgency": "Pressa e pedido de dinheiro aparecem muito em golpes. Antes de fazer qualquer coisa, confirme com a pessoa por outro meio.",
     "proseio_signup_invite_code": "Código de convite (opcional)",
     "proseio_signup_invited_by": "Convite de @%1$s",

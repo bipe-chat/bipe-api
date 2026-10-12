@@ -36,6 +36,8 @@ function validate(reg) {
     for (const n of names) if (normalize(n, reg.homoglyphs.map) !== n) fail(`reserved name "${n}" is not normalised`);
   }
   for (const t of reg.family.terms) if (normalize(t, reg.homoglyphs.map) !== t) fail(`family term "${t}" is not normalised`);
+  // The newAccountPhrases context check matches family terms as whole words over [0-9a-z].
+  for (const t of reg.family.terms) if (!/^[0-9a-z]+( [0-9a-z]+)*$/.test(t)) fail(`family term "${t}" must be words of [0-9a-z]`);
   for (const group of SCAM_PATTERN_GROUPS) {
     for (const p of reg.scam[group]) {
       if (!/^[a-z-]+$/.test(p.id)) fail(`${group} id "${p.id}"`);
@@ -43,7 +45,7 @@ function validate(reg) {
     }
   }
   const s = reg.scam;
-  for (const list of ["urgencyPhrases", "receiptKeywords", "pixKeyContextWords", "newNumberPhrases", ...DELIVERY_WORD_LISTS]) {
+  for (const list of ["urgencyPhrases", "receiptKeywords", "pixKeyContextWords", "newNumberPhrases", "newAccountPhrases", ...DELIVERY_WORD_LISTS]) {
     for (const t of s[list]) if (normalize(t, {}) !== t) fail(`${list} entry "${t}" is not normalised`);
   }
   for (const p of s.newNumberPhrases) if (!s.urgencyPhrases.includes(p)) fail(`newNumberPhrases entry "${p}" is not in urgencyPhrases`);
@@ -114,10 +116,19 @@ export function scamWarningKind(text, reg) {
     // The fake-delivery fee scam: a link, and the message talks about a held parcel and a fee.
     deliveryFee: () => groups.has("linkPatterns") && DELIVERY_WORD_LISTS.every((list) => s[list].some((w) => n.includes(w))),
     receipt: () => groups.has("receipt"),
-    newNumber: () => phrases.some((p) => s.newNumberPhrases.includes(p)),
+    // The falso parente opener. On Bipe it says new account, which is normal chat without a family term or urgency.
+    newNumber: () => phrases.some((p) => s.newNumberPhrases.includes(p))
+      || (s.newAccountPhrases.some((p) => n.includes(p)) && (phrases.length > 0 || containsWord(n, reg.family.terms))),
     urgency: () => phrases.length > 0,
   };
   return s.warningKindPriority.find((kind) => applies[kind]()) ?? null;
+}
+
+// True when the normalised text has one of `terms` as a whole word: each run of characters outside
+// [0-9a-z] becomes one space, then the term must have a space on each side.
+function containsWord(normalized, terms) {
+  const words = ` ${normalized.replace(/[^0-9a-z]+/g, " ")} `;
+  return terms.some((t) => words.includes(` ${t} `));
 }
 
 // The invite code in anything a user pasted or typed (a code, an invite link, a whole message), or null.

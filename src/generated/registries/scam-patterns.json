@@ -1,5 +1,5 @@
 {
-  "$comment": "On-device money-request detection (security.md rule 9). Friction, not protection: attackers can read these rules. Regexes use a portable ASCII subset: [0-9] not \\\\d, explicit (?<![0-9A-Za-z]) / (?![0-9A-Za-z]) instead of \\\\b, because ICU (Swift) and Java treat \\\\d and \\\\b as Unicode-aware while JS does not. Phrases are compared after normalisation. Starter list: review before launch. Warning kind: the first kind in warningKindPriority whose rule applies. pixKey applies only when the normalised message also contains a pixKeyContextWords entry (a phone number or e-mail alone is normal chat). newNumber applies when a matched urgency phrase is in newNumberPhrases (the falso parente opener). deliveryFee (the fake-delivery fee scam: parcel held, pay a fee by link) applies when linkPatterns matches and the normalised message also contains an entry from each of deliveryParcelWords, deliveryHoldWords and deliveryFeeWords. linkPatterns finds bare domains with a fixed TLD list, lowercase only: case-insensitive matching differs between ICU, Java and V8 for characters like U+017F.",
+  "$comment": "On-device money-request detection (security.md rule 9). Friction, not protection: attackers can read these rules. Regexes use a portable ASCII subset: [0-9] not \\\\d, explicit (?<![0-9A-Za-z]) / (?![0-9A-Za-z]) instead of \\\\b, because ICU (Swift) and Java treat \\\\d and \\\\b as Unicode-aware while JS does not. Phrases are compared after normalisation. Starter list: review before launch. Warning kind: the first kind in warningKindPriority whose rule applies. pixKey applies only when the normalised message also contains a pixKeyContextWords entry (a phone number or e-mail alone is normal chat). newNumber applies when a matched urgency phrase is in newNumberPhrases (the falso parente opener), or when the normalised message contains a newAccountPhrases entry and also a registries/family-terms.json term as a whole word or a matched urgency phrase. On Bipe nobody sees phone numbers (ADR 0015), so the opener says new account instead of new number. Whole word: replace each run of characters outside [0-9a-z] in the normalised message with one space, then look for the term with a space on each side. newAccountPhrases need the context because \"conta nova\" alone is normal chat (a bank account, a new account on another app). deliveryFee (the fake-delivery fee scam: parcel held, pay a fee by link) applies when linkPatterns matches and the normalised message also contains an entry from each of deliveryParcelWords, deliveryHoldWords and deliveryFeeWords. linkPatterns finds bare domains with a fixed TLD list, lowercase only: case-insensitive matching differs between ICU, Java and V8 for characters like U+017F.",
   "version": 1,
   "pixKeyPatterns": [
     {
@@ -46,6 +46,10 @@
     "numero novo",
     "esse e meu numero novo",
     "salva esse numero",
+    "troquei de celular",
+    "perdi meu celular",
+    "essa e minha conta nova",
+    "salva essa conta",
     "faz um pix",
     "faz um pix pra mim",
     "preciso de um pix",
@@ -81,7 +85,15 @@
     "troquei de numero",
     "numero novo",
     "esse e meu numero novo",
-    "salva esse numero"
+    "salva esse numero",
+    "troquei de celular",
+    "perdi meu celular",
+    "essa e minha conta nova",
+    "salva essa conta"
+  ],
+  "newAccountPhrases": [
+    "conta nova",
+    "nova conta"
   ],
   "deliveryParcelWords": [
     "pacote",
