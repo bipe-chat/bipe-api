@@ -4,6 +4,7 @@
 //   node dist/cli.js invite revoke <id>
 //   node dist/cli.js invite grant <user_id> <n>      (n extra personal invites)
 //   node dist/cli.js invite revoke-user <user_id>    (all pending invites of a user)
+//   node dist/cli.js invite top [--limit 50]         (inviters: sent, joined, rate, downstream tree)
 //   node dist/cli.js phone link <user_id> <number> [--force]   (phase 0: no proof yet; never prints the number)
 //   node dist/cli.js phone unlink <user_id>
 //   node dist/cli.js waitlist count
@@ -18,7 +19,7 @@
 //   node dist/cli.js experiment report <experiment>  (for example headline-77: visitors, clicks, sign-ups per arm)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
-import { createInvite, grantInvites, revokeAllOf } from "./invites.js";
+import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
 import { linkPhone, PhoneHasher, unlinkPhone } from "./phones.js";
 import { experimentReport } from "./experiments.js";
 import { revokeByStaff, runScan, verifyByStaff } from "./business.js";
@@ -32,7 +33,7 @@ await migrate(db);
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false } },
+  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" } },
 });
 const [group, command, arg, arg2] = positionals;
 
@@ -57,6 +58,10 @@ try {
     console.log(`granted ${n} to ${arg}`);
   } else if (group === "invite" && command === "revoke-user" && arg?.startsWith("@")) {
     console.log(`revoked ${await revokeAllOf(db, arg)} pending invites of ${arg}`);
+  } else if (group === "invite" && command === "top") {
+    const limit = Number(values.limit);
+    if (!(Number.isInteger(limit) && limit > 0)) throw new Error("--limit must be a positive integer");
+    console.table(await inviterReport(db, limit));
   } else if (group === "waitlist" && command === "count") {
     const { rows } = await db.query("SELECT platform, lang, count(*)::int AS n FROM waitlist GROUP BY 1, 2 ORDER BY 1, 2");
     console.table(rows);
@@ -100,7 +105,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | experiment report ID | registry fetch [YYYY-MM] | registry scan [--all] | business list | business verify @user | business revoke @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | experiment report ID | registry fetch [YYYY-MM] | registry scan [--all] | business list | business verify @user | business revoke @user");
     process.exitCode = 2;
   }
 } finally {

@@ -221,3 +221,32 @@ export async function inviteConnections(db: Db, userId: string) {
   );
   return { user_ids: rows.map((r) => r.user_id).filter((id) => id !== userId) };
 }
+
+/**
+ * Inviters ranked by joins, for growth strategy (docs/growth.md). sent: personal invites created.
+ * joined: people who signed up with them. downstream: everyone in the invite tree below the user.
+ */
+export async function inviterReport(db: Db, limit: number) {
+  const { rows } = await db.query(
+    `WITH RECURSIVE edges AS (
+       SELECT i.created_by AS inviter, s.user_id AS invitee
+       FROM invites i JOIN signups s ON s.invite_id = i.id WHERE i.created_by IS NOT NULL
+     ), tree AS (
+       SELECT inviter AS root, invitee, 1 AS depth FROM edges
+       UNION ALL
+       SELECT t.root, e.invitee, t.depth + 1 FROM tree t JOIN edges e ON e.inviter = t.invitee WHERE t.depth < 50
+     ), sent AS (
+       SELECT i.created_by AS user_id, count(*)::int AS sent, count(s.user_id)::int AS joined, max(s.created_at) AS last_join
+       FROM invites i LEFT JOIN signups s ON s.invite_id = i.id WHERE i.created_by IS NOT NULL GROUP BY 1
+     ), down AS (
+       SELECT root AS user_id, count(DISTINCT invitee)::int AS downstream, max(depth)::int AS depth FROM tree GROUP BY 1
+     )
+     SELECT s.user_id, h.handle, s.sent, s.joined,
+            CASE WHEN s.sent > 0 THEN round(100.0 * s.joined / s.sent)::int END AS rate_pct,
+            coalesce(d.downstream, 0) AS downstream, coalesce(d.depth, 0) AS depth, s.last_join
+     FROM sent s LEFT JOIN down d USING (user_id) LEFT JOIN handles h USING (user_id)
+     ORDER BY s.joined DESC, downstream DESC, s.sent DESC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
