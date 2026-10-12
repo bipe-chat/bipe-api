@@ -208,3 +208,16 @@ export async function revokeAllOf(db: Db, userId: string): Promise<number> {
   );
   return rowCount ?? 0;
 }
+
+/** The caller's invite pairs (ADR 0034): people the caller invited who joined, and the caller's own inviter. */
+export async function inviteConnections(db: Db, userId: string) {
+  const { rows } = await db.query<{ user_id: string }>(
+    `SELECT s.user_id FROM invites i JOIN signups s ON s.invite_id = i.id WHERE i.created_by = $1
+     UNION
+     SELECT i.created_by AS user_id FROM signups s JOIN invites i ON i.id = s.invite_id
+     WHERE s.user_id = $1 AND i.created_by IS NOT NULL
+     LIMIT 1000`,
+    [userId],
+  );
+  return { user_ids: rows.map((r) => r.user_id).filter((id) => id !== userId) };
+}

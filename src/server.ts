@@ -8,7 +8,7 @@ import { loadConfig } from "./config.js";
 import { migrate, openDb } from "./db.js";
 import { ApiError } from "./errors.js";
 import { availability, lookup, myHandle, resolve, setHandle } from "./handles.js";
-import { createPersonalInvite, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
+import { createPersonalInvite, inviteConnections, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
 import { newChallenge } from "./attest.js";
@@ -120,6 +120,11 @@ app.post("/v1/me/invites", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.inviteCreate.check(userId);
   return c.json(await createPersonalInvite(db, userId, invitePolicy, config.PUBLIC_SITE_URL), 201);
+});
+
+app.get("/v1/me/invite-connections", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await inviteConnections(db, userId));
 });
 
 app.delete("/v1/me/invites/:id", async (c) => {
