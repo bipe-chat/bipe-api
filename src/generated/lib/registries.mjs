@@ -11,6 +11,7 @@ export function loadRegistries(root) {
     scam: read("registries/scam-patterns.json"),
     homoglyphs: read("registries/homoglyphs.json"),
     handles: read("registries/handles.json"),
+    owners: read("registries/reserved-name-owners.json"),
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
     strings: read("strings/pt-BR.json"),
@@ -46,6 +47,11 @@ function validate(reg) {
   }
   for (const p of s.newNumberPhrases) if (!s.urgencyPhrases.includes(p)) fail(`newNumberPhrases entry "${p}" is not in urgencyPhrases`);
   if ([...s.warningKindPriority].sort().join() !== [...SCAM_WARNING_KINDS].sort().join()) fail(`warningKindPriority must list each of ${SCAM_WARNING_KINDS.join(", ")} once`);
+  const reservedAll = new Set(Object.values(reg.reserved.categories).flat());
+  for (const [name, roots] of Object.entries(reg.owners.owners)) {
+    if (!reservedAll.has(name)) fail(`reserved-name-owners: "${name}" is not a reserved name`);
+    for (const r of roots) if (!/^[0-9A-Z]{8}$/.test(r)) fail(`reserved-name-owners: "${name}" root "${r}" is not 8 characters [0-9A-Z]`);
+  }
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   try { new RegExp(h.pattern); new RegExp(h.skeletonStrip, "g"); } catch (e) { fail(`handles regex: ${e.message}`); }
@@ -168,4 +174,36 @@ export function handleProblem(handle, reg) {
 
 export function handleSkeleton(handle, reg) {
   return normalize(handle, reg.homoglyphs.map).replace(new RegExp(reg.handles.skeletonStrip, "g"), "").replace(/\s+/g, "");
+}
+
+// CNPJ (ADR 0042). Numeric CNPJs and the alphanumeric format in use since July 2026 share one rule:
+// 12 characters [0-9A-Z], then 2 numeric check digits. A character's value is its ASCII code minus 48
+// ("0" = 0, "A" = 17). Check digits are mod 11 with weights 5..2,9..2 and 6..2,9..2; a remainder below 2
+// gives 0. Input may carry the usual separators (". / -" and spaces) and lowercase letters.
+const CNPJ_W1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+const CNPJ_W2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+function cnpjCheckDigit(chars, weights) {
+  const r = [...chars].reduce((sum, c, i) => sum + (c.charCodeAt(0) - 48) * weights[i], 0) % 11;
+  return r < 2 ? 0 : 11 - r;
+}
+
+/** The CNPJ as 14 uppercase characters, or null when the format or a check digit is wrong. */
+export function normalizeCnpj(input) {
+  const s = String(input).replace(/[.\/\-\s]/g, "").toUpperCase();
+  if (!/^[0-9A-Z]{12}[0-9]{2}$/.test(s)) return null;
+  if (/^(.)\1{13}$/.test(s)) return null; // 00000000000000 and similar pass the digits but are not issued
+  const d1 = cnpjCheckDigit(s.slice(0, 12), CNPJ_W1);
+  const d2 = cnpjCheckDigit(s.slice(0, 12) + d1, CNPJ_W2);
+  return s.endsWith(`${d1}${d2}`) ? s : null;
+}
+
+/** First 8 characters: the company (raiz). All establishments of one company share it. */
+export function cnpjRoot(cnpj) {
+  return cnpj.slice(0, 8);
+}
+
+/** 12.ABC.345/01DE-35 */
+export function formatCnpj(cnpj) {
+  return `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5, 8)}/${cnpj.slice(8, 12)}-${cnpj.slice(12)}`;
 }

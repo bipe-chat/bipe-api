@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from proseio-shared by `pnpm gen`. Never edit generated/.
-import { extractInviteCode as extractInviteCodeWith, handleProblem, handleSkeleton, loadRegistries, normalizePhone as normalizePhoneWith } from "./generated/lib/registries.mjs";
+import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
@@ -31,4 +31,30 @@ export function extractInviteCode(text: string): string | null {
 /** A Brazilian mobile number in E.164 from an address-book entry, or null (registries/phone-numbers.json). */
 export function normalizePhone(text: string): string | null {
   return normalizePhoneWith(text, reg) as string | null;
+}
+
+// --- CNPJ (ADR 0042) -----------------------------------------------------------------------------------
+
+/** 14 uppercase characters, or null when the format or a check digit is wrong (test-vectors/cnpj.json). */
+export function validCnpj(input: string): string | null {
+  return normalizeCnpj(input) as string | null;
+}
+
+export { cnpjRoot, formatCnpj };
+
+const reservedNames = new Set(Object.values(reg.reserved.categories as Record<string, string[]>).flat());
+const reservedOwners = reg.owners.owners as Record<string, string[]>;
+
+/**
+ * Reserved names that a registered name matches after normalisation (lowercase, no accents, homoglyphs
+ * folded), and whether staff approved the name for this CNPJ root (registries/reserved-name-owners.json).
+ */
+export function reservedNameClaims(names: (string | null)[], root: string): { name: string; approved: boolean }[] {
+  const found = new Set<string>();
+  for (const n of names) {
+    if (!n) continue;
+    const norm = normalize(n, reg.homoglyphs.map) as string;
+    if (reservedNames.has(norm)) found.add(norm);
+  }
+  return [...found].map((name) => ({ name, approved: (reservedOwners[name] ?? []).includes(root) }));
 }

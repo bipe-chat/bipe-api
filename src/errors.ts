@@ -12,7 +12,11 @@ export type ErrorId =
   | "unauthorized"
   | "not_found"
   | "rate_limited"
-  | "internal";
+  | "internal"
+  | "cnpj_invalid"
+  | "cnpj_not_active"
+  | "cnpj_taken"
+  | "signature_invalid";
 
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500> = {
   bad_request: 400,
@@ -28,6 +32,10 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500> = {
   not_found: 404,
   rate_limited: 429,
   internal: 500,
+  cnpj_invalid: 400,
+  cnpj_not_active: 403,
+  cnpj_taken: 409,
+  signature_invalid: 403,
 };
 
 export class ApiError extends Error {

@@ -77,6 +77,47 @@ const MIGRATIONS = [
      policy text NOT NULL CHECK (policy IN ('everyone', 'verified', 'contacts')),
      updated_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // CNPJ verification (ADR 0042). One claim per account; one verified account per CNPJ.
+  `CREATE TABLE business_claims (
+     user_id text PRIMARY KEY,
+     cnpj text NOT NULL,
+     status text NOT NULL CHECK (status IN ('registry_pending', 'awaiting_proof', 'verified', 'rejected', 'revoked')),
+     reason text,
+     challenge text NOT NULL,
+     method text CHECK (method IN ('ecnpj', 'partner', 'staff')),
+     created_at timestamptz NOT NULL DEFAULT now(),
+     verified_at timestamptz,
+     ended_at timestamptz
+   );
+   CREATE UNIQUE INDEX business_claims_one_verified ON business_claims (cnpj) WHERE status = 'verified';
+   CREATE INDEX business_claims_cnpj ON business_claims (cnpj);
+   CREATE TABLE business_domains (
+     user_id text NOT NULL REFERENCES business_claims(user_id) ON DELETE CASCADE,
+     domain text NOT NULL,
+     token text NOT NULL,
+     verified_at timestamptz,
+     last_checked_at timestamptz,
+     PRIMARY KEY (user_id, domain)
+   );
+   -- Rows copied from the Receita release for claimed CNPJs only. Public open data.
+   CREATE TABLE cnpj_registry (
+     cnpj text PRIMARY KEY,
+     active boolean NOT NULL,
+     status_code integer,
+     legal_name text,
+     trade_name text,
+     release_month text NOT NULL,
+     checked_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE cnpj_partners (
+     root text NOT NULL,
+     kind integer NOT NULL,
+     name text NOT NULL,
+     doc text NOT NULL,
+     qualification integer,
+     release_month text NOT NULL
+   );
+   CREATE INDEX cnpj_partners_root ON cnpj_partners (root);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

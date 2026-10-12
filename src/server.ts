@@ -17,6 +17,8 @@ import { signup } from "./signup.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
+import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
+import { loadIcpBrasilRoots } from "./ecnpj.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -42,7 +44,19 @@ const limits = {
   waitlistGlobal: new RateLimiter(500, 3_600_000),
   events: new RateLimiter(30, 3_600_000),
   eventsGlobal: new RateLimiter(20_000, 3_600_000),
+  businessClaim: new RateLimiter(10, 3_600_000),
+  businessProof: new RateLimiter(20, 3_600_000),
+  businessDomain: new RateLimiter(30, 3_600_000),
 };
+
+// CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
+const icpBrasilRoots = loadIcpBrasilRoots(config.ICP_BRASIL_ROOTS_DIR);
+console.log(`icp-brasil roots: ${icpBrasilRoots.length}`);
+const kickScan = () => void runScan(db, config, "pending").catch((e) => console.error(`cnpj scan failed: ${(e as Error).message}`));
+setInterval(kickScan, 15 * 60_000).unref();
+const CnpjBody = z.object({ cnpj: z.string().max(32) });
+const EcnpjBody = z.object({ signature: z.string().min(1).max(131_072) });
+const DomainBody = z.object({ domain: z.string().max(253) });
 
 const SignupBody = z.object({
   // A code, an invite link or a whole pasted message: the server finds the code in it.
@@ -77,7 +91,10 @@ async function parse<T>(c: Context, schema: z.ZodType<T>): Promise<T> {
 }
 
 const app = new Hono();
-app.use("*", bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) }));
+// A CMS signature with its certificate chain can pass 16 KB; that one route gets more room.
+const smallBody = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
+const signatureBody = bodyLimit({ maxSize: 160 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
+app.use("*", (c, next) => (c.req.path === "/v1/me/business/ecnpj" ? signatureBody(c, next) : smallBody(c, next)));
 
 app.get("/healthz", (c) => c.text("ok"));
 
@@ -220,6 +237,41 @@ app.put("/v1/me/handle", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.setHandle.check(userId);
   return c.json(await setHandle(db, userId, (await parse(c, HandleBody)).handle));
+});
+
+app.get("/v1/me/business", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await getClaim(db, userId));
+});
+
+app.post("/v1/me/business", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.businessClaim.check(userId);
+  return c.json(await createClaim(db, config, userId, (await parse(c, CnpjBody)).cnpj, kickScan), 201);
+});
+
+app.delete("/v1/me/business", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await withdrawClaim(db, userId);
+  return c.body(null, 204);
+});
+
+app.post("/v1/me/business/ecnpj", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.businessProof.check(userId);
+  return c.json(await proveWithEcnpj(db, userId, (await parse(c, EcnpjBody)).signature, icpBrasilRoots));
+});
+
+app.post("/v1/me/business/domains", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.businessDomain.check(userId);
+  return c.json(await addDomain(db, userId, (await parse(c, DomainBody)).domain), 201);
+});
+
+app.post("/v1/me/business/domains/:domain/check", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.businessDomain.check(userId);
+  return c.json(await checkDomain(db, userId, c.req.param("domain")));
 });
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));

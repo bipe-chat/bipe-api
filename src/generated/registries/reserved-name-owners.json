@@ -1,0 +1,5 @@
+{
+  "$comment": "Which company may use each reserved name (ADR 0042). Key: a normalised name from reserved-names.json. Value: the CNPJ roots (first 8 characters) allowed to use it. Staff add an entry only after approving a claim from a CNPJ-verified account; the change is a reviewed commit. A reserved name with no entry here is usable by nobody. Server-side only: apps do not need it.",
+  "version": 1,
+  "owners": {}
+}

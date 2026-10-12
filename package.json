@@ -13,8 +13,10 @@
   },
   "dependencies": {
     "@hono/node-server": "1.19.17",
+    "asn1js": "3.0.10",
     "hono": "4.13.13",
     "pg": "8.23.1",
+    "pkijs": "3.4.1",
     "zod": "4.6.6"
   },
   "devDependencies": {

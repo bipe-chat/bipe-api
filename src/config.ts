@@ -25,6 +25,11 @@ const Env = z.object({
   // Shared with the Synapse module proseio_messaging only. Guards /internal/*.
   PROSEIO_INTERNAL_SECRET: z.string().min(32),
   PUBLIC_SITE_URL: z.url().default("https://proseio.com.br"),
+  // CNPJ verification (ADR 0042): where Receita releases live on disk, and the public share they come from.
+  RECEITA_DIR: z.string().default("/data/receita"),
+  RECEITA_WEBDAV_URL: z.url().default("https://arquivos.receitafederal.gov.br/public.php/webdav"),
+  RECEITA_SHARE_TOKEN: z.string().min(1).default("YggdBLfdninEJX9"),
+  ICP_BRASIL_ROOTS_DIR: z.string().default("certs/icp-brasil"),
   // HMAC key for stored phone numbers. Without it the phone endpoints answer "internal".
   PHONE_HMAC_SECRET: z.string().min(32).optional(),
 });
