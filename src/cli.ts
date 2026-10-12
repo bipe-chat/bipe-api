@@ -4,6 +4,8 @@
 //   node dist/cli.js invite revoke <id>
 //   node dist/cli.js invite grant <user_id> <n>      (n extra personal invites)
 //   node dist/cli.js invite revoke-user <user_id>    (all pending invites of a user)
+//   node dist/cli.js phone link <user_id> <number> [--force]   (phase 0: no proof yet; never prints the number)
+//   node dist/cli.js phone unlink <user_id>
 //   node dist/cli.js waitlist count
 //   node dist/cli.js waitlist export <platform>      (CSV email,lang for the launch email)
 //   node dist/cli.js waitlist clear <platform>       (after the launch email: deletes those rows)
@@ -12,6 +14,7 @@
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, revokeAllOf } from "./invites.js";
+import { linkPhone, PhoneHasher, unlinkPhone } from "./phones.js";
 import { experimentReport } from "./experiments.js";
 
 const url = process.env.DATABASE_URL;
@@ -21,7 +24,7 @@ await migrate(db);
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, note: { type: "string" } },
+  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, note: { type: "string" }, force: { type: "boolean", default: false } },
 });
 const [group, command, arg, arg2] = positionals;
 
@@ -61,6 +64,12 @@ try {
     console.log(`deleted ${rowCount} rows`);
   } else if (group === "experiment" && command === "report" && arg) {
     console.table(await experimentReport(db, arg));
+  } else if (group === "phone" && command === "link" && arg?.startsWith("@") && arg2) {
+    await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), arg, arg2, values.force === true);
+    console.log(`linked a number to ${arg}`);
+  } else if (group === "phone" && command === "unlink" && arg?.startsWith("@")) {
+    await unlinkPhone(db, arg);
+    console.log(`unlinked ${arg}`);
   } else {
     console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | experiment report ID");
     process.exitCode = 2;

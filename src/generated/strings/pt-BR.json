@@ -59,6 +59,13 @@
     "proseio_handle_screen_footer": "É assim que as pessoas acham você no Proseio. Depois de mudar, você espera 30 dias para mudar de novo.",
     "proseio_settings_handle": "Nome de usuário",
     "proseio_settings_handle_none": "Não definido",
+    "proseio_messaging_title": "Quem pode me mandar mensagem",
+    "proseio_messaging_everyone": "Todo mundo",
+    "proseio_messaging_everyone_body": "Quem você não conhece cai em Pedidos.",
+    "proseio_messaging_verified": "Só contas verificadas",
+    "proseio_messaging_verified_body": "E quem você já conhece. Ninguém tem verificação ainda, então por enquanto vale como Só contatos.",
+    "proseio_messaging_contacts": "Só contatos",
+    "proseio_messaging_contacts_body": "Quem está em algum grupo ou conversa com você, quem você convidou e quem te convidou.",
     "proseio_error_invite_invalid": "Este convite não vale ou já foi usado.",
     "proseio_error_email_taken": "Já existe uma conta com este e-mail. Entre com ele.",
     "proseio_error_password_weak": "Senha fraca. Escolha uma mais longa ou menos óbvia.",
@@ -155,6 +162,17 @@
     "proseio_action_save_sticker": "Salvar nos meus stickers",
     "proseio_sticker_saved": "Sticker salvo em Meus stickers",
     "proseio_sticker_save_failed": "O sticker não foi salvo. Tente de novo.",
-    "proseio_stickers_from_photo": "Criar de uma foto"
+    "proseio_stickers_from_photo": "Criar de uma foto",
+    "proseio_contacts_title": "Contatos no Proseio",
+    "proseio_contacts_intro": "Veja quem dos seus contatos já está no Proseio. Os números só são comparados no servidor e não ficam guardados.",
+    "proseio_contacts_allow": "Permitir acesso aos contatos",
+    "proseio_contacts_denied": "O Proseio não tem acesso aos seus contatos. Você pode liberar nos Ajustes do iPhone.",
+    "proseio_contacts_open_settings": "Abrir Ajustes",
+    "proseio_contacts_none": "Nenhum contato seu está no Proseio ainda.",
+    "proseio_contacts_invite": "Convidar quem não está",
+    "proseio_discovery_toggle": "Quem tem meu número pode me encontrar",
+    "proseio_discovery_footer": "Seu número nunca aparece para ninguém. Só quem já tem você nos contatos consegue te achar.",
+    "proseio_phone_not_linked": "Seu número ainda não está vinculado, então ninguém te encontra por ele por enquanto.",
+    "proseio_phone_linked": "Seu número está vinculado."
   }
 }

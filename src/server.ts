@@ -12,7 +12,9 @@ import { createPersonalInvite, inviteConnections, myInvites, previewInvite, revo
 import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
 import { newChallenge } from "./attest.js";
+import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { signup } from "./signup.js";
+import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 
@@ -21,6 +23,7 @@ const db = openDb(config.DATABASE_URL);
 await migrate(db);
 const mas = new Mas(config);
 const auth = new MatrixAuth(config);
+const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
 
 const limits = {
@@ -32,7 +35,9 @@ const limits = {
   setHandle: new RateLimiter(10, 3_600_000),
   invitePreview: new RateLimiter(30, 60_000),
   inviteCreate: new RateLimiter(20, 3_600_000),
+  contactsLookup: new RateLimiter(30, 3_600_000),
   attestChallenge: new RateLimiter(20, 3_600_000),
+  setMessaging: new RateLimiter(30, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
   events: new RateLimiter(30, 3_600_000),
@@ -55,6 +60,8 @@ const SignupBody = z.object({
     .optional(),
 });
 const HandleBody = z.object({ handle: z.string().max(64) });
+const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
+const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
 
 // Caddy appends the client address last; earlier X-Forwarded-For entries come from the client.
@@ -122,6 +129,33 @@ app.post("/v1/me/invites", async (c) => {
   return c.json(await createPersonalInvite(db, userId, invitePolicy, config.PUBLIC_SITE_URL), 201);
 });
 
+const MessagingBody = z.object({ who_can_message: z.enum(POLICIES) });
+const MayInviteBody = z.object({
+  inviter: z.string().max(255),
+  invitee: z.string().max(255),
+  shares_room: z.boolean(),
+});
+
+app.get("/v1/me/messaging", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json({ who_can_message: await policyOf(db, userId) });
+});
+
+app.put("/v1/me/messaging", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.setMessaging.check(userId);
+  const { who_can_message } = await parse(c, MessagingBody);
+  await setPolicy(db, userId, who_can_message);
+  return c.json({ who_can_message });
+});
+
+// Called by the Synapse module before every invite. Caddy does not route /internal/*.
+app.post("/internal/v1/may-invite", async (c) => {
+  checkInternal(c.req.header("x-proseio-internal"), config.PROSEIO_INTERNAL_SECRET);
+  const { inviter, invitee, shares_room } = await parse(c, MayInviteBody);
+  return c.json(await mayInvite(db, inviter, invitee, shares_room));
+});
+
 app.get("/v1/me/invite-connections", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   return c.json(await inviteConnections(db, userId));
@@ -131,6 +165,33 @@ app.delete("/v1/me/invites/:id", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   await revokePersonalInvite(db, userId, c.req.param("id"));
   return c.body(null, 204);
+});
+
+app.post("/v1/contacts/lookup", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.contactsLookup.check(userId);
+  return c.json(await lookupContacts(db, phoneHasher, userId, (await parse(c, LookupBody)).phones));
+});
+
+app.get("/v1/me/phone", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await myPhone(db, userId));
+});
+
+app.delete("/v1/me/phone", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await unlinkPhone(db, userId);
+  return c.body(null, 204);
+});
+
+app.get("/v1/me/discovery", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await getDiscovery(db, userId));
+});
+
+app.put("/v1/me/discovery", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await setDiscovery(db, userId, (await parse(c, DiscoveryBody)).by_phone));
 });
 
 app.get("/v1/handles/:handle/availability", async (c) => {

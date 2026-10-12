@@ -59,6 +59,13 @@
     "proseio_handle_screen_footer": "This is how people find you on Proseio. After a change, you wait 30 days to change it again.",
     "proseio_settings_handle": "Username",
     "proseio_settings_handle_none": "Not set",
+    "proseio_messaging_title": "Who can message me",
+    "proseio_messaging_everyone": "Everyone",
+    "proseio_messaging_everyone_body": "People you don't know land in Requests.",
+    "proseio_messaging_verified": "Verified accounts only",
+    "proseio_messaging_verified_body": "Plus people you already know. Nobody is verified yet, so for now this works like Contacts only.",
+    "proseio_messaging_contacts": "Contacts only",
+    "proseio_messaging_contacts_body": "People in a group or chat with you, people you invited and whoever invited you.",
     "proseio_error_invite_invalid": "This invite is not valid or was already used.",
     "proseio_error_email_taken": "An account with this email already exists. Sign in with it.",
     "proseio_error_password_weak": "This password is too weak. Pick a longer or less obvious one.",
@@ -155,6 +162,17 @@
     "proseio_action_save_sticker": "Save to my stickers",
     "proseio_sticker_saved": "Sticker saved to My stickers",
     "proseio_sticker_save_failed": "The sticker was not saved. Try again.",
-    "proseio_stickers_from_photo": "Make from a photo"
+    "proseio_stickers_from_photo": "Make from a photo",
+    "proseio_contacts_title": "Contacts on Proseio",
+    "proseio_contacts_intro": "See which of your contacts are already on Proseio. Numbers are only compared on the server and are not stored.",
+    "proseio_contacts_allow": "Allow access to contacts",
+    "proseio_contacts_denied": "Proseio has no access to your contacts. You can allow it in iPhone Settings.",
+    "proseio_contacts_open_settings": "Open Settings",
+    "proseio_contacts_none": "None of your contacts are on Proseio yet.",
+    "proseio_contacts_invite": "Invite people who are not here",
+    "proseio_discovery_toggle": "People who have my number can find me",
+    "proseio_discovery_footer": "Your number is never shown to anyone. Only people who already have you in their contacts can find you.",
+    "proseio_phone_not_linked": "Your number is not linked yet, so nobody can find you by it for now.",
+    "proseio_phone_linked": "Your number is linked."
   }
 }

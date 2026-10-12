@@ -12,6 +12,7 @@ export function loadRegistries(root) {
     homoglyphs: read("registries/homoglyphs.json"),
     handles: read("registries/handles.json"),
     inviteCodes: read("registries/invite-codes.json"),
+    phones: read("registries/phone-numbers.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -52,6 +53,13 @@ function validate(reg) {
   try { new RegExp(ic.pattern); } catch (e) { fail(`invite code pattern: ${e.message}`); }
   if (!(Number.isInteger(ic.maxInputLength) && ic.maxInputLength > 0)) fail("invite codes: maxInputLength");
   if (!/^[A-Z0-9]+$/.test(ic.alphabet)) fail("invite codes: alphabet");
+  const ph = reg.phones;
+  if (!/^[0-9]{1,3}$/.test(ph.countryCode)) fail("phones: countryCode");
+  if (!(Array.isArray(ph.areaCodes) && ph.areaCodes.length > 0 && ph.areaCodes.every((a) => /^[1-9][0-9]$/.test(a)))) fail("phones: areaCodes");
+  if (new Set(ph.areaCodes).size !== ph.areaCodes.length) fail("phones: duplicate area code");
+  if (!(Number.isInteger(ph.mobileLength) && ph.mobileLength > 0)) fail("phones: mobileLength");
+  if (!/^[0-9]$/.test(ph.mobilePrefix)) fail("phones: mobilePrefix");
+  if (!(Number.isInteger(ph.maxInputLength) && ph.maxInputLength > 0)) fail("phones: maxInputLength");
   for (const k of Object.keys(reg.homoglyphs.map)) if ([...k].length !== 1) fail(`homoglyph key "${k}" must be one character`);
   for (const key of Object.keys(reg.strings.strings)) if (!/^proseio_[a-z0-9_]+$/.test(key)) fail(`string key "${key}"`);
   const pt = Object.keys(reg.strings.strings).sort().join(), en = Object.keys(reg.stringsEn.strings).sort().join();
@@ -101,6 +109,35 @@ export function extractInviteCode(text, reg) {
   const ic = reg.inviteCodes;
   const m = new RegExp(ic.pattern).exec(text.slice(0, ic.maxInputLength).toUpperCase());
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+// A Brazilian mobile number in E.164 ("+5511987654321") from an address-book entry, or null.
+// Rule in registries/phone-numbers.json.
+export function normalizePhone(text, reg) {
+  const ph = reg.phones;
+  const head = text.slice(0, ph.maxInputLength).trim();
+  let plus = head.replace(/[^0-9+]/g, "").startsWith("+");
+  let digits = head.replace(/[^0-9]/g, "");
+  if (!plus && digits.startsWith("00")) {
+    plus = true;
+    digits = digits.slice(2);
+  }
+  const national = ph.mobileLength + 2;
+  if (plus) {
+    if (!digits.startsWith(ph.countryCode)) return null;
+    digits = digits.slice(ph.countryCode.length);
+  } else if (digits.length === national + 3 && digits.startsWith("0")) {
+    digits = digits.slice(3); // trunk 0 + carrier code
+  } else if (digits.length === national + 1 && digits.startsWith("0")) {
+    digits = digits.slice(1); // trunk 0
+  } else if (digits.length === national + ph.countryCode.length && digits.startsWith(ph.countryCode)) {
+    digits = digits.slice(ph.countryCode.length);
+  }
+  if (digits.length !== national) return null;
+  const area = digits.slice(0, 2);
+  const subscriber = digits.slice(2);
+  if (!ph.areaCodes.includes(area) || !subscriber.startsWith(ph.mobilePrefix)) return null;
+  return `+${ph.countryCode}${area}${subscriber}`;
 }
 
 // NFKD, strip combining marks, lowercase, fold homoglyphs, collapse whitespace.

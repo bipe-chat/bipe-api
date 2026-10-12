@@ -59,6 +59,24 @@ const MIGRATIONS = [
      n integer NOT NULL CHECK (n >= 0),
      PRIMARY KEY (experiment, arm, event, day)
    );`,
+  // Phone-number discovery, phase 0 (proseio docs/phone-link.md). Numbers only as HMAC.
+  `CREATE TABLE phone_links (
+     user_id text PRIMARY KEY,
+     phone_hmac text NOT NULL UNIQUE,
+     method text NOT NULL CHECK (method IN ('admin', 'pix', 'sms')),
+     linked_at timestamptz NOT NULL DEFAULT now(),
+     confirmed_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE discovery_settings (
+     user_id text PRIMARY KEY,
+     by_phone boolean NOT NULL
+   );`,
+  // Who can message me (docs/usernames.md "First contact"). No row means "everyone".
+  `CREATE TABLE messaging_policies (
+     user_id text PRIMARY KEY,
+     policy text NOT NULL CHECK (policy IN ('everyone', 'verified', 'contacts')),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

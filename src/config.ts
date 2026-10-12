@@ -22,7 +22,11 @@ const Env = z.object({
   INVITES_PER_USER: z.coerce.number().int().nonnegative().default(10),
   // A used invite gives its slot back this many days after the invitee joined.
   INVITE_RESPAWN_DAYS: z.coerce.number().int().positive().default(7),
+  // Shared with the Synapse module proseio_messaging only. Guards /internal/*.
+  PROSEIO_INTERNAL_SECRET: z.string().min(32),
   PUBLIC_SITE_URL: z.url().default("https://proseio.com.br"),
+  // HMAC key for stored phone numbers. Without it the phone endpoints answer "internal".
+  PHONE_HMAC_SECRET: z.string().min(32).optional(),
 });
 
 export type Config = z.infer<typeof Env>;
