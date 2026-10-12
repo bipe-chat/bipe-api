@@ -9,3 +9,7 @@ pnpm install
 ```bash
 pnpm build
 ```
+
+## Licence and contributing
+
+AGPL-3.0-only, see [LICENSE](LICENSE). Contributions need a DCO sign-off (`git commit -s`): see the [Proseio contributing guide](https://github.com/proseio/.github/blob/main/CONTRIBUTING.md). The Proseio name and logo are not covered by the licence: see [TRADEMARKS.md](https://github.com/proseio/.github/blob/main/TRADEMARKS.md).
