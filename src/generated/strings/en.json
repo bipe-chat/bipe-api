@@ -128,6 +128,14 @@
     "proseio_voice_transcript_placeholder": "Check the text before you send",
     "proseio_voice_transcript_unavailable": "No transcript. The audio goes without text.",
     "proseio_action_show_more": "Show more",
-    "proseio_action_show_less": "Show less"
+    "proseio_action_show_less": "Show less",
+    "proseio_action_stickers": "Stickers",
+    "proseio_stickers_title": "Stickers",
+    "proseio_stickers_pack_personal": "My stickers",
+    "proseio_stickers_pack_room": "From this chat",
+    "proseio_stickers_empty_title": "No stickers yet",
+    "proseio_stickers_empty_body": "Your sticker packs show up here.",
+    "proseio_stickers_error_load": "The stickers did not load. Try again.",
+    "proseio_a11y_sticker_send": "Send sticker: %1$s"
   }
 }

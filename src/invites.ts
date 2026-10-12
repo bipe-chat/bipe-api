@@ -2,6 +2,7 @@ import { createHash, randomInt } from "node:crypto";
 import type pg from "pg";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
+import { extractInviteCode } from "./registry.js";
 
 // Unambiguous uppercase alphabet: no 0/O, 1/I/L.
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -11,15 +12,8 @@ export function newInviteCode(): string {
   return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
 }
 
-// Rule and cases: proseio-shared/test-vectors/invite-codes.json. iOS and Android pass the same vectors.
-const INVITE_CODE_PATTERN =
-  /(?<![A-Z0-9])([A-HJKMNP-Z2-9]{4})[ \-\u2010-\u2014\u2212]?([A-HJKMNP-Z2-9]{4})[ \-\u2010-\u2014\u2212]?([A-HJKMNP-Z2-9]{4})(?![A-Z0-9])/;
-
-/** The invite code in anything a user pasted or typed: a code, an invite link or a whole message. Null when none. */
-export function extractInviteCode(text: string): string | null {
-  const m = INVITE_CODE_PATTERN.exec(text.slice(0, 2048).toUpperCase());
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
-}
+// Rule: proseio-shared/registries/invite-codes.json, through the generated reference implementation.
+export { extractInviteCode };
 
 /** Hash of a code already normalised by extractInviteCode (or created by newInviteCode). */
 export function inviteHash(code: string): string {

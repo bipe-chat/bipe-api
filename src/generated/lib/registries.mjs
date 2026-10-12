@@ -11,6 +11,7 @@ export function loadRegistries(root) {
     scam: read("registries/scam-patterns.json"),
     homoglyphs: read("registries/homoglyphs.json"),
     handles: read("registries/handles.json"),
+    inviteCodes: read("registries/invite-codes.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -47,6 +48,10 @@ function validate(reg) {
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   try { new RegExp(h.pattern); new RegExp(h.skeletonStrip, "g"); } catch (e) { fail(`handles regex: ${e.message}`); }
+  const ic = reg.inviteCodes;
+  try { new RegExp(ic.pattern); } catch (e) { fail(`invite code pattern: ${e.message}`); }
+  if (!(Number.isInteger(ic.maxInputLength) && ic.maxInputLength > 0)) fail("invite codes: maxInputLength");
+  if (!/^[A-Z0-9]+$/.test(ic.alphabet)) fail("invite codes: alphabet");
   for (const k of Object.keys(reg.homoglyphs.map)) if ([...k].length !== 1) fail(`homoglyph key "${k}" must be one character`);
   for (const key of Object.keys(reg.strings.strings)) if (!/^proseio_[a-z0-9_]+$/.test(key)) fail(`string key "${key}"`);
   const pt = Object.keys(reg.strings.strings).sort().join(), en = Object.keys(reg.stringsEn.strings).sort().join();
@@ -89,6 +94,13 @@ export function scamWarningKind(text, reg) {
     urgency: () => phrases.length > 0,
   };
   return s.warningKindPriority.find((kind) => applies[kind]()) ?? null;
+}
+
+// The invite code in anything a user pasted or typed (a code, an invite link, a whole message), or null.
+export function extractInviteCode(text, reg) {
+  const ic = reg.inviteCodes;
+  const m = new RegExp(ic.pattern).exec(text.slice(0, ic.maxInputLength).toUpperCase());
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
 // NFKD, strip combining marks, lowercase, fold homoglyphs, collapse whitespace.

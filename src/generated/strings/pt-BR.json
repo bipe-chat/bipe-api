@@ -128,6 +128,14 @@
     "proseio_voice_transcript_placeholder": "Confira o texto antes de enviar",
     "proseio_voice_transcript_unavailable": "Sem transcrição. O áudio vai sem texto.",
     "proseio_action_show_more": "Ver mais",
-    "proseio_action_show_less": "Ver menos"
+    "proseio_action_show_less": "Ver menos",
+    "proseio_action_stickers": "Stickers",
+    "proseio_stickers_title": "Stickers",
+    "proseio_stickers_pack_personal": "Meus stickers",
+    "proseio_stickers_pack_room": "Desta conversa",
+    "proseio_stickers_empty_title": "Nenhum sticker ainda",
+    "proseio_stickers_empty_body": "Seus pacotes de stickers aparecem aqui.",
+    "proseio_stickers_error_load": "Os stickers não carregaram. Tente de novo.",
+    "proseio_a11y_sticker_send": "Enviar sticker: %1$s"
   }
 }
