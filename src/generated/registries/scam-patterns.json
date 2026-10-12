@@ -1,5 +1,5 @@
 {
-  "$comment": "On-device money-request detection (security.md rule 9). Friction, not protection: attackers can read these rules. Regexes use a portable ASCII subset: [0-9] not \\\\d, explicit (?<![0-9A-Za-z]) / (?![0-9A-Za-z]) instead of \\\\b, because ICU (Swift) and Java treat \\\\d and \\\\b as Unicode-aware while JS does not. Phrases are compared after normalisation. Starter list: review before launch. Warning kind: the first kind in warningKindPriority whose rule applies. pixKey applies only when the normalised message also contains a pixKeyContextWords entry (a phone number or e-mail alone is normal chat). newNumber applies when a matched urgency phrase is in newNumberPhrases (the falso parente opener).",
+  "$comment": "On-device money-request detection (security.md rule 9). Friction, not protection: attackers can read these rules. Regexes use a portable ASCII subset: [0-9] not \\\\d, explicit (?<![0-9A-Za-z]) / (?![0-9A-Za-z]) instead of \\\\b, because ICU (Swift) and Java treat \\\\d and \\\\b as Unicode-aware while JS does not. Phrases are compared after normalisation. Starter list: review before launch. Warning kind: the first kind in warningKindPriority whose rule applies. pixKey applies only when the normalised message also contains a pixKeyContextWords entry (a phone number or e-mail alone is normal chat). newNumber applies when a matched urgency phrase is in newNumberPhrases (the falso parente opener). deliveryFee (the fake-delivery fee scam: parcel held, pay a fee by link) applies when linkPatterns matches and the normalised message also contains an entry from each of deliveryParcelWords, deliveryHoldWords and deliveryFeeWords. linkPatterns finds bare domains with a fixed TLD list, lowercase only: case-insensitive matching differs between ICU, Java and V8 for characters like U+017F.",
   "version": 1,
   "pixKeyPatterns": [
     {
@@ -33,6 +33,12 @@
     {
       "id": "linha-digitavel",
       "regex": "(?<![0-9A-Za-z])[0-9]{5}\\.?[0-9]{5}\\s?[0-9]{5}\\.?[0-9]{6}\\s?[0-9]{5}\\.?[0-9]{6}\\s?[0-9]\\s?[0-9]{14}(?![0-9A-Za-z])"
+    }
+  ],
+  "linkPatterns": [
+    {
+      "id": "domain",
+      "regex": "(?<![0-9A-Za-z@.-])[0-9A-Za-z](?:[0-9A-Za-z-]*[0-9A-Za-z])?(?:\\.[0-9A-Za-z](?:[0-9A-Za-z-]*[0-9A-Za-z])?)*\\.(?:com|net|org|info|biz|br|ly|app|site|online|shop|store|top|xyz|link|click|vip|live|icu|cfd|sbs|lat)(?![0-9A-Za-z-])"
     }
   ],
   "urgencyPhrases": [
@@ -77,10 +83,41 @@
     "esse e meu numero novo",
     "salva esse numero"
   ],
+  "deliveryParcelWords": [
+    "pacote",
+    "encomenda",
+    "entrega",
+    "pedido",
+    "correios",
+    "remessa"
+  ],
+  "deliveryHoldWords": [
+    "retid",
+    "taxad",
+    "tributad",
+    "bloquead",
+    "liberar",
+    "liberacao",
+    "pendente",
+    "aguardando pagamento",
+    "nao foi entregue",
+    "nao pode ser entregue",
+    "devolvid"
+  ],
+  "deliveryFeeWords": [
+    "taxa",
+    "tarifa",
+    "imposto",
+    "pague",
+    "pagar",
+    "pagamento",
+    "r$"
+  ],
   "warningKindPriority": [
     "pixCode",
     "boleto",
     "pixKey",
+    "deliveryFee",
     "receipt",
     "newNumber",
     "urgency"

@@ -36,14 +36,14 @@ function validate(reg) {
     for (const n of names) if (normalize(n, reg.homoglyphs.map) !== n) fail(`reserved name "${n}" is not normalised`);
   }
   for (const t of reg.family.terms) if (normalize(t, reg.homoglyphs.map) !== t) fail(`family term "${t}" is not normalised`);
-  for (const group of ["pixKeyPatterns", "pixCopyPastePatterns", "boletoPatterns"]) {
+  for (const group of SCAM_PATTERN_GROUPS) {
     for (const p of reg.scam[group]) {
       if (!/^[a-z-]+$/.test(p.id)) fail(`${group} id "${p.id}"`);
       try { new RegExp(p.regex); } catch (e) { fail(`${group}.${p.id} regex: ${e.message}`); }
     }
   }
   const s = reg.scam;
-  for (const list of ["urgencyPhrases", "receiptKeywords", "pixKeyContextWords", "newNumberPhrases"]) {
+  for (const list of ["urgencyPhrases", "receiptKeywords", "pixKeyContextWords", "newNumberPhrases", ...DELIVERY_WORD_LISTS]) {
     for (const t of s[list]) if (normalize(t, {}) !== t) fail(`${list} entry "${t}" is not normalised`);
   }
   for (const p of s.newNumberPhrases) if (!s.urgencyPhrases.includes(p)) fail(`newNumberPhrases entry "${p}" is not in urgencyPhrases`);
@@ -82,8 +82,9 @@ function validate(reg) {
   }
 }
 
-const SCAM_WARNING_KINDS = ["pixCode", "boleto", "pixKey", "receipt", "newNumber", "urgency"];
-const SCAM_PATTERN_GROUPS = ["pixKeyPatterns", "pixCopyPastePatterns", "boletoPatterns"];
+const SCAM_WARNING_KINDS = ["pixCode", "boleto", "pixKey", "deliveryFee", "receipt", "newNumber", "urgency"];
+const SCAM_PATTERN_GROUPS = ["pixKeyPatterns", "pixCopyPastePatterns", "boletoPatterns", "linkPatterns"];
+const DELIVERY_WORD_LISTS = ["deliveryParcelWords", "deliveryHoldWords", "deliveryFeeWords"];
 
 // Match IDs in reference order: `<patternGroup>:<id>` for regexes on the raw
 // message, then `urgency:<phrase>`, then `receipt:<keyword>` on normalize(message)
@@ -104,11 +105,14 @@ export function scamWarningKind(text, reg) {
   const ids = scamMatchIDs(text, reg);
   const groups = new Set(ids.map((id) => id.slice(0, id.indexOf(":"))));
   const phrases = ids.filter((id) => id.startsWith("urgency:")).map((id) => id.slice("urgency:".length));
+  const n = normalize(text, {});
   const applies = {
     pixCode: () => groups.has("pixCopyPastePatterns"),
     boleto: () => groups.has("boletoPatterns"),
     // A phone number or e-mail alone is normal chat. Warn only when the message also talks about Pix.
-    pixKey: () => groups.has("pixKeyPatterns") && s.pixKeyContextWords.some((w) => normalize(text, {}).includes(w)),
+    pixKey: () => groups.has("pixKeyPatterns") && s.pixKeyContextWords.some((w) => n.includes(w)),
+    // The fake-delivery fee scam: a link, and the message talks about a held parcel and a fee.
+    deliveryFee: () => groups.has("linkPatterns") && DELIVERY_WORD_LISTS.every((list) => s[list].some((w) => n.includes(w))),
     receipt: () => groups.has("receipt"),
     newNumber: () => phrases.some((p) => s.newNumberPhrases.includes(p)),
     urgency: () => phrases.length > 0,
