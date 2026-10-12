@@ -14,6 +14,7 @@ import { RateLimiter } from "./ratelimit.js";
 import { newChallenge } from "./attest.js";
 import { signup } from "./signup.js";
 import { joinWaitlist, WaitlistBody } from "./waitlist.js";
+import { countEvent, ExperimentEventBody } from "./experiments.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -34,6 +35,8 @@ const limits = {
   attestChallenge: new RateLimiter(20, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
+  events: new RateLimiter(30, 3_600_000),
+  eventsGlobal: new RateLimiter(20_000, 3_600_000),
 };
 
 const SignupBody = z.object({
@@ -93,6 +96,14 @@ app.post("/v1/waitlist", async (c) => {
   limits.waitlistGlobal.check("all");
   await joinWaitlist(db, await parse(c, WaitlistBody));
   return c.body(null, 202);
+});
+
+// sendBeacon from the public site: text/plain JSON, no preflight, the browser reads no response.
+app.post("/v1/events", async (c) => {
+  limits.events.check(clientIp(c));
+  limits.eventsGlobal.check("all");
+  await countEvent(db, await parse(c, ExperimentEventBody));
+  return c.body(null, 204);
 });
 
 app.get("/v1/invites/:code", async (c) => {

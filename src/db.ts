@@ -50,6 +50,15 @@ const MIGRATIONS = [
      created_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (email, platform)
    );`,
+  // Experiment counters (ADR 0026): aggregate numbers only.
+  `CREATE TABLE experiment_counts (
+     experiment text NOT NULL,
+     arm text NOT NULL,
+     event text NOT NULL CHECK (event IN ('assign', 'install_click')),
+     day date NOT NULL,
+     n integer NOT NULL CHECK (n >= 0),
+     PRIMARY KEY (experiment, arm, event, day)
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

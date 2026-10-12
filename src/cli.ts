@@ -8,9 +8,11 @@
 //   node dist/cli.js waitlist export <platform>      (CSV email,lang for the launch email)
 //   node dist/cli.js waitlist clear <platform>       (after the launch email: deletes those rows)
 //   node dist/cli.js waitlist forget <email>         (LGPD deletion request)
+//   node dist/cli.js experiment report <experiment>  (for example headline-77: visitors, clicks, sign-ups per arm)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, revokeAllOf } from "./invites.js";
+import { experimentReport } from "./experiments.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -57,8 +59,10 @@ try {
   } else if (group === "waitlist" && command === "forget" && arg) {
     const { rowCount } = await db.query("DELETE FROM waitlist WHERE email = $1", [arg.trim().toLowerCase()]);
     console.log(`deleted ${rowCount} rows`);
+  } else if (group === "experiment" && command === "report" && arg) {
+    console.table(await experimentReport(db, arg));
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | experiment report ID");
     process.exitCode = 2;
   }
 } finally {

@@ -13,6 +13,7 @@ Proseio API: invite sign-up and the handle directory (docs/usernames.md option A
 - Personal invites (`/v1/me/invites`): `created_by` set, single use, 30 days. Pending invites hold a slot until they expire or are revoked; used invites hold it for `INVITE_RESPAWN_DAYS` (default 7) after the invitee joined, then it comes back. Quota = `INVITES_PER_USER` (default 10) + `invite_grants.extra`. Creation takes a per-user advisory lock so two requests cannot take the last slot.
 - `GET /v1/invites/{code}` is public with CORS for `PUBLIC_SITE_URL` (the invite page reads it). It never says why a code is invalid.
 - `POST /v1/waitlist` (ADR 0025) is public with CORS for `PUBLIC_SITE_URL`. It answers 202 for every well-formed request, duplicates and the `website` honeypot included, so it never tells whether an address is known. Admin CLI: `waitlist count`, `waitlist export android`, `waitlist clear android` (after the launch email), `waitlist forget <email>`.
+- `POST /v1/events` (ADR 0026) counts headline-test events as daily aggregates: no IP, no identifier. The site sends it with `sendBeacon` (text/plain JSON, no CORS). Report: `node dist/cli.js experiment report headline-77`. Run the report before `waitlist clear`: sign-ups per arm come from waitlist rows.
 - Invite codes: `extractInviteCode()` finds the code in a bare code, a link or a pasted message. It must pass `../proseio-shared/test-vectors/invite-codes.json` (iOS and Android pass the same file).
 - Write docs in ASD-STE100 style.
 
