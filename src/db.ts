@@ -50,7 +50,7 @@ const MIGRATIONS = [
      created_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (email, platform)
    );`,
-  // Experiment counters (ADR 0026): aggregate numbers only.
+  // Experiment counters (ADR 0032): aggregate numbers only.
   `CREATE TABLE experiment_counts (
      experiment text NOT NULL,
      arm text NOT NULL,

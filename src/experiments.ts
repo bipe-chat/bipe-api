@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Db } from "./db.js";
 
-// First-party experiment counters (ADR 0026): one daily number per experiment, arm and event.
+// First-party experiment counters (ADR 0032): one daily number per experiment, arm and event.
 // No IP, no identifier, no per-person row.
 
 export const ExperimentEventBody = z.object({
