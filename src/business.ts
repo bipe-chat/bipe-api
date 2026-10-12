@@ -75,7 +75,7 @@ export async function createClaim(db: Db, config: Config, userId: string, raw: s
 
   const date = new Date().toISOString().slice(0, 10);
   const challenge =
-    `Proseio: a empresa de CNPJ ${formatCnpj(cnpj)} autoriza a conta ${userId} a representar a empresa no Proseio. ` +
+    `Bipe: a empresa de CNPJ ${formatCnpj(cnpj)} autoriza a conta ${userId} a representar a empresa no Bipe. ` +
     `Código ${randomBytes(9).toString("base64url")}. ${date}.`;
 
   const release = latestRelease(config.RECEITA_DIR);
