@@ -136,6 +136,13 @@
     "proseio_stickers_empty_title": "Nenhum sticker ainda",
     "proseio_stickers_empty_body": "Seus pacotes de stickers aparecem aqui.",
     "proseio_stickers_error_load": "Os stickers não carregaram. Tente de novo.",
-    "proseio_a11y_sticker_send": "Enviar sticker: %1$s"
+    "proseio_a11y_sticker_send": "Enviar sticker: %1$s",
+    "proseio_group_missed_title": "O que você perdeu",
+    "proseio_group_missed_mention": "%1$s marcou você",
+    "proseio_group_missed_reply": "%1$s respondeu você",
+    "proseio_group_missed_poll": "Enquete sem sua resposta: %1$s",
+    "proseio_group_missed_pinned": "Fixada: %1$s",
+    "proseio_group_missed_more": "Outras mensagens: %1$s",
+    "proseio_invites_joined": "%1$s entrou com seu convite"
   }
 }
