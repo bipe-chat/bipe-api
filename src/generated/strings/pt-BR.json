@@ -140,7 +140,7 @@
     "proseio_group_missed_title": "O que você perdeu",
     "proseio_group_missed_mention": "%1$s marcou você",
     "proseio_group_missed_reply": "%1$s respondeu você",
-    "proseio_group_missed_poll": "Enquete sem sua resposta: %1$s",
+    "proseio_group_missed_poll": "Falta você votar: %1$s",
     "proseio_group_missed_pinned": "Fixada: %1$s",
     "proseio_group_missed_more": "Outras mensagens: %1$s",
     "proseio_invites_joined": "%1$s entrou com seu convite"

@@ -140,7 +140,7 @@
     "proseio_group_missed_title": "What you missed",
     "proseio_group_missed_mention": "%1$s mentioned you",
     "proseio_group_missed_reply": "%1$s replied to you",
-    "proseio_group_missed_poll": "Poll you have not answered: %1$s",
+    "proseio_group_missed_poll": "Waiting on your vote: %1$s",
     "proseio_group_missed_pinned": "Pinned: %1$s",
     "proseio_group_missed_more": "Other messages: %1$s",
     "proseio_invites_joined": "%1$s joined with your invite"
