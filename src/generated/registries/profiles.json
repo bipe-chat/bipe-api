@@ -1,0 +1,9 @@
+{
+  "$comment": "Public profile rules, proseio ADR 0041. The server is the authority; clients check early for feedback. The name is also checked against reserved-names.json (exact match after normalize()).",
+  "version": 1,
+  "nameMaxLength": 50,
+  "bioMaxLength": 160,
+  "bioMaxLines": 4,
+  "photoMaxBytes": 262144,
+  "photoMaxPixels": 512
+}

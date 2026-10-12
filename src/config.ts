@@ -30,6 +30,8 @@ const Env = z.object({
   RECEITA_WEBDAV_URL: z.url().default("https://arquivos.receitafederal.gov.br/public.php/webdav"),
   RECEITA_SHARE_TOKEN: z.string().min(1).default("YggdBLfdninEJX9"),
   ICP_BRASIL_ROOTS_DIR: z.string().default("certs/icp-brasil"),
+  // Base of absolute URLs the API hands out (profile photos).
+  PUBLIC_API_URL: z.url().default("https://api.proseio.com.br"),
   // HMAC key for stored phone numbers. Without it the phone endpoints answer "internal".
   PHONE_HMAC_SECRET: z.string().min(32).optional(),
 });

@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from proseio-shared by `pnpm gen`. Never edit generated/.
-import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith } from "./generated/lib/registries.mjs";
+import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, profileProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
@@ -57,4 +57,19 @@ export function reservedNameClaims(names: (string | null)[], root: string): { na
     if (reservedNames.has(norm)) found.add(norm);
   }
   return [...found].map((name) => ({ name, approved: (reservedOwners[name] ?? []).includes(root) }));
+}
+
+export type ProfileProblem = "name_empty" | "name_too_long" | "name_reserved" | "bio_too_long" | "bio_too_many_lines";
+
+export const profileRules = reg.profiles as {
+  nameMaxLength: number;
+  bioMaxLength: number;
+  bioMaxLines: number;
+  photoMaxBytes: number;
+  photoMaxPixels: number;
+};
+
+/** Public profile name and bio check (registries/profiles.json and the reserved names). */
+export function problemWithProfile(name: string, bio: string): ProfileProblem | null {
+  return profileProblem({ name, bio }, reg) as ProfileProblem | null;
 }

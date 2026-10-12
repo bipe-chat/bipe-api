@@ -118,6 +118,16 @@ const MIGRATIONS = [
      release_month text NOT NULL
    );
    CREATE INDEX cnpj_partners_root ON cnpj_partners (root);`,
+  // Public profiles (ADR 0041): opt-in, separate from the Matrix profile. Photo without metadata.
+  `CREATE TABLE public_profiles (
+     user_id text PRIMARY KEY,
+     enabled boolean NOT NULL DEFAULT false,
+     name text NOT NULL DEFAULT '',
+     bio text NOT NULL DEFAULT '',
+     photo bytea,
+     photo_version text,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

@@ -19,6 +19,8 @@ import { joinWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
+import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
+import { profileRules } from "./registry.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -43,6 +45,10 @@ const limits = {
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
   events: new RateLimiter(30, 3_600_000),
+  profile: new RateLimiter(60, 60_000),
+  profilePhoto: new RateLimiter(120, 60_000),
+  setProfile: new RateLimiter(30, 3_600_000),
+  setProfilePhoto: new RateLimiter(10, 3_600_000),
   eventsGlobal: new RateLimiter(20_000, 3_600_000),
   businessClaim: new RateLimiter(10, 3_600_000),
   businessProof: new RateLimiter(20, 3_600_000),
@@ -77,6 +83,9 @@ const HandleBody = z.object({ handle: z.string().max(64) });
 const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
 const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
+// Lengths are checked by problemWithProfile(); these caps only bound the request.
+const ProfileBody = z.object({ enabled: z.boolean(), name: z.string().max(400), bio: z.string().max(2000) });
+const PHOTO_PATH = "/v1/me/profile/photo";
 
 // Caddy appends the client address last; earlier X-Forwarded-For entries come from the client.
 function clientIp(c: Context): string {
@@ -91,10 +100,15 @@ async function parse<T>(c: Context, schema: z.ZodType<T>): Promise<T> {
 }
 
 const app = new Hono();
-// A CMS signature with its certificate chain can pass 16 KB; that one route gets more room.
+// A CMS signature with its certificate chain can pass 16 KB, and a profile photo too; those routes get more room.
 const smallBody = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
 const signatureBody = bodyLimit({ maxSize: 160 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
-app.use("*", (c, next) => (c.req.path === "/v1/me/business/ecnpj" ? signatureBody(c, next) : smallBody(c, next)));
+const photoBody = bodyLimit({ maxSize: profileRules.photoMaxBytes, onError: (c) => c.json({ error: "photo_invalid", reason: "too_large" }, 413) });
+app.use("*", (c, next) => {
+  if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
+  if (c.req.path === PHOTO_PATH) return photoBody(c, next);
+  return smallBody(c, next);
+});
 
 app.get("/healthz", (c) => c.text("ok"));
 
@@ -226,6 +240,51 @@ app.get("/v1/handles/:handle", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.lookup.check(userId);
   return c.json(await lookup(db, c.req.param("handle")));
+});
+
+// Public profiles (ADR 0041). The profile page on the public site reads them from the browser.
+app.use("/v1/profiles/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+
+app.get("/v1/profiles/:handle", async (c) => {
+  limits.profile.check(clientIp(c));
+  const profile = await publicProfile(db, config.PUBLIC_API_URL, c.req.param("handle"));
+  // Turning a profile off must hide it at once.
+  c.header("cache-control", "no-store");
+  return c.json(profile);
+});
+
+app.get("/v1/profiles/:handle/photo", async (c) => {
+  limits.profilePhoto.check(clientIp(c));
+  const photo = await publicPhoto(db, c.req.param("handle"));
+  return c.body(new Uint8Array(photo), 200, {
+    "content-type": "image/jpeg",
+    "cache-control": "public, max-age=300",
+    "x-content-type-options": "nosniff",
+  });
+});
+
+app.get("/v1/me/profile", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await myProfile(db, config.PUBLIC_API_URL, userId));
+});
+
+app.put("/v1/me/profile", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.setProfile.check(userId);
+  return c.json(await saveProfile(db, config.PUBLIC_API_URL, userId, await parse(c, ProfileBody)));
+});
+
+app.put(PHOTO_PATH, async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.setProfilePhoto.check(userId);
+  if (c.req.header("content-type")?.split(";")[0]?.trim() !== "image/jpeg") throw new ApiError("photo_invalid", "not_jpeg");
+  const body = new Uint8Array(await c.req.arrayBuffer());
+  return c.json(await setPhoto(db, config.PUBLIC_API_URL, userId, body));
+});
+
+app.delete(PHOTO_PATH, async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await deletePhoto(db, config.PUBLIC_API_URL, userId));
 });
 
 app.get("/v1/me/handle", async (c) => {

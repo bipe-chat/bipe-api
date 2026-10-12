@@ -12,6 +12,7 @@ export function loadRegistries(root) {
     homoglyphs: read("registries/homoglyphs.json"),
     handles: read("registries/handles.json"),
     owners: read("registries/reserved-name-owners.json"),
+    profiles: read("registries/profiles.json"),
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
     strings: read("strings/pt-BR.json"),
@@ -55,6 +56,10 @@ function validate(reg) {
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   try { new RegExp(h.pattern); new RegExp(h.skeletonStrip, "g"); } catch (e) { fail(`handles regex: ${e.message}`); }
+  const pr = reg.profiles;
+  for (const k of ["nameMaxLength", "bioMaxLength", "bioMaxLines", "photoMaxBytes", "photoMaxPixels"]) {
+    if (!(Number.isInteger(pr[k]) && pr[k] > 0)) fail(`profiles: ${k}`);
+  }
   const ic = reg.inviteCodes;
   try { new RegExp(ic.pattern); } catch (e) { fail(`invite code pattern: ${e.message}`); }
   if (!(Number.isInteger(ic.maxInputLength) && ic.maxInputLength > 0)) fail("invite codes: maxInputLength");
@@ -206,4 +211,18 @@ export function cnpjRoot(cnpj) {
 /** 12.ABC.345/01DE-35 */
 export function formatCnpj(cnpj) {
   return `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5, 8)}/${cnpj.slice(8, 12)}-${cnpj.slice(12)}`;
+}
+
+// Public profile checks (proseio ADR 0041). Lengths count code points, like the API.
+// Returns null when valid, else a reason id shared by every platform.
+export function profileProblem({ name, bio }, reg) {
+  const p = reg.profiles;
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return "name_empty";
+  if ([...trimmed].length > p.nameMaxLength) return "name_too_long";
+  if (Object.values(reg.reserved.categories).flat().includes(normalize(trimmed, reg.homoglyphs.map))) return "name_reserved";
+  const b = bio.trim();
+  if ([...b].length > p.bioMaxLength) return "bio_too_long";
+  if (b.split("\n").length > p.bioMaxLines) return "bio_too_many_lines";
+  return null;
 }
