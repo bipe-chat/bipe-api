@@ -1,0 +1,433 @@
+{
+  "version": 1,
+  "$comment": "ADR 0074: separate identity proof, personal confirmation, lifecycle changes and the already-selected warning. Facts only; no trust score or safe classification. Times are Unix seconds. Source adapters must establish complete authenticated lifecycle data before setting lifecycleKnown.",
+  "inputFields": {
+    "accountId": "string",
+    "deviceKey": "string",
+    "lifecycleKnown": "boolean",
+    "deviceChangedAt": "time",
+    "identityChangedAt": "time",
+    "badgeStatus": "string",
+    "badgeAccountId": "string",
+    "badgeDeviceKey": "string",
+    "badgeName": "string",
+    "badgeIssuedAt": "time",
+    "confirmationMethod": "string",
+    "confirmationAccountId": "string",
+    "confirmationDeviceKey": "string",
+    "confirmedAt": "time",
+    "priorInPersonConfirmedAt": "time",
+    "warningKind": "string"
+  },
+  "rules": {
+    "contextKnown": {
+      "all": [
+        {
+          "nonempty": {
+            "field": "accountId"
+          }
+        },
+        {
+          "nonempty": {
+            "field": "deviceKey"
+          }
+        },
+        {
+          "eq": [
+            {
+              "field": "lifecycleKnown"
+            },
+            true
+          ]
+        },
+        {
+          "nullableTime": {
+            "field": "deviceChangedAt"
+          }
+        },
+        {
+          "nullableTime": {
+            "field": "identityChangedAt"
+          }
+        }
+      ]
+    },
+    "badgeBound": {
+      "all": [
+        {
+          "eq": [
+            {
+              "field": "badgeStatus"
+            },
+            "valid"
+          ]
+        },
+        {
+          "eq": [
+            {
+              "field": "badgeAccountId"
+            },
+            {
+              "field": "accountId"
+            }
+          ]
+        }
+      ]
+    },
+    "identityVerified": {
+      "all": [
+        {
+          "rule": "contextKnown"
+        },
+        {
+          "rule": "badgeBound"
+        },
+        {
+          "eq": [
+            {
+              "field": "badgeDeviceKey"
+            },
+            {
+              "field": "deviceKey"
+            }
+          ]
+        },
+        {
+          "nonempty": {
+            "field": "badgeName"
+          }
+        },
+        {
+          "validTime": {
+            "field": "badgeIssuedAt"
+          }
+        },
+        {
+          "afterChange": [
+            {
+              "field": "badgeIssuedAt"
+            },
+            {
+              "field": "deviceChangedAt"
+            }
+          ]
+        },
+        {
+          "afterChange": [
+            {
+              "field": "badgeIssuedAt"
+            },
+            {
+              "field": "identityChangedAt"
+            }
+          ]
+        }
+      ]
+    },
+    "identitySuspended": {
+      "all": [
+        {
+          "rule": "contextKnown"
+        },
+        {
+          "not": {
+            "rule": "identityVerified"
+          }
+        },
+        {
+          "any": [
+            {
+              "eq": [
+                {
+                  "field": "badgeStatus"
+                },
+                "device_mismatch"
+              ]
+            },
+            {
+              "all": [
+                {
+                  "rule": "badgeBound"
+                },
+                {
+                  "any": [
+                    {
+                      "neq": [
+                        {
+                          "field": "badgeDeviceKey"
+                        },
+                        {
+                          "field": "deviceKey"
+                        }
+                      ]
+                    },
+                    {
+                      "all": [
+                        {
+                          "validTime": {
+                            "field": "badgeIssuedAt"
+                          }
+                        },
+                        {
+                          "any": [
+                            {
+                              "all": [
+                                {
+                                  "validTime": {
+                                    "field": "deviceChangedAt"
+                                  }
+                                },
+                                {
+                                  "not": {
+                                    "afterChange": [
+                                      {
+                                        "field": "badgeIssuedAt"
+                                      },
+                                      {
+                                        "field": "deviceChangedAt"
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "all": [
+                                {
+                                  "validTime": {
+                                    "field": "identityChangedAt"
+                                  }
+                                },
+                                {
+                                  "not": {
+                                    "afterChange": [
+                                      {
+                                        "field": "badgeIssuedAt"
+                                      },
+                                      {
+                                        "field": "identityChangedAt"
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "contactConfirmed": {
+      "all": [
+        {
+          "rule": "contextKnown"
+        },
+        {
+          "eq": [
+            {
+              "field": "confirmationAccountId"
+            },
+            {
+              "field": "accountId"
+            }
+          ]
+        },
+        {
+          "eq": [
+            {
+              "field": "confirmationDeviceKey"
+            },
+            {
+              "field": "deviceKey"
+            }
+          ]
+        },
+        {
+          "validTime": {
+            "field": "confirmedAt"
+          }
+        },
+        {
+          "afterChange": [
+            {
+              "field": "confirmedAt"
+            },
+            {
+              "field": "deviceChangedAt"
+            }
+          ]
+        },
+        {
+          "afterChange": [
+            {
+              "field": "confirmedAt"
+            },
+            {
+              "field": "identityChangedAt"
+            }
+          ]
+        },
+        {
+          "any": [
+            {
+              "eq": [
+                {
+                  "field": "confirmationMethod"
+                },
+                "in_person"
+              ]
+            },
+            {
+              "all": [
+                {
+                  "eq": [
+                    {
+                      "field": "confirmationMethod"
+                    },
+                    "old_device_approval"
+                  ]
+                },
+                {
+                  "validTime": {
+                    "field": "priorInPersonConfirmedAt"
+                  }
+                },
+                {
+                  "atOrBefore": [
+                    {
+                      "field": "priorInPersonConfirmedAt"
+                    },
+                    {
+                      "field": "confirmedAt"
+                    }
+                  ]
+                },
+                {
+                  "afterChange": [
+                    {
+                      "field": "priorInPersonConfirmedAt"
+                    },
+                    {
+                      "field": "identityChangedAt"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "outputs": {
+    "identity": {
+      "choose": [
+        {
+          "when": {
+            "rule": "identityVerified"
+          },
+          "value": "verified"
+        },
+        {
+          "when": {
+            "rule": "identitySuspended"
+          },
+          "value": "suspended"
+        }
+      ],
+      "else": "unverified"
+    },
+    "verifiedName": {
+      "choose": [
+        {
+          "when": {
+            "rule": "identityVerified"
+          },
+          "value": {
+            "field": "badgeName"
+          }
+        }
+      ],
+      "else": null
+    },
+    "contact": {
+      "choose": [
+        {
+          "when": {
+            "rule": "contactConfirmed"
+          },
+          "value": "confirmed"
+        }
+      ],
+      "else": "unconfirmed"
+    },
+    "change": {
+      "choose": [
+        {
+          "when": {
+            "not": {
+              "rule": "contextKnown"
+            }
+          },
+          "value": "unknown"
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "validTime": {
+                  "field": "deviceChangedAt"
+                }
+              },
+              {
+                "validTime": {
+                  "field": "identityChangedAt"
+                }
+              }
+            ]
+          },
+          "value": "device_and_identity"
+        },
+        {
+          "when": {
+            "validTime": {
+              "field": "deviceChangedAt"
+            }
+          },
+          "value": "device"
+        },
+        {
+          "when": {
+            "validTime": {
+              "field": "identityChangedAt"
+            }
+          },
+          "value": "identity"
+        }
+      ],
+      "else": "none"
+    },
+    "warningKind": {
+      "choose": [
+        {
+          "when": {
+            "nonempty": {
+              "field": "warningKind"
+            }
+          },
+          "value": {
+            "field": "warningKind"
+          }
+        }
+      ],
+      "else": null
+    }
+  }
+}

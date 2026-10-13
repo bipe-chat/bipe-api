@@ -301,6 +301,15 @@
     "bipe_mail_notice_new_device": "Sua conta do Bipe entrou num aparelho novo com o backup do iCloud ou do Google e a sua senha.\n\nSe não foi você, abra o Bipe num dos seus aparelhos, troque a senha e saia dos aparelhos que você não conhece.",
     "bipe_mail_notice_pin_changed": "A senha de 8 números da sua conta do Bipe mudou.\n\nSe não foi você, abra o Bipe num dos seus aparelhos e troque a senha.",
     "bipe_mail_notice_email_removed": "Este e-mail não serve mais para voltar para sua conta do Bipe.\n\nSe não foi você, abra o Bipe num dos seus aparelhos e confira o e-mail de recuperação.",
-    "bipe_mail_footer": "Este e-mail é do Bipe. Não responda, porque ninguém lê esta caixa. O Bipe nunca pede sua senha por e-mail."
+    "bipe_mail_footer": "Este e-mail é do Bipe. Não responda, porque ninguém lê esta caixa. O Bipe nunca pede sua senha por e-mail.",
+    "bipe_trust_identity_body": "O selo mostra o nome verificado. Ele não garante que a pessoa é honesta.",
+    "bipe_trust_contact_body": "Você confirmou quem é esta pessoa. O selo verifica o nome por outro meio.",
+    "bipe_trust_contact_unconfirmed": "Pessoa ainda não confirmada",
+    "bipe_trust_contact_confirm_action": "Confirmar pessoalmente",
+    "bipe_trust_identity_changed": "O nome verificado desta conta mudou.",
+    "bipe_trust_change_confirm_action": "Confirme com a pessoa por outro meio antes de enviar dinheiro.",
+    "bipe_trust_lifecycle_unknown": "Ainda não deu para conferir as mudanças nesta conta.",
+    "bipe_trust_lifecycle_retry_action": "Conferir de novo",
+    "bipe_trust_warning_absence_body": "Mesmo sem aviso, confirme um pedido de dinheiro com a pessoa por outro meio."
   }
 }

@@ -2,6 +2,7 @@
 // platform implementation must match it via test-vectors/.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { evaluateTrustFacts, validateTrustRegistry } from "./trust.mjs";
 
 export function loadRegistries(root) {
   const read = (p) => JSON.parse(readFileSync(join(root, p), "utf8"));
@@ -16,6 +17,7 @@ export function loadRegistries(root) {
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
     accounts: read("registries/accounts.json"),
+    trust: read("registries/trust-facts.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -28,6 +30,7 @@ function fail(msg) {
 }
 
 function validate(reg) {
+  validateTrustRegistry(reg.trust);
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
@@ -355,4 +358,9 @@ function isDate(year, month, day, a) {
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
   return day <= days;
+}
+
+// Proof and lifecycle inputs come from authenticated adapters; a selected warning is preserved without re-gating it.
+export function trustFacts(input, reg) {
+  return evaluateTrustFacts(input, reg.trust);
 }
