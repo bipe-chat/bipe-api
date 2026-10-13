@@ -46,13 +46,18 @@ function validate(reg) {
     }
   }
   const s = reg.scam;
-  for (const list of ["urgencyPhrases", "receiptKeywords", "pixKeyContextWords", "newNumberPhrases", "newAccountPhrases", ...DELIVERY_WORD_LISTS, ...BANK_ALERT_WORD_LISTS]) {
+  for (const list of ["urgencyPhrases", "receiptKeywords", "pixKeyContextWords", "newNumberPhrases", "newAccountPhrases", ...DELIVERY_WORD_LISTS, ...BANK_ALERT_WORD_LISTS, ...SUBSTRING_WORD_LISTS, ...WHOLE_WORD_LISTS]) {
+    if (!Array.isArray(s[list]) || s[list].length === 0) fail(`${list} must be a non-empty list`);
     for (const t of s[list]) if (normalize(t, {}) !== t) fail(`${list} entry "${t}" is not normalised`);
   }
+  // Whole-word lists match between spaces after each run outside [0-9a-z] becomes one space.
+  for (const list of WHOLE_WORD_LISTS) for (const t of s[list]) if (!/^[0-9a-z]+( [0-9a-z]+)*$/.test(t)) fail(`${list} entry "${t}" must be words of [0-9a-z]`);
   for (const p of s.newNumberPhrases) if (!s.urgencyPhrases.includes(p)) fail(`newNumberPhrases entry "${p}" is not in urgencyPhrases`);
   // Tokens match folded hosts without dots and hyphens, so they must be unchanged by host folding.
   const hostFold = hostHomoglyphs(reg);
   for (const t of s.lookalikeBrandTokens) if (!/^[0-9a-z]+$/.test(t) || normalize(t, hostFold) !== t) fail(`lookalikeBrandTokens entry "${t}" must be [0-9a-z] and unchanged by host folding`);
+  for (const t of s.lookalikeHostLabels) if (!/^[0-9a-z]+$/.test(t) || normalize(t, hostFold) !== t) fail(`lookalikeHostLabels entry "${t}" must be [0-9a-z] and unchanged by host folding`);
+  for (const d of s.appStoreDomains) if (!/^[0-9a-z-]+(\.[0-9a-z-]+)+$/.test(d)) fail(`appStoreDomains entry "${d}"`);
   for (const d of s.officialDomains) if (!/^[0-9a-z-]+(\.[0-9a-z-]+)+$/.test(d)) fail(`officialDomains entry "${d}"`);
   if ([...s.warningKindPriority].sort().join() !== [...SCAM_WARNING_KINDS].sort().join()) fail(`warningKindPriority must list each of ${SCAM_WARNING_KINDS.join(", ")} once`);
   const reservedAll = new Set(Object.values(reg.reserved.categories).flat());
@@ -109,10 +114,14 @@ function validate(reg) {
   }
 }
 
-const SCAM_WARNING_KINDS = ["pixCode", "boleto", "pixKey", "deliveryFee", "lookalikeLink", "bankAlert", "receipt", "newNumber", "urgency"];
+const SCAM_WARNING_KINDS = ["extortion", "pixCode", "boleto", "remoteApp", "pinRequest", "pixKey", "deliveryFee", "lookalikeLink", "bankAlert", "receipt", "newNumber", "urgency"];
 const SCAM_PATTERN_GROUPS = ["pixKeyPatterns", "pixCopyPastePatterns", "boletoPatterns", "linkPatterns"];
 const DELIVERY_WORD_LISTS = ["deliveryParcelWords", "deliveryHoldWords", "deliveryFeeWords"];
 const BANK_ALERT_WORD_LISTS = ["bankAlertSubjectWords", "bankAlertThreatWords"];
+// Matched as substrings of the normalised message.
+const SUBSTRING_WORD_LISTS = ["extortionThreatPhrases", "extortionDemandWords", "remoteAppBankWords", "pinRequestAskPhrases"];
+// Matched as whole words (containsWord).
+const WHOLE_WORD_LISTS = ["remoteAppInstallWords", "remoteAppNames", "pinRequestSecretWords", "pinRequestSupportWords"];
 
 // registries/homoglyphs.json without its ASCII keys outside [0-9a-z]: "@", "$" and "|" cannot be part of a
 // host name, and folding "@" would join an e-mail's user and domain into one host.
@@ -135,10 +144,18 @@ export function linkHosts(message, reg) {
 }
 
 // True when the host copies a brand: its folded form names a brand and its plain form is not that brand's domain.
+// A brand token may sit anywhere in the host without dots and hyphens; a short host label ("bcb", "gov") must be
+// a whole label, so "receitas.globo.com" does not match "receita".
 function isLookalikeHost(host, s) {
   const squashed = host.folded.replace(/[.-]/g, "");
-  if (!s.lookalikeBrandTokens.some((t) => squashed.includes(t))) return false;
-  return !s.officialDomains.some((d) => host.plain === d || host.plain.endsWith(`.${d}`));
+  const labels = host.folded.split(/[.-]/);
+  const names = s.lookalikeBrandTokens.some((t) => squashed.includes(t)) || s.lookalikeHostLabels.some((l) => labels.includes(l));
+  return names && !isUnder(host.plain, s.officialDomains);
+}
+
+// True when the plain host is one of `domains` or a subdomain of one.
+function isUnder(plain, domains) {
+  return domains.some((d) => plain === d || plain.endsWith(`.${d}`));
 }
 
 // Match IDs in reference order: `<patternGroup>:<id>` for regexes on the raw
@@ -163,8 +180,16 @@ export function scamWarningKind(text, reg) {
   const n = normalize(text, {});
   const hosts = linkHosts(text, reg);
   const applies = {
+    // A threat with a payment demand (sextortion, "I know where you live"). A threat alone is not this kind.
+    extortion: () => s.extortionThreatPhrases.some((w) => n.includes(w)) && s.extortionDemandWords.some((w) => n.includes(w)),
     pixCode: () => groups.has("pixCopyPastePatterns"),
     boleto: () => groups.has("boletoPatterns"),
+    // A request to install a remote-access app: by name, or by a link that is not an official or app-store
+    // address in a message about a bank, a card or Pix.
+    remoteApp: () => containsWord(n, s.remoteAppInstallWords) && (containsWord(n, s.remoteAppNames)
+      || (hosts.some((h) => !isUnder(h.plain, [...s.officialDomains, ...s.appStoreDomains])) && s.remoteAppBankWords.some((w) => n.includes(w)))),
+    // Fake support asks for the PIN or a code. Bipe never asks for either.
+    pinRequest: () => s.pinRequestAskPhrases.some((w) => n.includes(w)) && containsWord(n, s.pinRequestSecretWords) && containsWord(n, s.pinRequestSupportWords),
     // A phone number or e-mail alone is normal chat. Warn only when the message also talks about Pix.
     pixKey: () => groups.has("pixKeyPatterns") && s.pixKeyContextWords.some((w) => n.includes(w)),
     // The fake-delivery fee scam: a link, and the message talks about a held parcel and a fee.
