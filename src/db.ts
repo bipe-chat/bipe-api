@@ -171,6 +171,19 @@ const MIGRATIONS = [
      ended_by text
    );
    CREATE INDEX recoveries_user ON recoveries (user_id, created_at DESC);`,
+  // Handle change history (ADR 0066). old_handle NULL: first set. new_handle NULL: removal.
+  // old_set_at: when the old handle was set, so a removal does not reset the change cooldown.
+  `CREATE TABLE handle_changes (
+     id bigserial PRIMARY KEY,
+     user_id text NOT NULL,
+     old_handle text,
+     new_handle text,
+     old_set_at timestamptz,
+     source text NOT NULL CHECK (source IN ('user', 'staff')),
+     changed_at timestamptz NOT NULL DEFAULT now(),
+     CHECK (old_handle IS NOT NULL OR new_handle IS NOT NULL)
+   );
+   CREATE INDEX handle_changes_user ON handle_changes (user_id, changed_at);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

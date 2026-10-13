@@ -7,7 +7,7 @@ import { MatrixAuth, StaffGate } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { migrate, openDb } from "./db.js";
 import { ApiError } from "./errors.js";
-import { availability, lookup, myHandle, resolve, setHandle } from "./handles.js";
+import { availability, handleChanges, lookup, myHandle, pruneHandleChanges, removeHandle, resolve, setHandle } from "./handles.js";
 import { createPersonalInvite, inviteConnections, inviterReport, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
@@ -42,6 +42,7 @@ const limits = {
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
+  handleChanges: new RateLimiter(60, 60_000),
   setHandle: new RateLimiter(10, 3_600_000),
   invitePreview: new RateLimiter(30, 60_000),
   inviteCreate: new RateLimiter(20, 3_600_000),
@@ -78,6 +79,14 @@ const icpBrasilRoots = loadIcpBrasilRoots(config.ICP_BRASIL_ROOTS_DIR);
 console.log(`icp-brasil roots: ${icpBrasilRoots.length}`);
 const kickScan = () => void runScan(db, config, "pending").catch((e) => console.error(`cnpj scan failed: ${(e as Error).message}`));
 setInterval(kickScan, 15 * 60_000).unref();
+
+// Handle change history retention (ADR 0066). Logs the count only.
+const pruneChanges = () =>
+  void pruneHandleChanges(db)
+    .then((n) => n > 0 && console.log(`handle changes pruned: ${n}`))
+    .catch((e) => console.error(`handle change prune failed: ${(e as Error).message}`));
+pruneChanges();
+setInterval(pruneChanges, 24 * 3_600_000).unref();
 const CnpjBody = z.object({ cnpj: z.string().max(32) });
 const EcnpjBody = z.object({ signature: z.string().min(1).max(131_072) });
 const DomainBody = z.object({ domain: z.string().max(253) });
@@ -114,6 +123,7 @@ const ClaimBody = z.object({ claim_secret: SecretField });
 const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
 const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
+const HandleChangesBody = z.object({ user_ids: z.array(z.string().max(255)).max(100), since: z.iso.datetime({ offset: true }).optional() });
 // Lengths are checked by problemWithProfile(); these caps only bound the request.
 const ProfileBody = z.object({ enabled: z.boolean(), name: z.string().max(400), bio: z.string().max(2000) });
 const PHOTO_PATH = "/v1/me/profile/photo";
@@ -364,6 +374,14 @@ app.post("/v1/handles/resolve", async (c) => {
   return c.json(await resolve(db, (await parse(c, ResolveBody)).user_ids));
 });
 
+// ADR 0066: the app sends the Matrix IDs it shares rooms with. No membership check here, like resolve.
+app.post("/v1/handle-changes", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.handleChanges.check(userId);
+  const body = await parse(c, HandleChangesBody);
+  return c.json(await handleChanges(db, body.user_ids, body.since ? new Date(body.since) : undefined));
+});
+
 app.get("/v1/handles/:handle", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.lookup.check(userId);
@@ -424,6 +442,12 @@ app.put("/v1/me/handle", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.setHandle.check(userId);
   return c.json(await setHandle(db, userId, (await parse(c, HandleBody)).handle));
+});
+
+app.delete("/v1/me/handle", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.setHandle.check(userId);
+  return c.json(await removeHandle(db, userId));
 });
 
 app.get("/v1/me/business", async (c) => {
