@@ -184,6 +184,17 @@ const MIGRATIONS = [
      CHECK (old_handle IS NOT NULL OR new_handle IS NOT NULL)
    );
    CREATE INDEX handle_changes_user ON handle_changes (user_id, changed_at);`,
+  // Partner requests from the site (ADR 0067, bipe#177). Deleted after PARTNER_KEEP_DAYS.
+  `CREATE TABLE partner_requests (
+     id bigserial PRIMARY KEY,
+     organisation text NOT NULL,
+     name text NOT NULL,
+     email text NOT NULL,
+     kind text NOT NULL,
+     message text,
+     lang text NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

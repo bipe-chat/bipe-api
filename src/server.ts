@@ -16,6 +16,7 @@ import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messa
 import { signup } from "./signup.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, WaitlistBody } from "./waitlist.js";
+import { askToPartner, PartnerBody, prunePartnerRequests } from "./partners.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
@@ -51,6 +52,8 @@ const limits = {
   setMessaging: new RateLimiter(30, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
+  partners: new RateLimiter(3, 3_600_000),
+  partnersGlobal: new RateLimiter(60, 3_600_000),
   events: new RateLimiter(30, 3_600_000),
   profile: new RateLimiter(60, 60_000),
   profilePhoto: new RateLimiter(120, 60_000),
@@ -87,6 +90,12 @@ const pruneChanges = () =>
     .catch((e) => console.error(`handle change prune failed: ${(e as Error).message}`));
 pruneChanges();
 setInterval(pruneChanges, 24 * 3_600_000).unref();
+const prunePartners = () =>
+  void prunePartnerRequests(db)
+    .then((n) => n > 0 && console.log(`partner requests pruned: ${n}`))
+    .catch((e) => console.error(`partner request prune failed: ${(e as Error).message}`));
+prunePartners();
+setInterval(prunePartners, 24 * 3_600_000).unref();
 const CnpjBody = z.object({ cnpj: z.string().max(32) });
 const EcnpjBody = z.object({ signature: z.string().min(1).max(131_072) });
 const DomainBody = z.object({ domain: z.string().max(253) });
@@ -271,6 +280,16 @@ app.post("/v1/waitlist", async (c) => {
   limits.waitlist.check(clientIp(c));
   limits.waitlistGlobal.check("all");
   await joinWaitlist(db, await parse(c, WaitlistBody));
+  return c.body(null, 202);
+});
+
+// The partner form on the public site posts from the browser (bipe#177).
+app.use("/v1/partners", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
+
+app.post("/v1/partners", async (c) => {
+  limits.partners.check(clientIp(c));
+  limits.partnersGlobal.check("all");
+  await askToPartner(db, accounts.mailer, config.BIPE_PARTNERS_TO, await parse(c, PartnerBody));
   return c.body(null, 202);
 });
 

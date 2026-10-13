@@ -11,6 +11,8 @@
 //   node dist/cli.js waitlist export <platform>      (CSV email,lang for the launch email)
 //   node dist/cli.js waitlist clear <platform>       (after the launch email: deletes those rows)
 //   node dist/cli.js waitlist forget <email>         (LGPD deletion request)
+//   node dist/cli.js partners list                   (partner requests from the site, newest first)
+//   node dist/cli.js partners forget <email>         (LGPD deletion request)
 //   node dist/cli.js registry fetch [YYYY-MM]          (download a Receita CNPJ release; newest when no month)
 //   node dist/cli.js registry scan [--all]             (scan the newest release for claims; --all re-checks verified ones)
 //   node dist/cli.js business list
@@ -77,6 +79,13 @@ try {
     console.log(`deleted ${rowCount} ${arg} rows`);
   } else if (group === "waitlist" && command === "forget" && arg) {
     const { rowCount } = await db.query("DELETE FROM waitlist WHERE email = $1", [arg.trim().toLowerCase()]);
+    console.log(`deleted ${rowCount} rows`);
+  } else if (group === "partners" && command === "list") {
+    const { rows } = await db.query("SELECT id, created_at, organisation, kind, name, email, lang, message FROM partner_requests ORDER BY created_at DESC");
+    for (const r of rows) console.log(`#${r.id} ${r.created_at.toISOString()} ${r.organisation} (${r.kind}, ${r.lang})\n  ${r.name} <${r.email}>\n  ${r.message ?? "(sem mensagem)"}\n`);
+    console.log(`${rows.length} requests`);
+  } else if (group === "partners" && command === "forget" && arg) {
+    const { rowCount } = await db.query("DELETE FROM partner_requests WHERE email = $1", [arg.trim().toLowerCase()]);
     console.log(`deleted ${rowCount} rows`);
   } else if (group === "registry" && command === "fetch") {
     // Same defaults as config.ts; the CLI does not need the MAS settings.
