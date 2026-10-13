@@ -212,6 +212,10 @@
     "bipe_tab_you": "You",
     "bipe_self_chat_title": "Notes",
     "bipe_self_chat_subtitle": "Messages only you can see",
-    "bipe_self_chat_error": "Couldn't open your notes. Try again."
+    "bipe_self_chat_error": "Couldn't open your notes. Try again.",
+    "bipe_onboarding_title": "Know who you're talking to.",
+    "bipe_onboarding_point_scam": "A warning when a message looks like a scam.",
+    "bipe_onboarding_point_handle": "Your @, not your number.",
+    "bipe_onboarding_point_no_ads": "No ads. Your data isn't for sale."
   }
 }

@@ -212,6 +212,10 @@
     "bipe_tab_you": "Você",
     "bipe_self_chat_title": "Anotações",
     "bipe_self_chat_subtitle": "Mensagens que só você vê",
-    "bipe_self_chat_error": "Não deu para abrir suas anotações. Tente de novo."
+    "bipe_self_chat_error": "Não deu para abrir suas anotações. Tente de novo.",
+    "bipe_onboarding_title": "Saiba com quem está falando.",
+    "bipe_onboarding_point_scam": "Um aviso quando uma mensagem tem cara de golpe.",
+    "bipe_onboarding_point_handle": "Seu @, não seu número.",
+    "bipe_onboarding_point_no_ads": "Sem anúncio. Seus dados não estão à venda."
   }
 }
