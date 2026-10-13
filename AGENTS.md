@@ -1,6 +1,6 @@
 # bipe-api: agent notes
 
-Bipe API: invite sign-up and the handle directory (docs/usernames.md option A). Contract: `../bipe-shared/api/openapi.yaml`. Change the contract first, then the code.
+Bipe API: invite sign-up, device-first accounts and the handle directory (docs/usernames.md option A, ADR 0057). Contract: `../bipe-shared/api/openapi.yaml`. Change the contract first, then the code.
 
 - Stack: Node 24, TypeScript, Hono, pg, Zod. pnpm only. Exact versions in package.json.
 - Green gate: `pnpm build`.
@@ -19,6 +19,14 @@ Bipe API: invite sign-up and the handle directory (docs/usernames.md option A). 
 - Receita's WebDAV share answers 200 with an empty body unless the request has a PROPFIND body and a browser-like user agent.
 - Public profiles (ADR 0041 in bipe/docs/adr): `GET /v1/profiles/{handle}` and its `/photo` are public with CORS for `PUBLIC_SITE_URL`, exact handle only, and answer the same 404 for "no handle" and "profile off". `PUT /v1/me/profile/photo` takes a JPEG up to `photoMaxBytes` (the only route with a larger body limit). `stripJpeg()` drops every APPn and COM segment and fails closed on anything it cannot parse. Photo URLs use `PUBLIC_API_URL`. No badge store exists yet, so profiles carry no badge.
 - Invite codes: `extractInviteCode()` finds the code in a bare code, a link or a pasted message. It must pass `../bipe-shared/test-vectors/invite-codes.json` (iOS and Android pass the same file).
+- Device-first accounts (ADR 0057, ADR 0059 in bipe/docs/adr; `src/accounts.ts`, `src/secrets.ts`, `src/mailer.ts`):
+  - `POST /v1/signup` without `password` is device-first: the API makes a random 32-byte password, sets it through the MAS admin API and returns it once with a 32-byte recovery token. It never stores or logs the password; it stores only the SHA-256 of the token. Email is an optional recovery fallback in `recovery_emails`, never given to MAS. With `email` and `password` it is the old beta sign-up (MAS login email and own password).
+  - PIN: `pinProblem()` from bipe-shared (`registries/accounts.json`, `test-vectors/pins.json`). Hash: scrypt (N 2^15, r 8, p 1, 16-byte salt, 32-byte key) over HMAC-SHA256(key `BIPE_PIN_PEPPER`, PIN), stored as `scrypt1$salt$hash`. The pepper is only in the environment. Without it the PIN routes answer `internal`. `verifyPin()` locks the row, so parallel tries cannot pass `pinMaxWrongTries` (5, in total over every path). A correct PIN sets the count to 0. A blocked PIN refuses even the right PIN until a reset.
+  - Every recovery path checks its other factor first, then the PIN (ADR 0059): `POST /v1/recovery/token` (synced token + PIN, no delay, new password and token), `POST /v1/recovery/email` (link, always 202), `.../email/confirm` (link + PIN for access, or a new PIN for a reset; starts the 24-hour delay), `POST /v1/recovery/{id}/claim` (claim secret; after the delay it returns new credentials once, or applies the new PIN). Old devices read waiting recoveries in `GET /v1/me/account` and cancel with `POST /v1/me/recoveries/{id}/cancel`. Guardian and CPF recovery are not built (no guardian store, no Pix verification yet).
+  - Signed-in device: `PUT /v1/me/pin` (no old PIN: the app asks for a biometric check first, ADR 0057), `POST /v1/me/pin/check`, `POST /v1/me/device-first` (beta account to hidden password, needs a PIN), `POST /v1/me/recovery-token`, `PUT`/`DELETE /v1/me/email`. `POST /v1/email/verify` is public with CORS for `PUBLIC_SITE_URL`.
+  - Links: `PUBLIC_SITE_URL/recuperar/#<token>` and `/confirmar-email/#<token>`. The token is in the fragment, so it stays out of web server logs.
+  - Outgoing email: `BIPE_SMTP_HOST` (empty: email off, the email routes answer `email_unavailable`), `BIPE_SMTP_PORT` (465 implicit TLS; any other port must offer STARTTLS, else the send fails: never plain text), `BIPE_SMTP_USER`, `BIPE_SMTP_PASSWORD` (AUTH PLAIN after TLS), `BIPE_MAIL_FROM`. Certificates are checked. Mail text comes from bipe-shared strings `bipe_mail_*`. Sends run in the background; a failure logs the SMTP reply code only, never the address.
+  - Unverified (2026-10-13): that MAS v1.26.0 keeps the old device's sessions when the admin API sets a new password; that the MAS admin `user-emails` resource has `attributes.user_id`.
 - Write docs in ASD-STE100 style.
 
 ## Decisions

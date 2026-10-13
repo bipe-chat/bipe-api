@@ -128,6 +128,49 @@ const MIGRATIONS = [
      photo_version text,
      updated_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Device-first accounts (ADR 0057, ADR 0059). No password and no PIN in clear: the hidden MAS password is
+  // never stored; the PIN is a peppered scrypt hash; tokens, links and claim secrets are SHA-256 hashes.
+  // Beta accounts have no row until they set a PIN or move (device_first false).
+  `CREATE TABLE account_secrets (
+     user_id text PRIMARY KEY,
+     device_first boolean NOT NULL DEFAULT false,
+     pin_hash text,
+     pin_wrong_tries integer NOT NULL DEFAULT 0 CHECK (pin_wrong_tries >= 0),
+     pin_blocked_at timestamptz,
+     pin_set_at timestamptz,
+     token_hash text UNIQUE,
+     token_set_at timestamptz,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   -- Recovery fallback, not a login. email is the verified address; pending_* waits for its link.
+   CREATE TABLE recovery_emails (
+     user_id text PRIMARY KEY,
+     email text UNIQUE,
+     verified_at timestamptz,
+     pending_email text,
+     pending_hash text UNIQUE,
+     pending_expires_at timestamptz,
+     lang text NOT NULL DEFAULT 'pt' CHECK (lang IN ('pt', 'en'))
+   );
+   -- link_sent: email link out, factor not passed yet (old devices do not see it).
+   -- waiting: factor and PIN passed, delay running. completed, cancelled: ended.
+   CREATE TABLE recoveries (
+     id text PRIMARY KEY,
+     user_id text NOT NULL,
+     method text NOT NULL CHECK (method IN ('token', 'email', 'guardian', 'cpf')),
+     purpose text CHECK (purpose IN ('access', 'pin_reset')),
+     state text NOT NULL CHECK (state IN ('link_sent', 'waiting', 'completed', 'cancelled')),
+     link_hash text UNIQUE,
+     link_expires_at timestamptz,
+     claim_hash text,
+     new_pin_hash text,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     started_at timestamptz,
+     ready_at timestamptz,
+     ended_at timestamptz,
+     ended_by text
+   );
+   CREATE INDEX recoveries_user ON recoveries (user_id, created_at DESC);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+// Compose passes unset variables as "". Treat an empty value as unset.
+const emptyAsUnset = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : typeof v === "string" ? v.trim() : v), schema.optional());
+
 const Env = z.object({
   PORT: z.coerce.number().int().default(8080),
   DATABASE_URL: z.string().min(1),
@@ -34,6 +38,16 @@ const Env = z.object({
   PUBLIC_API_URL: z.url().default("https://api.bipe.net.br"),
   // HMAC key for stored phone numbers. Without it the phone endpoints answer "internal".
   PHONE_HMAC_SECRET: z.string().min(32).optional(),
+  // Device-first accounts (ADR 0057): secret key for the PIN hashes, 32 bytes as hex. Never in the database.
+  // Without it the PIN routes answer "internal". A value that is not 64 hex characters stops the start.
+  BIPE_PIN_PEPPER: emptyAsUnset(z.string().regex(/^[0-9a-fA-F]{64}$/, "64 hex characters")),
+  // Outgoing email for recovery links and notices. Empty host: email is off. Port 465: implicit TLS.
+  // Any other port: STARTTLS is required; the client never sends in plain text.
+  BIPE_SMTP_HOST: emptyAsUnset(z.string()),
+  BIPE_SMTP_PORT: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.coerce.number().int().min(1).max(65535).default(587)),
+  BIPE_SMTP_USER: emptyAsUnset(z.string()),
+  BIPE_SMTP_PASSWORD: emptyAsUnset(z.string()),
+  BIPE_MAIL_FROM: z.string().regex(/^[^\r\n<>]*<[^\s<>@]+@[^\s<>@]+>$|^[^\s<>@]+@[^\s<>@]+$/, "an address, or a name and <address>").default("Bipe <nao-responda@bipe.chat>"),
 });
 
 export type Config = z.infer<typeof Env>;

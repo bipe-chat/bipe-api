@@ -18,9 +18,15 @@ export type ErrorId =
   | "cnpj_invalid"
   | "cnpj_not_active"
   | "cnpj_taken"
-  | "signature_invalid";
+  | "signature_invalid"
+  | "pin_weak"
+  | "pin_wrong"
+  | "pin_blocked"
+  | "pin_not_set"
+  | "recovery_invalid"
+  | "email_unavailable";
 
-const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500> = {
+const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503> = {
   bad_request: 400,
   invite_invalid: 403,
   invite_quota_exhausted: 403,
@@ -40,13 +46,19 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500> = {
   cnpj_not_active: 403,
   cnpj_taken: 409,
   signature_invalid: 403,
+  pin_weak: 400,
+  pin_wrong: 403,
+  pin_blocked: 403,
+  pin_not_set: 409,
+  recovery_invalid: 403,
+  email_unavailable: 503,
 };
 
 export class ApiError extends Error {
   constructor(
     readonly id: ErrorId,
     readonly reason?: string,
-    readonly extra?: Record<string, string>,
+    readonly extra?: Record<string, string | number>,
   ) {
     super(id);
   }

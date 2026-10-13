@@ -21,6 +21,9 @@ import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan,
 import { loadIcpBrasilRoots } from "./ecnpj.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
 import { profileRules } from "./registry.js";
+import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
+import { Mailer } from "./mailer.js";
+import { PinHasher, secretHash } from "./secrets.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -30,6 +33,8 @@ const auth = new MatrixAuth(config);
 const staff = new StaffGate(auth, mas);
 const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
+const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config) };
+console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 
 const limits = {
   signup: new RateLimiter(5, 3_600_000),
@@ -54,6 +59,18 @@ const limits = {
   businessClaim: new RateLimiter(10, 3_600_000),
   businessProof: new RateLimiter(20, 3_600_000),
   businessDomain: new RateLimiter(30, 3_600_000),
+  // Device-first accounts (ADR 0057). The PIN limit (5 wrong in total) is in the database; these limit cost and spam.
+  pinSet: new RateLimiter(10, 3_600_000),
+  pinCheck: new RateLimiter(10, 3_600_000),
+  credentials: new RateLimiter(5, 3_600_000),
+  emailSet: new RateLimiter(5, 3_600_000),
+  emailVerify: new RateLimiter(20, 3_600_000),
+  recoveryToken: new RateLimiter(10, 3_600_000),
+  recoveryTokenGlobal: new RateLimiter(300, 3_600_000),
+  recoveryEmail: new RateLimiter(5, 3_600_000),
+  recoveryEmailAddress: new RateLimiter(3, 3_600_000),
+  recoveryConfirm: new RateLimiter(10, 3_600_000),
+  recoveryClaim: new RateLimiter(120, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -65,11 +82,17 @@ const CnpjBody = z.object({ cnpj: z.string().max(32) });
 const EcnpjBody = z.object({ signature: z.string().min(1).max(131_072) });
 const DomainBody = z.object({ domain: z.string().max(253) });
 
+const Lang = z.enum(["pt", "en"]);
+const PinField = z.string().max(64);
+const SecretField = z.string().max(128);
 const SignupBody = z.object({
   // A code, an invite link or a whole pasted message: the server finds the code in it.
   invite_code: z.string().max(2048).optional(),
-  email: z.email().max(254),
-  password: z.string().min(8).max(256),
+  // Device-first: email optional (recovery fallback), no password. Legacy: email and password (login).
+  email: z.email().max(254).optional(),
+  password: z.string().min(8).max(256).optional(),
+  pin: PinField.optional(),
+  lang: Lang.optional(),
   handle: z.string().max(64).optional(),
   display_name: z.string().max(100).optional(),
   attestation: z
@@ -81,6 +104,13 @@ const SignupBody = z.object({
     .optional(),
 });
 const HandleBody = z.object({ handle: z.string().max(64) });
+const PinBody = z.object({ pin: PinField });
+const EmailBody = z.object({ email: z.email().max(254), lang: Lang.default("pt") });
+const TokenBody = z.object({ token: SecretField });
+const RedeemBody = z.object({ recovery_token: SecretField, pin: PinField });
+const RecoveryEmailBody = z.object({ email: z.email().max(254) });
+const ConfirmBody = z.object({ token: SecretField, pin: PinField.optional(), new_pin: PinField.optional() });
+const ClaimBody = z.object({ claim_secret: SecretField });
 const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
 const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
@@ -121,7 +151,104 @@ app.post("/v1/attest/challenge", (c) => {
 app.post("/v1/signup", async (c) => {
   limits.signup.check(clientIp(c));
   limits.signupGlobal.check("all");
-  return c.json(await signup(db, mas, config, await parse(c, SignupBody)), 201);
+  const result = await signup(accounts, await parse(c, SignupBody));
+  // Device-first: the body carries the hidden password and the recovery token, once.
+  c.header("cache-control", "no-store");
+  return c.json(result, 201);
+});
+
+// --- Device-first accounts (ADR 0057, ADR 0059) --------------------------------------------------------
+
+app.get("/v1/me/account", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await accountStatus(accounts, userId));
+});
+
+app.put("/v1/me/pin", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.pinSet.check(userId);
+  await setPin(accounts, userId, (await parse(c, PinBody)).pin);
+  return c.body(null, 204);
+});
+
+app.post("/v1/me/pin/check", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.pinCheck.check(userId);
+  await verifyPin(accounts, userId, (await parse(c, PinBody)).pin);
+  return c.body(null, 204);
+});
+
+app.post("/v1/me/device-first", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.credentials.check(userId);
+  c.header("cache-control", "no-store");
+  return c.json(await moveToDeviceFirst(accounts, userId));
+});
+
+app.post("/v1/me/recovery-token", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.credentials.check(userId);
+  c.header("cache-control", "no-store");
+  return c.json(await rotateRecoveryToken(accounts, userId));
+});
+
+app.put("/v1/me/email", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.emailSet.check(userId);
+  const { email, lang } = await parse(c, EmailBody);
+  await setEmail(accounts, userId, email, lang);
+  return c.body(null, 202);
+});
+
+app.delete("/v1/me/email", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await removeEmail(accounts, userId);
+  return c.body(null, 204);
+});
+
+app.post("/v1/me/recoveries/:id/cancel", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await cancelRecovery(accounts, userId, c.req.param("id").slice(0, 64));
+  return c.body(null, 204);
+});
+
+// The confirm page on the public site posts the token from the link fragment.
+app.use("/v1/email/verify", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
+
+app.post("/v1/email/verify", async (c) => {
+  limits.emailVerify.check(clientIp(c));
+  await verifyEmail(accounts, (await parse(c, TokenBody)).token);
+  return c.body(null, 204);
+});
+
+app.post("/v1/recovery/token", async (c) => {
+  limits.recoveryToken.check(clientIp(c));
+  limits.recoveryTokenGlobal.check("all");
+  const { recovery_token, pin } = await parse(c, RedeemBody);
+  c.header("cache-control", "no-store");
+  return c.json(await redeemToken(accounts, recovery_token, pin));
+});
+
+app.post("/v1/recovery/email", async (c) => {
+  limits.recoveryEmail.check(clientIp(c));
+  const { email } = await parse(c, RecoveryEmailBody);
+  limits.recoveryEmailAddress.check(secretHash(email.trim().toLowerCase()));
+  await requestRecoveryEmail(accounts, email);
+  return c.body(null, 202);
+});
+
+app.post("/v1/recovery/email/confirm", async (c) => {
+  limits.recoveryConfirm.check(clientIp(c));
+  const { token, pin, new_pin } = await parse(c, ConfirmBody);
+  c.header("cache-control", "no-store");
+  return c.json(await confirmRecoveryEmail(accounts, token, pin, new_pin), 201);
+});
+
+app.post("/v1/recovery/:id/claim", async (c) => {
+  limits.recoveryClaim.check(clientIp(c));
+  const { claim_secret } = await parse(c, ClaimBody);
+  c.header("cache-control", "no-store");
+  return c.json(await claimRecovery(accounts, c.req.param("id").slice(0, 64), claim_secret));
 });
 
 // The invite page on the public site reads the preview from the browser.

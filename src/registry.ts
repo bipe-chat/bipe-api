@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from bipe-shared by `pnpm gen`. Never edit generated/.
-import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, profileProblem } from "./generated/lib/registries.mjs";
+import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
@@ -76,4 +76,35 @@ export const profileRules = reg.profiles as {
 /** Public profile name and bio check (registries/profiles.json and the reserved names). */
 export function problemWithProfile(name: string, bio: string): ProfileProblem | null {
   return profileProblem({ name, bio }, reg) as ProfileProblem | null;
+}
+
+// --- Device-first accounts (ADR 0057, ADR 0059) ------------------------------------------------------
+
+export type PinProblem = "not_digits" | "wrong_length" | "repeated_digit" | "sequence" | "date";
+
+export type RecoveryMethod = "token" | "email" | "guardian" | "cpf";
+
+export const accountRules = reg.accounts as {
+  pinLength: number;
+  pinMaxWrongTries: number;
+  recoveryDelayHours: Record<RecoveryMethod, number>;
+  guardianApprovalsMax: number;
+  recoveryLinkMinutes: number;
+  emailVerifyLinkHours: number;
+  recoveryClaimDays: number;
+};
+
+/** The shared PIN rule (registries/accounts.json, test-vectors/pins.json). Null when the PIN is strong enough. */
+export function problemWithPin(pin: string): PinProblem | null {
+  return pinProblem(pin, reg) as PinProblem | null;
+}
+
+export type Lang = "pt" | "en";
+
+/** A string from bipe-shared/strings with %N$s placeholders filled. */
+export function appString(lang: Lang, key: string, ...args: string[]): string {
+  const table = (lang === "en" ? reg.stringsEn.strings : reg.strings.strings) as Record<string, string>;
+  const value = table[key];
+  if (value === undefined) throw new Error(`missing string ${key}`);
+  return value.replace(/%(\d+)\$s/g, (_, n: string) => args[Number(n) - 1] ?? "");
 }

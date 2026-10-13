@@ -15,6 +15,7 @@ export function loadRegistries(root) {
     profiles: read("registries/profiles.json"),
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
+    accounts: read("registries/accounts.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -85,6 +86,15 @@ function validate(reg) {
   if (!/^[0-9]$/.test(ph.mobilePrefix)) fail("phones: mobilePrefix");
   if (!(Number.isInteger(ph.maxInputLength) && ph.maxInputLength > 0)) fail("phones: maxInputLength");
   if (!(Number.isInteger(ph.internationalMinDigits) && ph.internationalMinDigits > 0 && ph.internationalMaxDigits >= ph.internationalMinDigits)) fail("phones: international digit range");
+  const ac = reg.accounts;
+  // DDMMYYYY and YYYYMMDD need exactly 8 digits.
+  if (ac.pinLength !== 8) fail("accounts: pinLength must be 8 (the date check reads DDMMYYYY and YYYYMMDD)");
+  for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays"]) {
+    if (!(Number.isInteger(ac[k]) && ac[k] > 0)) fail(`accounts: ${k}`);
+  }
+  if (!(ac.pinDateYearMin >= 1000 && ac.pinDateYearMax <= 9999 && ac.pinDateYearMin <= ac.pinDateYearMax)) fail("accounts: pin date years");
+  if (Object.keys(ac.recoveryDelayHours).sort().join() !== "cpf,email,guardian,token") fail("accounts: recoveryDelayHours must have cpf, email, guardian and token");
+  for (const [k, v] of Object.entries(ac.recoveryDelayHours)) if (!(Number.isInteger(v) && v >= 0)) fail(`accounts: recoveryDelayHours.${k}`);
   for (const k of Object.keys(reg.homoglyphs.map)) if ([...k].length !== 1) fail(`homoglyph key "${k}" must be one character`);
   // Link hosts map a range of the folded message onto the plain message, so folding must keep every UTF-16 index.
   for (const [k, v] of Object.entries(reg.homoglyphs.map)) {
@@ -298,4 +308,26 @@ export function profileProblem({ name, bio }, reg) {
   if ([...b].length > p.bioMaxLength) return "bio_too_long";
   if (b.split("\n").length > p.bioMaxLines) return "bio_too_many_lines";
   return null;
+}
+
+// PIN check (ADR 0057, registries/accounts.json). Input is what the user typed. Returns null when the PIN is
+// strong enough, else a reason id shared by every platform: not_digits, wrong_length, repeated_digit, sequence, date.
+export function pinProblem(pin, reg) {
+  const a = reg.accounts;
+  if (!/^[0-9]*$/.test(pin)) return "not_digits";
+  if (pin.length !== a.pinLength) return "wrong_length";
+  const d = [...pin].map(Number);
+  if (d.every((x) => x === d[0])) return "repeated_digit";
+  // Up (step 1) or down (step 9, which is minus 1 modulo 10), with wrap: 78901234 and 21098765 count.
+  for (const step of [1, 9]) if (d.every((x, i) => i === 0 || x === (d[i - 1] + step) % 10)) return "sequence";
+  const n = (from, to) => Number(pin.slice(from, to));
+  if (isDate(n(4, 8), n(2, 4), n(0, 2), a) || isDate(n(0, 4), n(4, 6), n(6, 8), a)) return "date";
+  return null;
+}
+
+function isDate(year, month, day, a) {
+  if (year < a.pinDateYearMin || year > a.pinDateYearMax || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  return day <= days;
 }

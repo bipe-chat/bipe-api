@@ -42,6 +42,13 @@ export class Mas {
     return (await this.json(res)).data.length > 0;
   }
 
+  /** The MAS user id that holds the address as a login email (beta accounts), or null. */
+  async emailOwner(email: string): Promise<string | null> {
+    const res = await this.call("GET", `/user-emails?filter[email]=${encodeURIComponent(email)}&page[first]=1`);
+    const data = (await this.json(res)).data as { attributes: { user_id: string } }[];
+    return data[0]?.attributes.user_id ?? null;
+  }
+
   /** Returns false when the address is already attached to a user. */
   async addEmail(userId: string, email: string): Promise<boolean> {
     const res = await this.call("POST", "/user-emails", { user_id: userId, email });
