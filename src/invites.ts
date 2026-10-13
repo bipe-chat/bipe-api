@@ -12,7 +12,7 @@ export function newInviteCode(): string {
   return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
 }
 
-// Rule: proseio-shared/registries/invite-codes.json, through the generated reference implementation.
+// Rule: bipe-shared/registries/invite-codes.json, through the generated reference implementation.
 export { extractInviteCode };
 
 /** Hash of a code already normalised by extractInviteCode (or created by newInviteCode). */

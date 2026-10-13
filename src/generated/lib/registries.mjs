@@ -269,7 +269,7 @@ export function formatCnpj(cnpj) {
   return `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5, 8)}/${cnpj.slice(8, 12)}-${cnpj.slice(12)}`;
 }
 
-// Public profile checks (proseio/docs/adr ADR 0041). Lengths count code points, like the API.
+// Public profile checks (bipe/docs/adr ADR 0041). Lengths count code points, like the API.
 // Returns null when valid, else a reason id shared by every platform.
 export function profileProblem({ name, bio }, reg) {
   const p = reg.profiles;

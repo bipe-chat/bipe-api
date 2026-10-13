@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-// Reference implementation copied from proseio-shared by `pnpm gen`. Never edit generated/.
+// Reference implementation copied from bipe-shared by `pnpm gen`. Never edit generated/.
 import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, profileProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).

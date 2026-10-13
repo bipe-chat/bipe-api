@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p .",
     "start": "node dist/server.js",
-    "gen": "node ../proseio-shared/tools/gen.mjs"
+    "gen": "node ../bipe-shared/tools/gen.mjs"
   },
   "dependencies": {
     "@hono/node-server": "1.19.17",

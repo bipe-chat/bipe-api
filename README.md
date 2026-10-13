@@ -1,6 +1,6 @@
 # bipe-api
 
-Invite sign-up and handle directory for Bipe. See `AGENTS.md` and `../proseio-shared/api/openapi.yaml`.
+Invite sign-up and handle directory for Bipe. See `AGENTS.md` and `../bipe-shared/api/openapi.yaml`.
 
 ```bash
 pnpm install

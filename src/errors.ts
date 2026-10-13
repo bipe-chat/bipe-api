@@ -1,4 +1,4 @@
-// Error ids match proseio-shared/api/openapi.yaml components.schemas.Error.
+// Error ids match bipe-shared/api/openapi.yaml components.schemas.Error.
 export type ErrorId =
   | "bad_request"
   | "invite_invalid"
