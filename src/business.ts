@@ -25,8 +25,8 @@ type ClaimRow = {
 type RegistryRow = { active: boolean; legal_name: string | null; trade_name: string | null; release_month: string };
 type DomainRow = { domain: string; token: string; verified_at: Date | null };
 
-const txtName = (domain: string) => `_proseio.${domain}`;
-const txtValue = (token: string) => `proseio-verification=${token}`;
+const txtName = (domain: string) => `_bipe.${domain}`;
+const txtValue = (token: string) => `bipe-verification=${token}`;
 
 async function claimOf(db: Db, userId: string): Promise<ClaimRow | null> {
   const { rows } = await db.query<ClaimRow>("SELECT * FROM business_claims WHERE user_id = $1", [userId]);

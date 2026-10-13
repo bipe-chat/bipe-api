@@ -83,7 +83,7 @@ function validate(reg) {
   for (const [k, v] of Object.entries(reg.homoglyphs.map)) {
     if (k.length !== 1 || v.length !== 1 || /\s/.test(k) || /\s/.test(v)) fail(`homoglyph "${k}" -> "${v}" must be one UTF-16 unit each, not whitespace`);
   }
-  for (const key of Object.keys(reg.strings.strings)) if (!/^proseio_[a-z0-9_]+$/.test(key)) fail(`string key "${key}"`);
+  for (const key of Object.keys(reg.strings.strings)) if (!/^bipe_[a-z0-9_]+$/.test(key)) fail(`string key "${key}"`);
   const pt = Object.keys(reg.strings.strings).sort().join(), en = Object.keys(reg.stringsEn.strings).sort().join();
   if (pt !== en) fail("strings/pt-BR.json and strings/en.json must have the same keys");
   for (const [key, value] of Object.entries(reg.strings.strings)) {
@@ -269,7 +269,7 @@ export function formatCnpj(cnpj) {
   return `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5, 8)}/${cnpj.slice(8, 12)}-${cnpj.slice(12)}`;
 }
 
-// Public profile checks (proseio ADR 0041). Lengths count code points, like the API.
+// Public profile checks (proseio/docs/adr ADR 0041). Lengths count code points, like the API.
 // Returns null when valid, else a reason id shared by every platform.
 export function profileProblem({ name, bio }, reg) {
   const p = reg.profiles;

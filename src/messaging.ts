@@ -1,5 +1,5 @@
 // "Quem pode me mandar mensagem" (docs/usernames.md "First contact"). The Synapse module
-// proseio_messaging asks POST /internal/v1/may-invite before every invite and blocks a "false".
+// bipe_messaging asks POST /internal/v1/may-invite before every invite and blocks a "false".
 import { timingSafeEqual } from "node:crypto";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";

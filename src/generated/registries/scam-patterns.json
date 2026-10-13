@@ -156,7 +156,7 @@
     "whatsapp",
     "netflix",
     "shopee",
-    "proseio"
+    "bipe"
   ],
   "officialDomains": [
     "gov.br",
@@ -187,6 +187,8 @@
     "whatsapp.net",
     "netflix.com",
     "shopee.com.br",
+    "bipe.chat",
+    "bipe.net.br",
     "proseio.com.br"
   ],
   "bankAlertSubjectWords": [

@@ -1,4 +1,4 @@
-// Apple App Attest: proves a sign-up comes from a genuine Proseio app on a real Apple device.
+// Apple App Attest: proves a sign-up comes from a genuine Bipe app on a real Apple device.
 // Verification follows Apple's "Validating apps that connect to your server" (attestation steps 1 to 9).
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
 import { readFileSync } from "node:fs";

@@ -16,22 +16,22 @@ const Env = z.object({
   // App Attest on sign-up (docs/adr). Anything but "false" requires a valid attestation.
   SIGNUP_ATTEST_REQUIRED: z.string().default("true").transform((v) => v !== "false"),
   // App IDs (TEAMID.bundleid) whose attestations are accepted, comma separated.
-  APP_ATTEST_APP_IDS: z.string().default("992N457T8D.br.com.proseio.app.dev").transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean)),
+  APP_ATTEST_APP_IDS: z.string().default("992N457T8D.chat.bipe.app.dev").transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean)),
   SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   // Personal invites each user may hold (pending plus used), before admin grants.
   INVITES_PER_USER: z.coerce.number().int().nonnegative().default(10),
   // A used invite gives its slot back this many days after the invitee joined.
   INVITE_RESPAWN_DAYS: z.coerce.number().int().positive().default(7),
-  // Shared with the Synapse module proseio_messaging only. Guards /internal/*.
-  PROSEIO_INTERNAL_SECRET: z.string().min(32),
-  PUBLIC_SITE_URL: z.url().default("https://proseio.com.br"),
+  // Shared with the Synapse module bipe_messaging only. Guards /internal/*.
+  BIPE_INTERNAL_SECRET: z.string().min(32),
+  PUBLIC_SITE_URL: z.url().default("https://bipe.chat"),
   // CNPJ verification (ADR 0042): where Receita releases live on disk, and the public share they come from.
   RECEITA_DIR: z.string().default("/data/receita"),
   RECEITA_WEBDAV_URL: z.url().default("https://arquivos.receitafederal.gov.br/public.php/webdav"),
   RECEITA_SHARE_TOKEN: z.string().min(1).default("YggdBLfdninEJX9"),
   ICP_BRASIL_ROOTS_DIR: z.string().default("certs/icp-brasil"),
   // Base of absolute URLs the API hands out (profile photos).
-  PUBLIC_API_URL: z.url().default("https://api.proseio.com.br"),
+  PUBLIC_API_URL: z.url().default("https://api.bipe.net.br"),
   // HMAC key for stored phone numbers. Without it the phone endpoints answer "internal".
   PHONE_HMAC_SECRET: z.string().min(32).optional(),
 });

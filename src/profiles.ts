@@ -1,4 +1,4 @@
-// Public profiles (proseio ADR 0041). Opt-in, reachable by the exact handle only, separate from
+// Public profiles (ADR 0041 in proseio/docs/adr). Opt-in, reachable by the exact handle only, separate from
 // the Matrix profile. No badge store exists yet, so no profile carries a badge.
 import { randomBytes } from "node:crypto";
 import type { Db } from "./db.js";

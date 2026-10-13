@@ -183,7 +183,7 @@ app.put("/v1/me/messaging", async (c) => {
 
 // Called by the Synapse module before every invite. Caddy does not route /internal/*.
 app.post("/internal/v1/may-invite", async (c) => {
-  checkInternal(c.req.header("x-proseio-internal"), config.PROSEIO_INTERNAL_SECRET);
+  checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
   const { inviter, invitee, shares_room } = await parse(c, MayInviteBody);
   return c.json(await mayInvite(db, inviter, invitee, shares_room));
 });
@@ -334,7 +334,7 @@ app.post("/v1/me/business/domains/:domain/check", async (c) => {
   return c.json(await checkDomain(db, userId, c.req.param("domain")));
 });
 
-// Staff report (ADR 0056) for the page proseio.com.br/admin/convites/.
+// Staff report (ADR 0056) for the page bipe.chat/admin/convites/.
 app.use("/v1/admin/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"], allowHeaders: ["authorization"] }));
 
 app.get("/v1/admin/inviters", async (c) => {
@@ -352,4 +352,4 @@ app.onError((err, c) => {
   return c.json({ error: "internal" }, 500);
 });
 
-serve({ fetch: app.fetch, port: config.PORT }, (info) => console.log(`proseio-api listening on ${info.port}`));
+serve({ fetch: app.fetch, port: config.PORT }, (info) => console.log(`bipe-api listening on ${info.port}`));

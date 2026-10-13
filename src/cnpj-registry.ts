@@ -1,4 +1,4 @@
-// Receita Federal CNPJ open data (ADR 0042). Proseio keeps the latest monthly release on disk and scans it
+// Receita Federal CNPJ open data (ADR 0042). Bipe keeps the latest monthly release on disk and scans it
 // for the CNPJs that have a claim. No third party sees which CNPJs we check, and nothing loads 60 million
 // rows into Postgres: a scan streams the zip files and keeps only the matching rows.
 //
@@ -133,7 +133,7 @@ export async function scanRelease(release: { month: string; dir: string }, cnpjs
 // and a browser-like user agent (the server answers 200 with an empty body otherwise; seen 12 October 2026).
 
 const DAV_BODY = '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/></d:prop></d:propfind>';
-const UA = "Mozilla/5.0 (compatible; proseio-api; +https://proseio.com.br)";
+const UA = "Mozilla/5.0 (compatible; bipe-api; +https://bipe.chat)";
 
 async function propfind(baseUrl: string, token: string, path: string): Promise<{ name: string; size: number }[]> {
   const res = await fetch(`${baseUrl}/${path}`, {

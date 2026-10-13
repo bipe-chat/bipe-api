@@ -59,7 +59,7 @@ const MIGRATIONS = [
      n integer NOT NULL CHECK (n >= 0),
      PRIMARY KEY (experiment, arm, event, day)
    );`,
-  // Phone-number discovery, phase 0 (proseio docs/phone-link.md). Numbers only as HMAC.
+  // Phone-number discovery, phase 0 (proseio/docs/phone-link.md). Numbers only as HMAC.
   `CREATE TABLE phone_links (
      user_id text PRIMARY KEY,
      phone_hmac text NOT NULL UNIQUE,

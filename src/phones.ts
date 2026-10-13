@@ -3,7 +3,7 @@ import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { normalizePhone } from "./registry.js";
 
-// Phone-number discovery, phase 0 (proseio docs/phone-link.md). Numbers are stored only as
+// Phone-number discovery, phase 0 (proseio/docs/phone-link.md). Numbers are stored only as
 // HMAC-SHA256 with a server secret; clear numbers are never stored and never logged.
 // Linking from the apps needs a proof (Pix phone key or SMS code, phases 1 and 2); until then
 // only the admin CLI links numbers.

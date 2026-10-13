@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Db } from "./db.js";
 
-// Waitlist for platforms without a build (ADR 0025). Proseio emails each address once, when the
+// Waitlist for platforms without a build (ADR 0025). Bipe emails each address once, when the
 // platform ships, then deletes it. Never log an address.
 
 export const WaitlistBody = z.object({
