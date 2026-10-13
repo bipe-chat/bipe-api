@@ -1,7 +1,8 @@
 {
-  "$comment": "Username (handle) rules, docs/usernames.md layer 2. The skeleton is normalize(handle) with separators removed; two handles with the same skeleton cannot both exist. ASCII-explicit pattern, portable to ICU, java.util.regex and V8.",
+  "$comment": "Username (handle) rules, docs/usernames.md layer 2. The skeleton is normalize(handle) with separators removed; two handles with the same skeleton cannot both exist. ASCII-explicit pattern, portable to ICU, java.util.regex and V8. ownerMinLength: a handle shorter than minLength is valid only when it is a key of handles in reserved-name-owners.json (ADR 0065).",
   "version": 1,
   "minLength": 3,
+  "ownerMinLength": 2,
   "maxLength": 30,
   "pattern": "^[a-z0-9](?:[a-z0-9_]|\\.(?!\\.))*[a-z0-9_]$",
   "skeletonStrip": "[._]",

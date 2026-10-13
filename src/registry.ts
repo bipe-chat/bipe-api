@@ -15,8 +15,12 @@ export const handleRules = reg.handles as {
   releaseHoldDays: number;
 };
 
-export function problemWithHandle(handle: string): HandleProblem | null {
-  return handleProblem(handle, reg) as HandleProblem | null;
+/**
+ * Without `claimant`: the shape check for lookups. With `claimant` (the Matrix user ID that wants the handle,
+ * "" for a new account): also refuses a handle owned by another user (reserved-name-owners.json, ADR 0065).
+ */
+export function problemWithHandle(handle: string, claimant?: string): HandleProblem | null {
+  return handleProblem(handle, reg, claimant) as HandleProblem | null;
 }
 
 export function skeletonOf(handle: string): string {

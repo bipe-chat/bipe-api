@@ -61,7 +61,14 @@ function validate(reg) {
   }
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
+  if (!(Number.isInteger(h.ownerMinLength) && h.ownerMinLength >= 1 && h.ownerMinLength <= h.minLength)) fail("handles: ownerMinLength");
   try { new RegExp(h.pattern); new RegExp(h.skeletonStrip, "g"); } catch (e) { fail(`handles regex: ${e.message}`); }
+  for (const [handle, owner] of Object.entries(reg.owners.handles)) {
+    if (handle.length < h.ownerMinLength || handle.length > h.maxLength || !new RegExp(h.pattern).test(handle)) fail(`reserved-name-owners: handle "${handle}" breaks the handle rules`);
+    if (handleSkeleton(handle, reg) !== handle) fail(`reserved-name-owners: handle "${handle}" must be its own skeleton`);
+    if (reservedHandleSkeletons(reg).includes(handle)) fail(`reserved-name-owners: handle "${handle}" is a reserved name`);
+    if (!/^@[a-z0-9._=\/+-]+:[a-z0-9.-]+$/.test(owner)) fail(`reserved-name-owners: handle "${handle}" owner "${owner}" is not a Matrix user ID`);
+  }
   const pr = reg.profiles;
   for (const k of ["nameMaxLength", "bioMaxLength", "bioMaxLines", "photoMaxBytes", "photoMaxPixels"]) {
     if (!(Number.isInteger(pr[k]) && pr[k] > 0)) fail(`profiles: ${k}`);
@@ -222,15 +229,25 @@ export function normalize(input, homoglyphMap) {
 
 // Handle checks (docs/usernames.md). Input is the raw handle without "@".
 // Returns null when valid, else a reason id shared by every platform.
-export function handleProblem(handle, reg) {
+// Without `claimant` it checks the shape only, as lookup, search and profile links do: a handle in
+// reserved-name-owners.json handles may be shorter than minLength (ADR 0065).
+// With `claimant` (the Matrix user ID that wants the handle; "" for a new account) a handle whose skeleton
+// is an owned handle is "reserved" for everyone except its owner.
+export function handleProblem(handle, reg, claimant) {
   const h = reg.handles;
-  if (handle.length < h.minLength) return "too_short";
+  const owned = reg.owners.handles;
+  if (handle.length < h.ownerMinLength) return "too_short";
   if (handle.length > h.maxLength) return "too_long";
+  if (handle.length < h.minLength && !Object.hasOwn(owned, handle)) return "too_short";
   if (!new RegExp(h.pattern).test(handle)) return "invalid_characters";
   const skeleton = handleSkeleton(handle, reg);
-  const reserved = Object.values(reg.reserved.categories).flat().map((n) => n.replace(/\s+/g, ""));
-  if (reserved.includes(skeleton)) return "reserved";
+  if (reservedHandleSkeletons(reg).includes(skeleton)) return "reserved";
+  if (claimant !== undefined && Object.hasOwn(owned, skeleton) && owned[skeleton] !== claimant) return "reserved";
   return null;
+}
+
+function reservedHandleSkeletons(reg) {
+  return Object.values(reg.reserved.categories).flat().map((n) => n.replace(/\s+/g, ""));
 }
 
 export function handleSkeleton(handle, reg) {

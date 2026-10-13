@@ -16,12 +16,15 @@
 //   node dist/cli.js business list
 //   node dist/cli.js business verify <user_id>         (staff path, ADR 0042; registry must show the CNPJ active)
 //   node dist/cli.js business revoke <user_id>
+//   node dist/cli.js handle set <user_id> <handle>    (staff: skips the 30-day cooldown; still validates, holds the old handle, refuses a taken one)
 //   node dist/cli.js experiment report <experiment>  (for example headline-77: visitors, clicks, sign-ups per arm)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
 import { linkPhone, PhoneHasher, unlinkPhone } from "./phones.js";
 import { experimentReport } from "./experiments.js";
+import { ApiError } from "./errors.js";
+import { setHandle } from "./handles.js";
 import { revokeByStaff, runScan, verifyByStaff } from "./business.js";
 import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import type { Config } from "./config.js";
@@ -90,6 +93,15 @@ try {
          FROM business_claims c LEFT JOIN cnpj_registry r ON r.cnpj = c.cnpj ORDER BY c.created_at`,
     );
     console.table(rows);
+  } else if (group === "handle" && command === "set" && arg?.startsWith("@") && arg2) {
+    try {
+      const result = await setHandle(db, arg, arg2, { staff: true });
+      console.log(`${arg} has handle @${"handle" in result ? result.handle : "?"} (staff)`);
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e;
+      console.error(`refused: ${e.id}${e.reason ? ` (${e.reason})` : ""}`);
+      process.exitCode = 1;
+    }
   } else if (group === "business" && command === "verify" && arg?.startsWith("@")) {
     await verifyByStaff(db, arg);
     console.log(`verified ${arg} (staff)`);
@@ -105,7 +117,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | experiment report ID | registry fetch [YYYY-MM] | registry scan [--all] | business list | business verify @user | business revoke @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | handle set @user HANDLE | experiment report ID | registry fetch [YYYY-MM] | registry scan [--all] | business list | business verify @user | business revoke @user");
     process.exitCode = 2;
   }
 } finally {

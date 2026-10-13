@@ -1,5 +1,8 @@
 {
-  "$comment": "Which company may use each reserved name (ADR 0042). Key: a normalised name from reserved-names.json. Value: the CNPJ roots (first 8 characters) allowed to use it. Staff add an entry only after approving a claim from a CNPJ-verified account; the change is a reviewed commit. A reserved name with no entry here is usable by nobody. Server-side only: apps do not need it.",
+  "$comment": "Who may use each reserved name. owners (ADR 0042): key is a normalised name from reserved-names.json, value is the CNPJ roots (first 8 characters) allowed to use it. Staff add an entry only after approving a claim from a CNPJ-verified account. A reserved name with no entry here is usable by nobody. handles (ADR 0065): key is a handle that is its own skeleton, value is the Matrix user ID that alone may hold that handle or any handle with the same skeleton. Only these handles may be shorter than handles.json minLength (down to ownerMinLength). Every change is a reviewed commit. The apps get only the handle names.",
   "version": 1,
-  "owners": {}
+  "owners": {},
+  "handles": {
+    "mz": "@fmfwxwwys6v2:bipe.net.br"
+  }
 }

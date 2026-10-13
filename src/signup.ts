@@ -29,7 +29,7 @@ export async function signup(db: Db, mas: Mas, config: Config, input: SignupInpu
   else if (config.SIGNUP_ATTEST_REQUIRED) throw new ApiError("attestation_invalid");
 
   const email = input.email.trim().toLowerCase();
-  const wanted = input.handle ? validHandle(input.handle) : null;
+  const wanted = input.handle ? validHandle(input.handle, "") : null;
   if (wanted && !(await skeletonFree(db, wanted.skeleton, null))) throw new ApiError("handle_taken");
   if (await mas.emailInUse(email)) throw new ApiError("email_taken");
 

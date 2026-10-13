@@ -7,9 +7,10 @@ type Queryable = Db | pg.PoolClient;
 
 const DAY_MS = 86_400_000;
 
-export function validHandle(raw: string): { handle: string; skeleton: string } {
+/** `claimant`: the Matrix user ID that wants the handle, "" for a new account. */
+export function validHandle(raw: string, claimant: string): { handle: string; skeleton: string } {
   const handle = raw.replace(/^@/, "");
-  const problem = problemWithHandle(handle);
+  const problem = problemWithHandle(handle, claimant);
   if (problem) throw new ApiError("handle_invalid", problem);
   return { handle, skeleton: skeletonOf(handle) };
 }
@@ -27,7 +28,8 @@ export async function skeletonFree(db: Queryable, skeleton: string, forUserId: s
 
 export async function availability(db: Db, raw: string) {
   const handle = raw.replace(/^@/, "");
-  const problem = problemWithHandle(handle);
+  // No auth: answer as for a new account, so an owned handle is "reserved" (ADR 0065).
+  const problem = problemWithHandle(handle, "");
   if (problem) return { handle, available: false, reason: problem };
   const free = await skeletonFree(db, skeletonOf(handle), null);
   return free ? { handle, available: true } : { handle, available: false, reason: "taken" };
@@ -48,9 +50,12 @@ export async function myHandle(db: Db, userId: string) {
   };
 }
 
-/** Sets or changes a handle in one transaction. The old skeleton goes on hold. */
-export async function setHandle(db: Db, userId: string, raw: string) {
-  const { handle, skeleton } = validHandle(raw);
+/**
+ * Sets or changes a handle in one transaction. The old skeleton goes on hold.
+ * `staff` (admin CLI only) skips the change cooldown. Every other check still applies.
+ */
+export async function setHandle(db: Db, userId: string, raw: string, { staff = false }: { staff?: boolean } = {}) {
+  const { handle, skeleton } = validHandle(raw, userId);
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -63,7 +68,7 @@ export async function setHandle(db: Db, userId: string, raw: string) {
       await client.query("ROLLBACK");
       return myHandle(db, userId);
     }
-    if (current) {
+    if (current && !staff) {
       const changeableAt = new Date(current.set_at.getTime() + handleRules.changeCooldownDays * DAY_MS);
       if (changeableAt > new Date()) {
         throw new ApiError("handle_cooldown", undefined, { changeable_at: changeableAt.toISOString() });
