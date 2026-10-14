@@ -174,8 +174,8 @@ export function scamMatchIDs(message, reg) {
 }
 
 // The one warning to show for a message, or null: the first kind in
-// warningKindPriority whose rule applies.
-export function scamWarningKind(text, reg) {
+// warningKindPriority whose rule applies. Kinds in `skip` are passed over.
+export function scamWarningKind(text, reg, skip = []) {
   const s = reg.scam;
   const ids = scamMatchIDs(text, reg);
   const groups = new Set(ids.map((id) => id.slice(0, id.indexOf(":"))));
@@ -207,7 +207,7 @@ export function scamWarningKind(text, reg) {
       || (s.newAccountPhrases.some((p) => n.includes(p)) && (phrases.length > 0 || containsWord(n, reg.family.terms))),
     urgency: () => phrases.length > 0,
   };
-  return s.warningKindPriority.find((kind) => applies[kind]()) ?? null;
+  return s.warningKindPriority.find((kind) => !skip.includes(kind) && applies[kind]()) ?? null;
 }
 
 // True when the normalised text has one of `terms` as a whole word: each run of characters outside
