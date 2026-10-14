@@ -187,6 +187,16 @@ app.post("/v1/attest/challenge", (c) => {
 
 app.post("/v1/signup", async (c) => {
   const body = await parse(c, SignupBody);
+  // A retry of a sign-up that already made the account must not hit the limits (ADR 0094): the app would read a 429
+  // as "nothing was made".
+  if (body.signup_key !== undefined && body.password === undefined) {
+    limits.signupResume.check(clientIp(c));
+    const earlier = await replaySignup(db, body.signup_key);
+    if (earlier) {
+      c.header("cache-control", "no-store");
+      return c.json(earlier, 201);
+    }
+  }
   (body.attestation ? limits.signupAttested : limits.signup).check(clientIp(c));
   limits.signupGlobal.check("all");
   const result = await signup(accounts, body);
