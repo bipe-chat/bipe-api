@@ -306,6 +306,15 @@
     "bipe_mail_notice_email_removed": "This email no longer gets you back into your Bipe account.\n\nIf it was not you, open Bipe on one of your devices and check the recovery email.",
     "bipe_mail_waitlist_subject": "Your Bipe invite is here",
     "bipe_mail_waitlist_body": "You joined the Bipe waitlist. It is your turn now.\n\nOpen this link on your phone to install Bipe and make your account:\n%1$s\n\nThe invite works for %2$s days and for one account. When you use the invite, or when it expires, Bipe deletes your email from the list.\n\nIf you did not ask to join the list, ignore this email.",
-    "bipe_mail_footer": "This email is from Bipe. Do not reply, because nobody reads this mailbox. Bipe never asks for your PIN by email."
+    "bipe_mail_footer": "This email is from Bipe. Do not reply, because nobody reads this mailbox. Bipe never asks for your PIN by email.",
+    "bipe_trust_identity_body": "The seal shows the verified name. It doesn't guarantee that the person is honest.",
+    "bipe_trust_contact_body": "You confirmed who this person is. The seal checks their name through another source.",
+    "bipe_trust_contact_unconfirmed": "Person not yet confirmed",
+    "bipe_trust_contact_confirm_action": "Confirm in person",
+    "bipe_trust_identity_changed": "This account's verified name changed.",
+    "bipe_trust_change_confirm_action": "Confirm with the person through another channel before sending money.",
+    "bipe_trust_lifecycle_unknown": "We couldn't check this account's changes yet.",
+    "bipe_trust_lifecycle_retry_action": "Check again",
+    "bipe_trust_warning_absence_body": "Even without a warning, confirm a money request with the person through another channel."
   }
 }
