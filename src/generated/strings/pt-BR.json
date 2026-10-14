@@ -304,6 +304,8 @@
     "bipe_mail_notice_new_device": "Sua conta do Bipe entrou num aparelho novo com o backup do iCloud ou do Google e a sua senha.\n\nSe não foi você, abra o Bipe num dos seus aparelhos, troque a senha e saia dos aparelhos que você não conhece.",
     "bipe_mail_notice_pin_changed": "A senha de 8 números da sua conta do Bipe mudou.\n\nSe não foi você, abra o Bipe num dos seus aparelhos e troque a senha.",
     "bipe_mail_notice_email_removed": "Este e-mail não serve mais para voltar para sua conta do Bipe.\n\nSe não foi você, abra o Bipe num dos seus aparelhos e confira o e-mail de recuperação.",
+    "bipe_mail_waitlist_subject": "Seu convite para o Bipe chegou",
+    "bipe_mail_waitlist_body": "Você entrou na lista de espera do Bipe. Chegou a sua vez.\n\nAbra este link no celular para instalar o Bipe e criar sua conta:\n%1$s\n\nO convite vale por %2$s dias e serve para uma conta. Quando você usar o convite, ou quando ele vencer, o Bipe apaga seu e-mail da lista.\n\nSe você não pediu para entrar na lista, ignore este e-mail.",
     "bipe_mail_footer": "Este e-mail é do Bipe. Não responda, porque ninguém lê esta caixa. O Bipe nunca pede sua senha por e-mail."
   }
 }

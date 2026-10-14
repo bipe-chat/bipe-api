@@ -15,7 +15,7 @@ import { newChallenge } from "./attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { signup } from "./signup.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
-import { joinWaitlist, WaitlistBody } from "./waitlist.js";
+import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { askToPartner, PartnerBody, prunePartnerRequests } from "./partners.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
@@ -96,6 +96,12 @@ const prunePartners = () =>
     .catch((e) => console.error(`partner request prune failed: ${(e as Error).message}`));
 prunePartners();
 setInterval(prunePartners, 24 * 3_600_000).unref();
+const pruneWaitlistEntries = () =>
+  void pruneWaitlist(db)
+    .then((n) => n > 0 && console.log(`waitlist entries pruned: ${n}`))
+    .catch((e) => console.error(`waitlist prune failed: ${(e as Error).message}`));
+pruneWaitlistEntries();
+setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
 const CnpjBody = z.object({ cnpj: z.string().max(32) });
 const EcnpjBody = z.object({ signature: z.string().min(1).max(131_072) });
 const DomainBody = z.object({ domain: z.string().max(253) });

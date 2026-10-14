@@ -20,14 +20,16 @@ export function inviteHash(code: string): string {
   return createHash("sha256").update(code.replace(/-/g, "")).digest("hex");
 }
 
-export async function createInvite(db: Db, uses: number, days: number, note?: string): Promise<string> {
+export async function createInvite(db: Db, uses: number, days: number, note?: string): Promise<{ id: number; code: string }> {
   const code = newInviteCode();
-  await db.query(
-    "INSERT INTO invites (code_hash, uses_left, expires_at, note) VALUES ($1, $2, now() + make_interval(days => $3), $4)",
+  const { rows } = await db.query<{ id: string }>(
+    "INSERT INTO invites (code_hash, uses_left, expires_at, note) VALUES ($1, $2, now() + make_interval(days => $3), $4) RETURNING id",
     [inviteHash(code), uses, days, note ?? null],
   );
-  return code;
+  return { id: Number(rows[0]!.id), code };
 }
+
+export const inviteUrl = (siteUrl: string, code: string) => `${siteUrl.replace(/\/$/, "")}/convite/${code}`;
 
 /** Takes one use. Returns the invite id, or null when the code is unknown, used up, expired or revoked. */
 export async function takeInviteUse(db: Db, text: string): Promise<number | null> {
@@ -148,7 +150,7 @@ export async function createPersonalInvite(db: Db, userId: string, policy: Invit
     return {
       id: String(row.id),
       code,
-      url: `${siteUrl.replace(/\/$/, "")}/convite/${code}`,
+      url: inviteUrl(siteUrl, code),
       expires_at: row.expires_at.toISOString(),
     };
   } catch (e) {

@@ -54,6 +54,9 @@ const Env = z.object({
 
 export type Config = z.infer<typeof Env>;
 
+const MailEnv = Env.pick({ PUBLIC_SITE_URL: true, BIPE_SMTP_HOST: true, BIPE_SMTP_PORT: true, BIPE_SMTP_USER: true, BIPE_SMTP_PASSWORD: true, BIPE_MAIL_FROM: true });
+export type MailConfig = z.infer<typeof MailEnv>;
+
 export function loadConfig(): Config {
   const parsed = Env.safeParse(process.env);
   if (!parsed.success) {
@@ -61,5 +64,12 @@ export function loadConfig(): Config {
     const names = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
     throw new Error(`invalid environment: ${names}`);
   }
+  return parsed.data;
+}
+
+/** The mail settings only, for the admin CLI (it does not need the MAS settings). */
+export function loadMailConfig(): MailConfig {
+  const parsed = MailEnv.safeParse(process.env);
+  if (!parsed.success) throw new Error(`invalid environment: ${parsed.error.issues.map((i) => i.path.join(".")).join(", ")}`);
   return parsed.data;
 }

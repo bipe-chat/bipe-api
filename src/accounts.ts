@@ -3,7 +3,7 @@ import type pg from "pg";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import type { Mailer } from "./mailer.js";
+import { type Mailer, mailBody } from "./mailer.js";
 import type { Mas } from "./mas.js";
 import { accountRules, appString, type Lang, problemWithPin } from "./registry.js";
 import { newSecret, PinHasher, sameSecret, SECRET_PATTERN, secretHash } from "./secrets.js";
@@ -467,10 +467,6 @@ export async function claimRecovery(deps: AccountDeps, recoveryId: string, claim
 }
 
 // --- Notices -----------------------------------------------------------------------------------------
-
-function mailBody(lang: Lang, text: string): string {
-  return `${text}\n\n-- \n${appString(lang, "bipe_mail_footer")}\n`;
-}
 
 function formatTime(date: Date, lang: Lang): string {
   const fmt = new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "pt-BR", {

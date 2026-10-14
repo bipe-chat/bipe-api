@@ -304,6 +304,8 @@
     "bipe_mail_notice_new_device": "Your Bipe account signed in on a new device with the iCloud or Google backup and your PIN.\n\nIf it was not you, open Bipe on one of your devices, change your PIN and sign out of the devices you do not know.",
     "bipe_mail_notice_pin_changed": "The 8-digit PIN of your Bipe account changed.\n\nIf it was not you, open Bipe on one of your devices and change the PIN.",
     "bipe_mail_notice_email_removed": "This email no longer gets you back into your Bipe account.\n\nIf it was not you, open Bipe on one of your devices and check the recovery email.",
+    "bipe_mail_waitlist_subject": "Your Bipe invite is here",
+    "bipe_mail_waitlist_body": "You joined the Bipe waitlist. It is your turn now.\n\nOpen this link on your phone to install Bipe and make your account:\n%1$s\n\nThe invite works for %2$s days and for one account. When you use the invite, or when it expires, Bipe deletes your email from the list.\n\nIf you did not ask to join the list, ignore this email.",
     "bipe_mail_footer": "This email is from Bipe. Do not reply, because nobody reads this mailbox. Bipe never asks for your PIN by email."
   }
 }
