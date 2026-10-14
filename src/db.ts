@@ -197,6 +197,14 @@ const MIGRATIONS = [
    );`,
   // Waitlist release (ADR 0089): the invite an entry got. The entry goes when that invite is used, expires or is revoked.
   `ALTER TABLE waitlist ADD COLUMN invite_id bigint REFERENCES invites(id), ADD COLUMN invited_at timestamptz;`,
+  // Sign-up retry (ADR 0094): credentials sealed under a key only the phone has. Gone on first account read or after 7 days.
+  `CREATE TABLE signup_replays (
+     key_hash text PRIMARY KEY,
+     user_id text NOT NULL,
+     sealed bytea NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX signup_replays_user ON signup_replays (user_id);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

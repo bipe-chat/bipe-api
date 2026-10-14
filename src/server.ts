@@ -13,7 +13,7 @@ import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
 import { newChallenge } from "./attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
-import { signup } from "./signup.js";
+import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { askToPartner, PartnerBody, prunePartnerRequests } from "./partners.js";
@@ -24,7 +24,7 @@ import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPho
 import { profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
-import { PinHasher, secretHash } from "./secrets.js";
+import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -39,6 +39,10 @@ console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes
 
 const limits = {
   signup: new RateLimiter(5, 3_600_000),
+  // Brazilian carriers put many phones behind one IP (CGNAT). A sign-up with App Attest gets more room per IP;
+  // a forged attestation still fails in signup().
+  signupAttested: new RateLimiter(30, 3_600_000),
+  signupResume: new RateLimiter(30, 3_600_000),
   signupGlobal: new RateLimiter(config.SIGNUP_MAX_PER_HOUR, 3_600_000),
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
@@ -90,6 +94,12 @@ const pruneChanges = () =>
     .catch((e) => console.error(`handle change prune failed: ${(e as Error).message}`));
 pruneChanges();
 setInterval(pruneChanges, 24 * 3_600_000).unref();
+const pruneReplays = () =>
+  void pruneSignupReplays(db)
+    .then((n) => n > 0 && console.log(`signup replays pruned: ${n}`))
+    .catch((e) => console.error(`signup replay prune failed: ${(e as Error).message}`));
+pruneReplays();
+setInterval(pruneReplays, 24 * 3_600_000).unref();
 const prunePartners = () =>
   void prunePartnerRequests(db)
     .then((n) => n > 0 && console.log(`partner requests pruned: ${n}`))
@@ -126,7 +136,9 @@ const SignupBody = z.object({
       challenge: z.string().min(1).max(128),
     })
     .optional(),
+  signup_key: z.string().regex(SECRET_PATTERN).optional(),
 });
+const SignupResumeBody = z.object({ signup_key: z.string().regex(SECRET_PATTERN) });
 const HandleBody = z.object({ handle: z.string().max(64) });
 const PinBody = z.object({ pin: PinField });
 const EmailBody = z.object({ email: z.email().max(254), lang: Lang.default("pt") });
@@ -174,18 +186,30 @@ app.post("/v1/attest/challenge", (c) => {
 });
 
 app.post("/v1/signup", async (c) => {
-  limits.signup.check(clientIp(c));
+  const body = await parse(c, SignupBody);
+  (body.attestation ? limits.signupAttested : limits.signup).check(clientIp(c));
   limits.signupGlobal.check("all");
-  const result = await signup(accounts, await parse(c, SignupBody));
+  const result = await signup(accounts, body);
   // Device-first: the body carries the hidden password and the recovery token, once.
   c.header("cache-control", "no-store");
   return c.json(result, 201);
+});
+
+// ADR 0094: the app lost the answer of a sign-up. The key is the only proof, so no form and no attestation.
+app.post("/v1/signup/resume", async (c) => {
+  limits.signupResume.check(clientIp(c));
+  const result = await replaySignup(db, (await parse(c, SignupResumeBody)).signup_key);
+  if (!result) throw new ApiError("not_found");
+  c.header("cache-control", "no-store");
+  return c.json(result);
 });
 
 // --- Device-first accounts (ADR 0057, ADR 0059) --------------------------------------------------------
 
 app.get("/v1/me/account", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
+  // The app signed in, so it has its credentials: the sealed sign-up copy (ADR 0094) can go.
+  await forgetSignupReplay(db, userId);
   return c.json(await accountStatus(accounts, userId));
 });
 

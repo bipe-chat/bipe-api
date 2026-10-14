@@ -1,4 +1,5 @@
-import { randomInt } from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomInt } from "node:crypto";
+import type { Db } from "./db.js";
 import { type AccountDeps, checkNewEmail, checkPinRule, normalizeEmail, startEmailVerification } from "./accounts.js";
 import { type Attestation, verifyAttestation } from "./attest.js";
 import { ApiError } from "./errors.js";
@@ -23,7 +24,13 @@ export interface SignupInput {
   handle?: string;
   display_name?: string;
   attestation?: Attestation;
+  signup_key?: string;
 }
+
+// ADR 0094: a retry with the same signup_key gets the same account. Sealed copies live this long at most.
+export const SIGNUP_REPLAY_DAYS = 7;
+// Keys of sign-ups that run now. One API instance only, like the rate limits.
+const running = new Set<string>();
 
 /**
  * Two modes. Device-first (ADR 0057, ADR 0059): no password in the request. The server makes the hidden password
@@ -31,6 +38,85 @@ export interface SignupInput {
  * Legacy (beta apps): email and password, both set in MAS as login, as before.
  */
 export async function signup(deps: AccountDeps, input: SignupInput) {
+  if (input.signup_key === undefined || input.password !== undefined) return createAccount(deps, input, null);
+  const key = input.signup_key;
+  const keyHash = secretHash(key);
+  // Check and add in one step (no await between), so two tries with one key cannot both create an account.
+  if (running.has(keyHash)) throw new ApiError("rate_limited", "signup_in_progress");
+  running.add(keyHash);
+  try {
+    return (await replaySignup(deps.db, key)) ?? (await createAccount(deps, input, key));
+  } finally {
+    running.delete(keyHash);
+  }
+}
+
+/** The answer of an earlier sign-up with this key, or null. Deletes a copy that no longer signs in. */
+export async function replaySignup(db: Db, key: string) {
+  const keyHash = secretHash(key);
+  const { rows } = await db.query<{ user_id: string; sealed: Buffer; token_hash: string | null }>(
+    `SELECT r.user_id, r.sealed, s.token_hash FROM signup_replays r
+       LEFT JOIN account_secrets s ON s.user_id = r.user_id
+      WHERE r.key_hash = $1 AND r.created_at > now() - make_interval(days => $2)`,
+    [keyHash, SIGNUP_REPLAY_DAYS],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const secrets = openSealed(key, row.sealed);
+  // A recovery on another device changed the credentials: this copy cannot sign in any more.
+  if (!secrets || row.token_hash !== secretHash(secrets.recovery_token)) {
+    await db.query("DELETE FROM signup_replays WHERE key_hash = $1", [keyHash]);
+    return null;
+  }
+  const handle = await db.query<{ handle: string }>("SELECT handle FROM handles WHERE user_id = $1", [row.user_id]);
+  const invite = await db.query<{ invite_id: string | null }>("SELECT invite_id FROM signups WHERE user_id = $1", [row.user_id]);
+  const inviteId = invite.rows[0]?.invite_id;
+  const inviter = inviteId != null ? await inviterOf(db, Number(inviteId)) : null;
+  return {
+    user_id: row.user_id,
+    ...(handle.rows[0] ? { handle: handle.rows[0].handle } : {}),
+    ...(inviter ? { inviter_user_id: inviter } : {}),
+    ...secrets,
+  };
+}
+
+/** Called when the account reads GET /v1/me/account: the app has its credentials, so the sealed copy goes. */
+export async function forgetSignupReplay(db: Db, userId: string): Promise<void> {
+  await db.query("DELETE FROM signup_replays WHERE user_id = $1", [userId]);
+}
+
+export async function pruneSignupReplays(db: Db): Promise<number> {
+  const { rowCount } = await db.query("DELETE FROM signup_replays WHERE created_at <= now() - make_interval(days => $1)", [SIGNUP_REPLAY_DAYS]);
+  return rowCount ?? 0;
+}
+
+// AES-256-GCM under HKDF-SHA256(signup_key). Layout: 12-byte IV, 16-byte tag, ciphertext.
+function sealKey(key: string): Buffer {
+  return Buffer.from(hkdfSync("sha256", Buffer.from(key, "utf8"), Buffer.alloc(0), "bipe-signup-replay-v1", 32));
+}
+
+function seal(key: string, secrets: { password: string; recovery_token: string }): Buffer {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", sealKey(key), iv);
+  const body = Buffer.concat([cipher.update(JSON.stringify(secrets), "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), body]);
+}
+
+function openSealed(key: string, sealed: Buffer): { password: string; recovery_token: string } | null {
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", sealKey(key), sealed.subarray(0, 12));
+    decipher.setAuthTag(sealed.subarray(12, 28));
+    const plain = Buffer.concat([decipher.update(sealed.subarray(28)), decipher.final()]).toString("utf8");
+    const value = JSON.parse(plain) as { password?: unknown; recovery_token?: unknown };
+    if (typeof value.password !== "string" || typeof value.recovery_token !== "string") return null;
+    return { password: value.password, recovery_token: value.recovery_token };
+  } catch {
+    console.error("signup: a sealed sign-up copy did not open");
+    return null;
+  }
+}
+
+async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: string | null) {
   const { db, mas, config } = deps;
   // App Attest first: it is the cheapest check that stops scripted sign-ups. A given attestation must be valid.
   if (input.attestation) verifyAttestation(input.attestation, config.APP_ATTEST_APP_IDS);
@@ -92,6 +178,13 @@ export async function signup(deps: AccountDeps, input: SignupInput) {
           [userId, pinHash, secretHash(token)],
         );
         if (email) sendVerification = await startEmailVerification(deps, client, userId, email, input.lang ?? "pt");
+        if (signupKey) {
+          await client.query("INSERT INTO signup_replays (key_hash, user_id, sealed) VALUES ($1, $2, $3)", [
+            secretHash(signupKey),
+            userId,
+            seal(signupKey, { password, recovery_token: token }),
+          ]);
+        }
         await client.query("COMMIT");
       } catch (e) {
         await client.query("ROLLBACK").catch(() => {});
@@ -122,6 +215,7 @@ export async function signup(deps: AccountDeps, input: SignupInput) {
   } catch (e) {
     // Undo: MAS users cannot be deleted, only deactivated. Give the invite use back.
     if (masUserId) await mas.deactivate(masUserId).catch(() => console.error("signup: deactivate after failure failed"));
+    if (signupKey) await db.query("DELETE FROM signup_replays WHERE key_hash = $1", [secretHash(signupKey)]).catch(() => {});
     if (inviteId !== null) await returnInviteUse(db, inviteId).catch(() => console.error("signup: invite refund failed"));
     throw e;
   }
