@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
-import type { Config } from "./config.js";
+import type { MailConfig } from "./config.js";
+import { appString, type Lang } from "./registry.js";
 
 // Minimal SMTP client on node:net and node:tls, so the API needs no mail library (one plain-text message per
 // connection). Port 465: implicit TLS. Any other port: the server must offer STARTTLS, else the send fails.
@@ -120,11 +121,16 @@ function encodeHeader(value: string): string {
 
 const addressOf = (mailbox: string) => /<([^>]+)>\s*$/.exec(mailbox)?.[1] ?? mailbox.trim();
 
+/** A mail text with the Bipe footer. */
+export function mailBody(lang: Lang, text: string): string {
+  return `${text}\n\n-- \n${appString(lang, "bipe_mail_footer")}\n`;
+}
+
 export class Mailer {
   private readonly from: string;
   private readonly domain: string;
 
-  constructor(private readonly config: Config) {
+  constructor(private readonly config: MailConfig) {
     this.from = config.BIPE_MAIL_FROM;
     this.domain = addressOf(this.from).split("@")[1] ?? "localhost";
   }

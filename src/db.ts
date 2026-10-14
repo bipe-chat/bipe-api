@@ -195,6 +195,8 @@ const MIGRATIONS = [
      lang text NOT NULL,
      created_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Waitlist release (ADR 0089): the invite an entry got. The entry goes when that invite is used, expires or is revoked.
+  `ALTER TABLE waitlist ADD COLUMN invite_id bigint REFERENCES invites(id), ADD COLUMN invited_at timestamptz;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
