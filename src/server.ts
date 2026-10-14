@@ -205,6 +205,12 @@ app.post("/v1/signup", async (c) => {
   return c.json(result, 201);
 });
 
+// ADR 0072, bipe#232: the apps follow the sign-up mode with no new build.
+app.get("/v1/signup/config", (c) => {
+  c.header("cache-control", "public, max-age=300");
+  return c.json({ invite_required: config.SIGNUP_INVITE_REQUIRED });
+});
+
 // ADR 0094: the app lost the answer of a sign-up. The key is the only proof, so no form and no attestation.
 app.post("/v1/signup/resume", async (c) => {
   limits.signupResume.check(clientIp(c));
