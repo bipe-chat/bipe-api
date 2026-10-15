@@ -2,7 +2,7 @@
 // Source: bipe-shared/api/business-schemas.json (OpenAPI 3.1 / JSON Schema 2020-12).
 // These types describe the contract. Routes may still be planned; see the parity ledger.
 
-export type CatalogPrice = ({ "mode": ("fixed" | "from"); "text": string } | { "mode": "on_request" });
+export type CatalogPrice = ({ "mode": ("fixed" | "from"); "text": string; /** BRL amount for machine calculation. A fixed-price product needs this to be ordered. text remains the display price. */ "amount_cents"?: number } | { "mode": "on_request" });
 
 /** Full item replacement. Scheduling fields apply only to services. Omit them when the Agenda is off. A product cannot carry scheduling fields. */
 export type CatalogItemInput = { "kind": ("service" | "product"); "name": string; "price": CatalogPrice; /** Plain text. Clients never make links clickable. */ "description"?: string; "category"?: string; "active": boolean; "sort": number; "sold_out_today"?: boolean; "duration_minutes"?: number; "buffer_before_minutes"?: number; "buffer_after_minutes"?: number; "agenda_ids"?: Array<string> };
@@ -86,3 +86,77 @@ export type BusyImportInput = { /** Secret ICS URL. Server resolves and checks e
 export type BusyImport = { "id": string; "agenda_id": string; /** UTC, with a trailing Z. */ "last_checked_at"?: string };
 
 export type AgendaError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed"); "reason"?: string };
+
+export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable"); "reason"?: string };
+
+export type EmptyBusinessRequest = Record<string, never>;
+
+/** An existing Pix charge from this same verified company. The API checks issuer, amount, state and recipient; a client-supplied ID never proves payment. */
+export type PixChargeLink = { "charge_id": string };
+
+export type QueuePolicy = { "no_show_after_minutes": number };
+
+/** One queue per business per local day. Resets each day. Agenda bookings take priority at their booked time; the queue fills the gaps. */
+export type Queue = { "id": string; "business_id": string; "date": string; "time_zone": string; "open": boolean; "policy": QueuePolicy };
+
+export type QueuePlaceStatus = ("waiting" | "called" | "served" | "no_show" | "left");
+
+/** No location, notes or customer description. Name-only entries are owner-created. Retain for 30 days after the queue day ends (ADR 0107). */
+export type QueuePlace = { "id": string; "queue_id": string; "business_id": string; "customer": BookingCustomer; "source": ("customer" | "owner"); "service_id"?: string; "status": QueuePlaceStatus; /** UTC, with a trailing Z. */ "joined_at": string; /** UTC, with a trailing Z. */ "called_at"?: string; /** UTC, with a trailing Z. */ "served_at"?: string };
+
+/** The authenticated customer is derived from the token; one active place per customer per business. An optional catalogue service improves the estimate. */
+export type QueueJoin = { "service_id"?: string };
+
+export type OwnerQueuePlace = { "customer": BookingCustomer; "service_id"?: string };
+
+/** Upper bound must be at least the lower bound. Based on today’s served places or the service duration. An estimate, never an exact appointment time. */
+export type QueueWaitRange = { "min_minutes": number; "max_minutes": number };
+
+/** Only this caller’s place. Position is zero when called; waiting positions start at one. Omit wait when there is insufficient data. */
+export type QueuePosition = { "place": QueuePlace; "position": number; "wait"?: QueueWaitRange };
+
+/** Only the fact of a request. Job descriptions, addresses and photos stay in the encrypted conversation. */
+export type QuoteRequest = { "id": string; "business_id": string; "customer_id": string; /** UTC, with a trailing Z. */ "created_at": string };
+
+export type QuoteLineInput = ({ "item_id": string; "quantity": number; "unit_amount_cents": number } | { "name": string; "quantity": number; "unit_amount_cents": number });
+
+/** Immutable business-authored snapshot. Server calculates and rounds line totals to centavos, and rejects amounts outside safe integer range. */
+export type QuoteLine = { "item_id"?: string; "name": string; "quantity": number; "unit_amount_cents": number; "total_amount_cents": number };
+
+/** Owner-only. Validity entered as a local date is converted to UTC at the end of that local day. Optional visit_service_id opens the booking flow for that catalogue service. */
+export type QuoteVersionInput = { "lines": Array<QuoteLineInput>; /** UTC, with a trailing Z. */ "valid_until": string; "visit_service_id"?: string };
+
+/** Immutable; older versions stay readable. Total is calculated by the server. */
+export type QuoteVersion = { "version": number; /** UTC, with a trailing Z. */ "created_at": string; /** UTC, with a trailing Z. */ "valid_until": string; "lines": Array<QuoteLine>; "total_amount_cents": number; "currency": "BRL"; "visit_service_id"?: string };
+
+/** A business may issue a quote only after this customer requested one. No customer free text or photos. Never infer paid from a quote or a linked Pix charge. */
+export type Quote = { "id": string; "request_id": string; "business_id": string; "customer_id": string; "status": ("offered" | "accepted" | "refused" | "expired"); "current_version": number; "versions": Array<QuoteVersion>; "booking_id"?: string; "order_id"?: string; "pix_charge_id"?: string };
+
+/** Only the current, unexpired version can be accepted. A conversion failure leaves the quote unaccepted. Concurrent acceptances produce at most one resulting booking or order. */
+export type QuoteAccept = ({ "version": number; "target": "booking"; "booking": BookingHold } | { "version": number; "target": "order"; "fulfilment": ("pickup" | "delivery"); "payment": ("in_person" | "pix") });
+
+export type QuoteDecline = { "version": number };
+
+export type OrderLineInput = { "item_id": string; "quantity": number };
+
+/** Immutable snapshot, calculated by the server. item_id may be absent only for a business-authored line converted from a quote. */
+export type OrderLine = { "item_id"?: string; "name": string; "quantity": number; "unit_amount_cents": number; "total_amount_cents": number };
+
+/** Signed-in customer only. No customer ID, prices, total, address or notes. Fixed-price active products with amount_cents only; the server snapshots and calculates prices. from/on_request prices require a quote instead. */
+export type OrderInput = { "lines": Array<OrderLineInput>; "fulfilment": ("pickup" | "delivery"); "payment": ("in_person" | "pix") };
+
+/** Owner-entered order; a name-only customer receives no push or chat card. */
+export type OwnerOrderInput = { "lines": Array<OrderLineInput>; "fulfilment": ("pickup" | "delivery"); "payment": ("in_person" | "pix"); "customer": BookingCustomer };
+
+export type OrderStatus = ("sent" | "accepted" | "refused" | "ready" | "done" | "cancelled");
+
+export type OrderRefuseReason = ("unavailable" | "closed" | "cannot_deliver" | "cannot_fulfil");
+
+/** Fixed reasons only. Free text goes in the encrypted chat. */
+export type OrderRefusal = { "reason": OrderRefuseReason };
+
+/** Orders accepted only on these ISO weekdays and before the local cut-off time. An empty weekday list closes orders. */
+export type OrderPolicy = { "time_zone": string; "weekdays": Array<number>; /** Local wall time in the business time zone. Start is inclusive; end is exclusive. */ "cutoff": string };
+
+/** Minimal order record. No address, notes or customer messages. One open order per customer per business; sent/accepted/ready are open. Payment choice and a charge link do not establish paid status. Retain for two years (ADR 0105). */
+export type Order = { "id": string; "business_id": string; "customer": BookingCustomer; "source": ("customer" | "owner"); /** UTC, with a trailing Z. */ "created_at": string; "lines": Array<OrderLine>; "total_amount_cents": number; "currency": "BRL"; "fulfilment": ("pickup" | "delivery"); "payment": ("in_person" | "pix"); "status": OrderStatus; "refuse_reason"?: OrderRefuseReason; "pix_charge_id"?: string; "quote_id"?: string };
