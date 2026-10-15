@@ -32,6 +32,14 @@ function fail(msg) {
   throw new Error(`registry validation failed: ${msg}`);
 }
 
+export function validateLinkedRecovery(accounts) {
+  const linked = accounts.linkedRecovery;
+  if (!linked || [...linked.providers ?? []].sort().join() !== "apple,google" || linked.providers.length !== 2) fail("accounts: linked recovery providers must be apple and google");
+  if (linked.delayHours !== 24 || linked.requiresPin !== true || linked.allowsPinReset !== false || linked.maxAccountsPerProvider !== 1) {
+    fail("accounts: linked recovery must preserve ADR 0096 (24 hours, existing PIN, no PIN reset, one account per provider)");
+  }
+}
+
 function validate(reg) {
   validateTrustRegistry(reg.trust);
   validateAgendaTemplates(reg);
@@ -99,6 +107,7 @@ function validate(reg) {
   if (!(Number.isInteger(ph.maxInputLength) && ph.maxInputLength > 0)) fail("phones: maxInputLength");
   if (!(Number.isInteger(ph.internationalMinDigits) && ph.internationalMinDigits > 0 && ph.internationalMaxDigits >= ph.internationalMinDigits)) fail("phones: international digit range");
   const ac = reg.accounts;
+  validateLinkedRecovery(ac);
   // DDMMYYYY and YYYYMMDD need exactly 8 digits.
   if (ac.pinLength !== 8) fail("accounts: pinLength must be 8 (the date check reads DDMMYYYY and YYYYMMDD)");
   for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays"]) {
