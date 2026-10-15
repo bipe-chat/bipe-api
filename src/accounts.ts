@@ -101,7 +101,7 @@ export async function verifyPin({ db, pins }: AccountDeps, userId: string, pin: 
     }
     const tries = row.pin_wrong_tries + 1;
     await client.query(
-      `UPDATE account_secrets SET pin_wrong_tries = $2, pin_blocked_at = CASE WHEN $2 >= $3 THEN now() ELSE NULL END WHERE user_id = $1`,
+      `UPDATE account_secrets SET pin_wrong_tries = $2::integer, pin_blocked_at = CASE WHEN $2::integer >= $3::integer THEN now() ELSE NULL END WHERE user_id = $1`,
       [userId, tries, max],
     );
     return tries >= max ? { kind: "blocked" as const } : { kind: "wrong" as const, left: max - tries };
