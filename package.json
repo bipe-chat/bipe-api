@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p .",
+    "test:integration": "pnpm build && node --test --test-concurrency=1 test/*.test.mjs",
     "start": "node dist/server.js",
     "gen": "node ../bipe-shared/tools/gen.mjs"
   },
