@@ -10,6 +10,18 @@ pnpm install
 pnpm build
 ```
 
+## Scheduling calculation
+
+```bash
+pnpm test:scheduling
+```
+
+`src/scheduling.ts` exports pure `calculateSlots(input)` and `selectAgenda(input, start)` functions. Inputs use the shared contract types and the explicit clock. Public output is `SlotDays`, with free times only. The selector returns an internal agenda recommendation; it neither reserves a slot nor replaces a database exclusion constraint.
+
+The hand-authored cases live in bipe-shared. Its `node tools/gen-test-vectors.mjs` generates `test/fixtures/scheduling.json`, including a source hash. Do not edit the generated snapshot. Shared drift checks verify the copy. API CI runs it under UTC and Pacific/Auckland without Postgres, MAS or cross-repository credentials. The shared README defines the vector format and boundary rules.
+
+Booking storage, fresh-snapshot hold transactions, authorization, rate limits, retention, routes and notifications remain in bipe#318 and its related issues. No scheduling route is live from this calculation module alone.
+
 ## Recovery integration tests
 
 Set `BIPE_TEST_DATABASE_URL` to a disposable Postgres database named `bipe_test`, with user `bipe_test`, a password, and a loopback host. Then run:

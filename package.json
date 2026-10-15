@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc -p .",
     "test:integration": "pnpm build && node --test --test-concurrency=1 test/*.test.mjs",
+    "test:scheduling": "pnpm build && node --test test/scheduling.test.mjs",
     "start": "node dist/server.js",
     "gen": "node ../bipe-shared/tools/gen.mjs"
   },
