@@ -25,6 +25,7 @@ import { profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
+import { Growth } from "./growth.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -34,7 +35,9 @@ const auth = new MatrixAuth(config);
 const staff = new StaffGate(auth, mas);
 const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
-const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config) };
+const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
+const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth };
+console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 
 const limits = {
@@ -112,6 +115,9 @@ const pruneWaitlistEntries = () =>
     .catch((e) => console.error(`waitlist prune failed: ${(e as Error).message}`));
 pruneWaitlistEntries();
 setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
+const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
+syncGrowth();
+setInterval(syncGrowth, 15 * 60_000).unref();
 const CnpjBody = z.object({ cnpj: z.string().max(32) });
 const EcnpjBody = z.object({ signature: z.string().min(1).max(131_072) });
 const DomainBody = z.object({ domain: z.string().max(253) });
@@ -226,6 +232,7 @@ app.get("/v1/me/account", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   // The app signed in, so it has its credentials: the sealed sign-up copy (ADR 0094) can go.
   await forgetSignupReplay(db, userId);
+  growth.onboarded(userId);
   return c.json(await accountStatus(accounts, userId));
 });
 
@@ -360,7 +367,9 @@ app.get("/v1/me/invites", async (c) => {
 app.post("/v1/me/invites", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.inviteCreate.check(userId);
-  return c.json(await createPersonalInvite(db, userId, invitePolicy, config.PUBLIC_SITE_URL), 201);
+  const invite = await createPersonalInvite(db, userId, invitePolicy, config.PUBLIC_SITE_URL);
+  growth.record(userId, "invite_sent");
+  return c.json(invite, 201);
 });
 
 const MessagingBody = z.object({ who_can_message: z.enum(POLICIES) });

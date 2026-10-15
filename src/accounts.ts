@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { Growth } from "./growth.js";
 import type pg from "pg";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
@@ -22,6 +23,8 @@ export interface AccountDeps {
   config: Config;
   pins: PinHasher;
   mailer: Mailer;
+  /** Growth events (ADR 0098). Absent in the admin CLI. */
+  growth?: Growth;
 }
 
 type Queryable = Db | pg.PoolClient;

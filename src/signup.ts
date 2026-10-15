@@ -206,6 +206,9 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
     }
     const inviter = inviteId !== null ? await inviterOf(db, inviteId) : null;
     sendVerification?.();
+    // A replayed sign-up (ADR 0094) does not come here, so it does not count again.
+    deps.growth?.record(userId, "signup_done");
+    if (inviter) deps.growth?.record(inviter, "invite_redeemed");
     return {
       user_id: userId,
       ...(handle ? { handle } : {}),

@@ -1,0 +1,73 @@
+{
+  "$comment": "Server-side growth events (ADR 0098 in bipe/docs/adr, bipe#67). The apps send no telemetry: the Bipe API derives each event from what the server already sees. It keeps a row per pseudonymous user (HMAC-SHA256 of the Matrix ID under BIPE_GROWTH_HMAC_SECRET), event and day, with a count. No event carries content, room IDs, Matrix IDs, IPs or devices. source: api = a Bipe API action; synapse_db = read from the Synapse database by the read-only role bipe_growth, which has SELECT only on the columns that bipe-api src/growth.ts names (no event content, no IP). once: the API keeps only the first day per user. funnel: the steps of the report, in order; a user counts at a step only with every earlier step. retentionEvent and retentionDays: the report shows the share of each sign-up week with retentionEvent on day N after sign-up. retentionDaysKept: rows older than this are deleted. A new event needs a line here, not a new ADR.",
+  "version": 1,
+  "retentionDaysKept": 395,
+  "funnel": ["signup_done", "onboarding_finished", "first_message_sent", "contact_verified", "invite_sent"],
+  "retentionEvent": "active_day",
+  "retentionDays": [1, 7, 30],
+  "events": [
+    {
+      "id": "signup_done",
+      "once": true,
+      "source": "api",
+      "detail": "POST /v1/signup made the account (a row in signups). A replayed sign-up (ADR 0094) does not count again.",
+      "content": "none"
+    },
+    {
+      "id": "onboarding_finished",
+      "once": true,
+      "source": "api",
+      "detail": "The first authenticated GET /v1/me/account after signup_done: the app holds its credentials and is signed in.",
+      "content": "none"
+    },
+    {
+      "id": "first_message_sent",
+      "once": true,
+      "source": "synapse_db",
+      "detail": "The first m.room.message or m.room.encrypted event from the user (events: sender, type, origin_server_ts). Only the type is read.",
+      "content": "none"
+    },
+    {
+      "id": "contact_verified",
+      "once": false,
+      "source": "synapse_db",
+      "detail": "The user signed another user's cross-signing key (e2e_cross_signing_signatures: user_id, target_user_id). n = new contacts. Synapse keeps no time for a signature, so the day is the day the API first sees it.",
+      "content": "none"
+    },
+    {
+      "id": "invite_sent",
+      "once": false,
+      "source": "api",
+      "detail": "POST /v1/me/invites made a personal invite. n = invites made that day.",
+      "content": "none"
+    },
+    {
+      "id": "invite_redeemed",
+      "once": false,
+      "source": "api",
+      "detail": "Counted for the inviter: a sign-up used one of the user's personal invites. n = sign-ups that day.",
+      "content": "none"
+    },
+    {
+      "id": "group_created",
+      "once": false,
+      "source": "synapse_db",
+      "detail": "The user sent m.room.create for a room that is not a space and has 3 or more members, or 2 or more members and a room name (room_stats_current, room_stats_state.room_type, current_state_events type only). The name itself is not read. Day = day of m.room.create.",
+      "content": "none"
+    },
+    {
+      "id": "call_started",
+      "once": false,
+      "source": "synapse_db",
+      "detail": "The user sent a call event (m.call.invite, m.call.member, org.matrix.msc3401.call.member) in a room with no call event in the hour before. Only type, room and time are read; the room ID is not kept. Approximation: a leave more than an hour after the last call event counts again.",
+      "content": "none"
+    },
+    {
+      "id": "active_day",
+      "once": false,
+      "source": "synapse_db",
+      "detail": "The user sent any event that day, or sent a read receipt (receipts_linearized: user_id, stream_id; day = day the API sees it). A push that only wakes the app does not count.",
+      "content": "none"
+    }
+  ]
+}

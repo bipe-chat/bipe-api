@@ -6,6 +6,15 @@ import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handl
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
 const reg = loadRegistries(root);
 
+/** Server-side growth events (ADR 0098, registries/growth-events.json). */
+export const growthRules = reg.growth as {
+  retentionDaysKept: number;
+  funnel: string[];
+  retentionEvent: string;
+  retentionDays: number[];
+  events: { id: string; once: boolean; source: "api" | "synapse_db"; detail: string }[];
+};
+
 export type HandleProblem = "too_short" | "too_long" | "invalid_characters" | "reserved";
 
 export const handleRules = reg.handles as {

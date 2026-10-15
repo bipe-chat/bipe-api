@@ -38,6 +38,10 @@ const Env = z.object({
   PUBLIC_API_URL: z.url().default("https://api.bipe.net.br"),
   // HMAC key for stored phone numbers. Without it the phone endpoints answer "internal".
   PHONE_HMAC_SECRET: z.string().min(32).optional(),
+  // Growth events (ADR 0098): HMAC key for the pseudonymous user ID. Without it no growth event is kept.
+  BIPE_GROWTH_HMAC_SECRET: emptyAsUnset(z.string().min(32)),
+  // Read-only role bipe_growth on the Synapse database (column grants only). Without it only API events are kept.
+  SYNAPSE_DATABASE_URL: emptyAsUnset(z.string().min(1)),
   // Device-first accounts (ADR 0057): secret key for the PIN hashes, 32 bytes as hex. Never in the database.
   // Without it the PIN routes answer "internal". A value that is not 64 hex characters stops the start.
   BIPE_PIN_PEPPER: emptyAsUnset(z.string().regex(/^[0-9a-fA-F]{64}$/, "64 hex characters")),

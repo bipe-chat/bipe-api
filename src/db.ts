@@ -205,6 +205,20 @@ const MIGRATIONS = [
      created_at timestamptz NOT NULL DEFAULT now()
    );
    CREATE INDEX signup_replays_user ON signup_replays (user_id);`,
+  // Growth events (ADR 0098, bipe#67): uid is HMAC-SHA256 of the Matrix ID, never the ID. No content.
+  // growth_sync: how far each Synapse source was read, and per-user counts that Synapse keeps no time for.
+  `CREATE TABLE growth_events (
+     uid text NOT NULL,
+     event text NOT NULL,
+     day date NOT NULL,
+     n integer NOT NULL CHECK (n > 0),
+     PRIMARY KEY (uid, event, day)
+   );
+   CREATE INDEX growth_events_event_day ON growth_events (event, day);
+   CREATE TABLE growth_sync (
+     source text PRIMARY KEY,
+     position bigint NOT NULL
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

@@ -17,6 +17,7 @@ export function loadRegistries(root) {
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
     accounts: read("registries/accounts.json"),
+    growth: read("registries/growth-events.json"),
     trust: read("registries/trust-facts.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -103,6 +104,20 @@ function validate(reg) {
   if (!(ac.pinDateYearMin >= 1000 && ac.pinDateYearMax <= 9999 && ac.pinDateYearMin <= ac.pinDateYearMax)) fail("accounts: pin date years");
   if (Object.keys(ac.recoveryDelayHours).sort().join() !== "cpf,email,guardian,token") fail("accounts: recoveryDelayHours must have cpf, email, guardian and token");
   for (const [k, v] of Object.entries(ac.recoveryDelayHours)) if (!(Number.isInteger(v) && v >= 0)) fail(`accounts: recoveryDelayHours.${k}`);
+  // Growth events (ADR 0098): a fixed list, no content.
+  const gr = reg.growth;
+  const growthIds = new Set();
+  for (const e of gr.events) {
+    if (!/^[a-z][a-z0-9_]{1,39}$/.test(e.id) || growthIds.has(e.id)) fail(`growth: event id "${e.id}"`);
+    growthIds.add(e.id);
+    if (typeof e.once !== "boolean") fail(`growth: ${e.id}.once`);
+    if (!["api", "synapse_db"].includes(e.source)) fail(`growth: ${e.id}.source`);
+    if (e.content !== "none") fail(`growth: ${e.id} must carry no content`);
+    if (!(typeof e.detail === "string" && e.detail.length > 0)) fail(`growth: ${e.id}.detail`);
+  }
+  for (const id of [...gr.funnel, gr.retentionEvent]) if (!growthIds.has(id)) fail(`growth: unknown event "${id}"`);
+  if (gr.funnel[0] !== "signup_done" || new Set(gr.funnel).size !== gr.funnel.length) fail("growth: funnel must start with signup_done, no repeats");
+  for (const d of gr.retentionDays) if (!(Number.isInteger(d) && d > 0 && d < gr.retentionDaysKept)) fail(`growth: retention day ${d}`);
   for (const k of Object.keys(reg.homoglyphs.map)) if ([...k].length !== 1) fail(`homoglyph key "${k}" must be one character`);
   // Link hosts map a range of the folded message onto the plain message, so folding must keep every UTF-16 index.
   for (const [k, v] of Object.entries(reg.homoglyphs.map)) {

@@ -21,6 +21,7 @@
 //   node dist/cli.js business revoke <user_id>
 //   node dist/cli.js handle set <user_id> <handle>    (staff: skips the 30-day cooldown; still validates, holds the old handle, refuses a taken one)
 //   node dist/cli.js experiment report <experiment>  (for example headline-77: visitors, clicks, sign-ups per arm)
+//   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
@@ -28,6 +29,7 @@ import { Mailer } from "./mailer.js";
 import { releaseWaitlist, WaitlistBody } from "./waitlist.js";
 import { linkPhone, PhoneHasher, unlinkPhone } from "./phones.js";
 import { experimentReport } from "./experiments.js";
+import { Growth, growthReport } from "./growth.js";
 import { ApiError } from "./errors.js";
 import { setHandle } from "./handles.js";
 import { revokeByStaff, runScan, verifyByStaff } from "./business.js";
@@ -41,7 +43,7 @@ await migrate(db);
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" } },
+  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" }, since: { type: "string", default: "2026-01-01" } },
 });
 const [group, command, arg, arg2] = positionals;
 
@@ -129,6 +131,23 @@ try {
     console.log(`revoked ${arg}`);
   } else if (group === "experiment" && command === "report" && arg) {
     console.table(await experimentReport(db, arg));
+  } else if (group === "growth" && command === "report") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(values.since!)) throw new Error("--since must be YYYY-MM-DD");
+    const env = (k: string) => process.env[k]?.trim() || undefined;
+    const growth = new Growth(db, { secret: env("BIPE_GROWTH_HMAC_SECRET"), synapseUrl: env("SYNAPSE_DATABASE_URL"), serverName: process.env.SERVER_NAME ?? "bipe.net.br" });
+    try {
+      if (!growth.enabled) console.log("BIPE_GROWTH_HMAC_SECRET is not set: no sync, the report shows stored rows only");
+      else if (!(await growth.sync())) console.log("another sync is running: the report shows stored rows only");
+    } finally {
+      await growth.close();
+    }
+    const report = await growthReport(db, values.since!);
+    console.log(`Funnel: sign-ups since ${values.since}; a user counts at a step only with every earlier step`);
+    console.table(report.funnel);
+    console.log("Retention by sign-up week: active on day N / sign-ups whose day N is over");
+    console.table(report.retention);
+    console.log("All events: users and count");
+    console.table(report.totals);
   } else if (group === "phone" && command === "link" && arg?.startsWith("@") && arg2) {
     await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), arg, arg2, values.force === true);
     console.log(`linked a number to ${arg}`);
@@ -136,7 +155,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | registry fetch [YYYY-MM] | registry scan [--all] | business list | business verify @user | business revoke @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business verify @user | business revoke @user");
     process.exitCode = 2;
   }
 } finally {
