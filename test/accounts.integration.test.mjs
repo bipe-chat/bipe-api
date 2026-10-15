@@ -4,7 +4,7 @@ import { cancelRecovery, claimRecovery, confirmRecoveryEmail, redeemToken, reque
 import { Mailer } from "../dist/mailer.js";
 import { Mas } from "../dist/mas.js";
 import { newSecret, PinHasher, secretHash } from "../dist/secrets.js";
-import { isolatedDatabase, testDatabaseUrl } from "./helpers/database.mjs";
+import { isolatedDatabase, isLoopbackPeer, testDatabaseUrl } from "./helpers/database.mjs";
 import { masStub } from "./helpers/mas.mjs";
 
 // Synthetic fixtures only. Assertions never print credentials, PINs, mail or token values.
@@ -54,6 +54,8 @@ function failsWith(code) {
 test("database guard refuses production names, remote hosts and connection overrides", () => {
   for (const raw of [undefined, "not a URL", "postgres://bipe_test:fake@remote.example.test/bipe_test", "postgres://bipe_test:fake@127.0.0.1/bipe", "postgres://postgres:fake@127.0.0.1/bipe_test", "postgres://bipe_test:fake@127.0.0.1/bipe_test?host=remote.example.test"]) assert.throws(() => testDatabaseUrl(raw), /refused/);
   assert.throws(() => testDatabaseUrl("postgres://bipe_test:fake@127.0.0.1/bipe_test", "production"), /refused/);
+  for (const address of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) assert.equal(isLoopbackPeer(address), true);
+  for (const address of [undefined, "172.17.0.2", "192.168.1.2", "203.0.113.1"]) assert.equal(isLoopbackPeer(address), false);
 });
 
 test("invalid recovery factors do not consume PIN tries; valid factors with wrong PINs do", { timeout: 30000 }, async (t) => {

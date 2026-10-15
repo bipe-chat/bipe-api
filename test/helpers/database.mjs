@@ -13,6 +13,10 @@ export function testDatabaseUrl(raw, nodeEnv = process.env.NODE_ENV) {
   return url;
 }
 
+export function isLoopbackPeer(address) {
+  return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
+}
+
 export async function isolatedDatabase(t) {
   const url = testDatabaseUrl(process.env.BIPE_TEST_DATABASE_URL);
   const admin = new pg.Pool({ connectionString: url.href, max: 1, connectionTimeoutMillis: 3000 });
@@ -24,9 +28,15 @@ export async function isolatedDatabase(t) {
     try { if (created) await admin.query(`DROP SCHEMA "${schema}" CASCADE`); }
     finally { await admin.end(); }
   });
-  const { rows: [identity] } = await admin.query("SELECT current_database() AS db, current_user AS owner, host(inet_server_addr()) AS address");
-  if (identity.db !== "bipe_test" || identity.owner !== "bipe_test" || !["127.0.0.1", "::1"].includes(identity.address)) {
-    throw new Error("Integration database identity check failed; no schema was created.");
+  const connection = await admin.connect();
+  try {
+    const { rows: [identity] } = await connection.query("SELECT current_database() AS db, current_user AS owner");
+    // The server sees a bridge IP behind Docker port forwarding. Check the client's socket instead.
+    if (identity.db !== "bipe_test" || identity.owner !== "bipe_test" || !isLoopbackPeer(connection.connection.stream.remoteAddress)) {
+      throw new Error("Integration database identity check failed; no schema was created.");
+    }
+  } finally {
+    connection.release();
   }
   await admin.query(`CREATE SCHEMA "${schema}"`);
   created = true;
