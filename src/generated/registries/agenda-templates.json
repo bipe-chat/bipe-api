@@ -1,0 +1,284 @@
+{
+  "$comment": "Editable suggestions for Ativar agenda (bipe#317, ADRs 0099-0103). Stable IDs. Times use the business time zone; omitted weekdays are closed. Prices start on request. Copy lives in strings only.",
+  "version": 1,
+  "templates": [
+    {
+      "id": "pet-grooming",
+      "title_key": "bipe_agenda_template_pet_grooming",
+      "services": [
+        {
+          "id": "bath",
+          "name_key": "bipe_agenda_service_bath",
+          "duration_minutes": 60,
+          "buffer_before_minutes": 0,
+          "buffer_after_minutes": 15,
+          "price": {
+            "mode": "on_request"
+          }
+        },
+        {
+          "id": "grooming",
+          "name_key": "bipe_agenda_service_grooming",
+          "duration_minutes": 90,
+          "buffer_before_minutes": 0,
+          "buffer_after_minutes": 15,
+          "price": {
+            "mode": "on_request"
+          }
+        }
+      ],
+      "availability": [
+        {
+          "weekday": 1,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 2,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 3,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 4,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 5,
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ]
+    },
+    {
+      "id": "barbershop",
+      "title_key": "bipe_agenda_template_barbershop",
+      "services": [
+        {
+          "id": "haircut",
+          "name_key": "bipe_agenda_service_haircut",
+          "duration_minutes": 30,
+          "buffer_before_minutes": 0,
+          "buffer_after_minutes": 5,
+          "price": {
+            "mode": "on_request"
+          }
+        },
+        {
+          "id": "beard",
+          "name_key": "bipe_agenda_service_beard",
+          "duration_minutes": 20,
+          "buffer_before_minutes": 0,
+          "buffer_after_minutes": 5,
+          "price": {
+            "mode": "on_request"
+          }
+        }
+      ],
+      "availability": [
+        {
+          "weekday": 1,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 2,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 3,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 4,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 5,
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ]
+    },
+    {
+      "id": "salon",
+      "title_key": "bipe_agenda_template_salon",
+      "services": [
+        {
+          "id": "haircut",
+          "name_key": "bipe_agenda_service_haircut",
+          "duration_minutes": 45,
+          "buffer_before_minutes": 0,
+          "buffer_after_minutes": 10,
+          "price": {
+            "mode": "on_request"
+          }
+        }
+      ],
+      "availability": [
+        {
+          "weekday": 1,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 2,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 3,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 4,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 5,
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ]
+    },
+    {
+      "id": "clinic",
+      "title_key": "bipe_agenda_template_clinic",
+      "services": [
+        {
+          "id": "consultation",
+          "name_key": "bipe_agenda_service_consultation",
+          "duration_minutes": 30,
+          "buffer_before_minutes": 0,
+          "buffer_after_minutes": 10,
+          "price": {
+            "mode": "on_request"
+          }
+        }
+      ],
+      "availability": [
+        {
+          "weekday": 1,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 2,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 3,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 4,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 5,
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ]
+    },
+    {
+      "id": "classes",
+      "title_key": "bipe_agenda_template_classes",
+      "services": [
+        {
+          "id": "class",
+          "name_key": "bipe_agenda_service_class",
+          "duration_minutes": 60,
+          "buffer_before_minutes": 0,
+          "buffer_after_minutes": 0,
+          "price": {
+            "mode": "on_request"
+          }
+        }
+      ],
+      "availability": [
+        {
+          "weekday": 1,
+          "start": "16:00",
+          "end": "20:00"
+        },
+        {
+          "weekday": 2,
+          "start": "16:00",
+          "end": "20:00"
+        },
+        {
+          "weekday": 3,
+          "start": "16:00",
+          "end": "20:00"
+        },
+        {
+          "weekday": 4,
+          "start": "16:00",
+          "end": "20:00"
+        },
+        {
+          "weekday": 5,
+          "start": "16:00",
+          "end": "20:00"
+        }
+      ]
+    },
+    {
+      "id": "other",
+      "title_key": "bipe_agenda_template_other",
+      "services": [
+        {
+          "id": "generic",
+          "name_key": "bipe_agenda_service_generic",
+          "duration_minutes": 30,
+          "buffer_before_minutes": 0,
+          "buffer_after_minutes": 0,
+          "price": {
+            "mode": "on_request"
+          }
+        }
+      ],
+      "availability": [
+        {
+          "weekday": 1,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 2,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 3,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 4,
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "weekday": 5,
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ]
+    }
+  ]
+}

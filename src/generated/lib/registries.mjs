@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { evaluateTrustFacts, validateTrustRegistry } from "./trust.mjs";
+import { validateAgendaTemplates } from "./agenda-templates.mjs";
 
 export function loadRegistries(root) {
   const read = (p) => JSON.parse(readFileSync(join(root, p), "utf8"));
@@ -17,6 +18,7 @@ export function loadRegistries(root) {
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
     accounts: read("registries/accounts.json"),
+    agendaTemplates: read("registries/agenda-templates.json"),
     growth: read("registries/growth-events.json"),
     trust: read("registries/trust-facts.json"),
     strings: read("strings/pt-BR.json"),
@@ -32,6 +34,7 @@ function fail(msg) {
 
 function validate(reg) {
   validateTrustRegistry(reg.trust);
+  validateAgendaTemplates(reg);
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
