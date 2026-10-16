@@ -18,6 +18,7 @@ export function loadRegistries(root) {
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
     accounts: read("registries/accounts.json"),
+    legal: read("registries/legal.json"),
     agendaTemplates: read("registries/agenda-templates.json"),
     growth: read("registries/growth-events.json"),
     trust: read("registries/trust-facts.json"),
@@ -116,6 +117,10 @@ function validate(reg) {
   if (!(ac.pinDateYearMin >= 1000 && ac.pinDateYearMax <= 9999 && ac.pinDateYearMin <= ac.pinDateYearMax)) fail("accounts: pin date years");
   if (Object.keys(ac.recoveryDelayHours).sort().join() !== "cpf,email,guardian,token") fail("accounts: recoveryDelayHours must have cpf, email, guardian and token");
   for (const [k, v] of Object.entries(ac.recoveryDelayHours)) if (!(Number.isInteger(v) && v >= 0)) fail(`accounts: recoveryDelayHours.${k}`);
+  // Terms and privacy (ADR 0113): one version for the pair, a real date.
+  const lg = reg.legal;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(lg.legalVersion) || Number.isNaN(Date.parse(`${lg.legalVersion}T00:00:00Z`))) fail("legal: legalVersion must be YYYY-MM-DD");
+  for (const k of ["termsPath", "privacyPath", "enTermsPath", "enPrivacyPath"]) if (!/^\/[a-z/-]+\/$/.test(lg[k] ?? "")) fail(`legal: ${k}`);
   // Growth events (ADR 0098): a fixed list, no content.
   const gr = reg.growth;
   const growthIds = new Set();

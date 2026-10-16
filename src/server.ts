@@ -14,6 +14,7 @@ import { RateLimiter } from "./ratelimit.js";
 import { newChallenge } from "./attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
+import { checkTermsVersion, recordTerms } from "./terms.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { askToPartner, PartnerBody, prunePartnerRequests } from "./partners.js";
@@ -21,7 +22,7 @@ import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
-import { profileRules } from "./registry.js";
+import { legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
@@ -50,6 +51,7 @@ const limits = {
   signupAttested: new RateLimiter(30, 3_600_000),
   signupResume: new RateLimiter(30, 3_600_000),
   signupGlobal: new RateLimiter(config.SIGNUP_MAX_PER_HOUR, 3_600_000),
+  terms: new RateLimiter(10, 3_600_000),
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
@@ -127,6 +129,7 @@ const DomainBody = z.object({ domain: z.string().max(253) });
 
 const Lang = z.enum(["pt", "en"]);
 const PinField = z.string().max(64);
+const TERMS_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const SecretField = z.string().max(128);
 const SignupBody = z.object({
   // A code, an invite link or a whole pasted message: the server finds the code in it.
@@ -146,7 +149,9 @@ const SignupBody = z.object({
     })
     .optional(),
   signup_key: z.string().regex(SECRET_PATTERN).optional(),
+  terms_version: z.string().regex(TERMS_VERSION_PATTERN).optional(),
 });
+const TermsBody = z.object({ terms_version: z.string().regex(TERMS_VERSION_PATTERN) });
 const SignupResumeBody = z.object({ signup_key: z.string().regex(SECRET_PATTERN) });
 const HandleBody = z.object({ handle: z.string().max(64) });
 const PinBody = z.object({ pin: PinField });
@@ -217,7 +222,7 @@ app.post("/v1/signup", async (c) => {
 // ADR 0072, bipe#232: the apps follow the sign-up mode with no new build.
 app.get("/v1/signup/config", (c) => {
   c.header("cache-control", "public, max-age=300");
-  return c.json({ invite_required: config.SIGNUP_INVITE_REQUIRED });
+  return c.json({ invite_required: config.SIGNUP_INVITE_REQUIRED, terms_version: legalRules.legalVersion });
 });
 
 // ADR 0094: the app lost the answer of a sign-up. The key is the only proof, so no form and no attestation.
@@ -237,6 +242,15 @@ app.get("/v1/me/account", async (c) => {
   await forgetSignupReplay(db, userId);
   growth.onboarded(userId);
   return c.json(await accountStatus(accounts, userId));
+});
+
+// ADR 0113: accounts from before the clickwrap, and everyone after a new legalVersion, accept on a re-accept screen.
+app.post("/v1/me/terms", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.terms.check(userId);
+  const version = checkTermsVersion((await parse(c, TermsBody)).terms_version, true)!;
+  await recordTerms(db, userId, version, "app");
+  return c.body(null, 204);
 });
 
 app.put("/v1/me/pin", async (c) => {

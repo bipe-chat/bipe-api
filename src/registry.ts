@@ -103,6 +103,15 @@ export const accountRules = reg.accounts as {
   recoveryClaimDays: number;
 };
 
+/** Terms and privacy accepted at sign-up (ADR 0113, registries/legal.json). */
+export const legalRules = reg.legal as {
+  legalVersion: string;
+  termsPath: string;
+  privacyPath: string;
+  enTermsPath: string;
+  enPrivacyPath: string;
+};
+
 /** The shared PIN rule (registries/accounts.json, test-vectors/pins.json). Null when the PIN is strong enough. */
 export function problemWithPin(pin: string): PinProblem | null {
   return pinProblem(pin, reg) as PinProblem | null;

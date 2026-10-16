@@ -219,6 +219,14 @@ const MIGRATIONS = [
      source text PRIMARY KEY,
      position bigint NOT NULL
    );`,
+  // Clickwrap terms (ADR 0113): one row per account and accepted legalVersion. No IP and no device data.
+  `CREATE TABLE terms_acceptances (
+     user_id text NOT NULL,
+     version text NOT NULL,
+     source text NOT NULL CHECK (source IN ('signup', 'app')),
+     accepted_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, version)
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

@@ -1,0 +1,9 @@
+{
+  "$comment": "Terms of use and privacy policy that a person accepts to create an account (clickwrap, ADR 0113 in bipe/docs/adr). version names the pair of texts in bipe-web src/legal (termos.md, privacidade.md, terms.md, privacy.md) as their date, YYYY-MM-DD. Change version in the same change that changes the meaning of either text; the bipe-web git history at that commit is the record of what each version said. The apps send version with POST /v1/signup and POST /v1/me/terms; the server refuses any other value. termsPath and privacyPath are paths on PUBLIC_SITE_URL, pt first; enTermsPath and enPrivacyPath for English.",
+  "version": 1,
+  "legalVersion": "2026-10-16",
+  "termsPath": "/termos/",
+  "privacyPath": "/privacidade/",
+  "enTermsPath": "/en/terms/",
+  "enPrivacyPath": "/en/privacy/"
+}

@@ -8,6 +8,7 @@ import { type Mailer, mailBody } from "./mailer.js";
 import type { Mas } from "./mas.js";
 import { accountRules, appString, type Lang, problemWithPin } from "./registry.js";
 import { newSecret, PinHasher, sameSecret, SECRET_PATTERN, secretHash } from "./secrets.js";
+import { acceptedTermsVersion } from "./terms.js";
 
 // Device-first accounts: ADR 0057 and ADR 0059 (bipe/docs/adr), security.md rules 5 and 6.
 // - The hidden MAS password is made here, set through the MAS admin API and returned once. Never stored, never logged.
@@ -219,7 +220,7 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
 }
 
 export async function accountStatus({ db }: AccountDeps, userId: string) {
-  const [secrets, emails, recoveries] = await Promise.all([
+  const [secrets, emails, recoveries, termsVersion] = await Promise.all([
     db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
       "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
       [userId],
@@ -234,6 +235,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string) {
        ORDER BY created_at DESC LIMIT 20`,
       [userId, SHOWN_MS / 1000],
     ),
+    acceptedTermsVersion(db, userId),
   ]);
   const s = secrets.rows[0];
   const e = emails.rows[0];
@@ -257,6 +259,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string) {
       ...(r.ready_at ? { ready_at: r.ready_at.toISOString() } : {}),
       ...(r.ended_at ? { ended_at: r.ended_at.toISOString() } : {}),
     })),
+    ...(termsVersion ? { terms_version: termsVersion } : {}),
   };
 }
 

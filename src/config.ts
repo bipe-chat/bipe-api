@@ -19,6 +19,9 @@ const Env = z.object({
   // Global ceiling on sign-ups per hour, on top of the per-IP limit.
   // App Attest on sign-up (docs/adr). Anything but "false" requires a valid attestation.
   SIGNUP_ATTEST_REQUIRED: z.string().default("true").transform((v) => v !== "false"),
+  // Clickwrap terms (ADR 0113). Anything but "false" refuses a sign-up without the current terms_version.
+  // "false" only lets app builds from before ADR 0113 sign up; a given version is still checked and recorded.
+  SIGNUP_TERMS_REQUIRED: z.string().default("true").transform((v) => v !== "false"),
   // App IDs (TEAMID.bundleid) whose attestations are accepted, comma separated.
   APP_ATTEST_APP_IDS: z.string().default("992N457T8D.chat.bipe.app.dev").transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean)),
   SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),

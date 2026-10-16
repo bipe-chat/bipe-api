@@ -7,6 +7,7 @@ import { skeletonFree, validHandle } from "./handles.js";
 import { inviterOf, returnInviteUse, takeInviteUse } from "./invites.js";
 import type { Lang } from "./registry.js";
 import { newSecret, secretHash } from "./secrets.js";
+import { checkTermsVersion, recordTerms } from "./terms.js";
 
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
 
@@ -25,6 +26,7 @@ export interface SignupInput {
   display_name?: string;
   attestation?: Attestation;
   signup_key?: string;
+  terms_version?: string;
 }
 
 // ADR 0094: a retry with the same signup_key gets the same account. Sealed copies live this long at most.
@@ -121,6 +123,8 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
   // App Attest first: it is the cheapest check that stops scripted sign-ups. A given attestation must be valid.
   if (input.attestation) verifyAttestation(input.attestation, config.APP_ATTEST_APP_IDS);
   else if (config.SIGNUP_ATTEST_REQUIRED) throw new ApiError("attestation_invalid");
+  // ADR 0113: before anything is created. The row goes in with the signups row.
+  const termsVersion = checkTermsVersion(input.terms_version, config.SIGNUP_TERMS_REQUIRED);
 
   const legacy = input.password !== undefined;
   if (legacy && input.email === undefined) throw new ApiError("bad_request", "email");
@@ -159,7 +163,18 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
     if (legacy) {
       if (!(await mas.setPassword(masUserId, input.password!))) throw new ApiError("password_weak");
       if (!(await mas.addEmail(masUserId, email!))) throw new ApiError("email_taken");
-      await db.query("INSERT INTO signups (user_id, invite_id) VALUES ($1, $2)", [userId, inviteId]);
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("INSERT INTO signups (user_id, invite_id) VALUES ($1, $2)", [userId, inviteId]);
+        if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
+        await client.query("COMMIT");
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw e;
+      } finally {
+        client.release();
+      }
     } else {
       // Returned once, never stored and never logged. Only the token's hash stays.
       const password = newSecret();
@@ -172,6 +187,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       try {
         await client.query("BEGIN");
         await client.query("INSERT INTO signups (user_id, invite_id) VALUES ($1, $2)", [userId, inviteId]);
+        if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
         await client.query(
           `INSERT INTO account_secrets (user_id, device_first, pin_hash, pin_set_at, token_hash, token_set_at)
            VALUES ($1, true, $2, CASE WHEN $2::text IS NULL THEN NULL ELSE now() END, $3, now())`,
