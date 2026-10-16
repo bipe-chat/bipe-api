@@ -1,12 +1,15 @@
 // Problem reports from the apps (bipe#367): "Avisar sobre um problema". The apps send the rageshake multipart form.
 // The text, the logs and the screenshots stay on the server in Brazil for RETENTION_DAYS. Starlings gets the text and
-// metadata only, with a staff-only link back here. Never log the text, a file, or a user ID next to the text.
+// metadata only, with a staff-only link back here. The support bot (ADR 0114) posts a notice into the user's support
+// room. Never log the text, a file, or a user ID next to the text.
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import type { Intake } from "./intake.js";
+import { appString } from "./registry.js";
+import type { SupportBot } from "./support.js";
 
 export const RETENTION_DAYS = 90;
 export const BODY_MAX_BYTES = 50 * 1024 * 1024;
@@ -43,7 +46,7 @@ function platformOf(userAgent: string | undefined): "ios" | "android" | "other" 
   return "other";
 }
 
-export type BugReportDeps = { db: Db; intake: Intake; dir: string; publicApiUrl: string };
+export type BugReportDeps = { db: Db; intake: Intake; dir: string; publicApiUrl: string; support?: SupportBot };
 
 export async function submitBugReport(deps: BugReportDeps, userId: string, form: Form): Promise<{ report_id: string }> {
   const text = field(form, "text", TEXT_MAX + 1);
@@ -103,6 +106,11 @@ export async function submitBugReport(deps: BugReportDeps, userId: string, form:
     throw e;
   }
   console.log(`bug report stored: ${platform}, ${names.length} files`);
+  if (deps.support?.enabled) {
+    void deps.support
+      .notice(userId, appString("pt", "bipe_support_report_received"))
+      .catch((e) => console.error(`bug report notice failed: ${(e as Error).message}`));
+  }
   return { report_id: id };
 }
 

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@hono/node-server": "1.19.17",
+    "@matrix-org/matrix-sdk-crypto-nodejs": "0.6.6",
     "asn1js": "3.0.10",
     "hono": "4.13.13",
     "mmdb-lib": "3.0.3",
@@ -27,5 +28,10 @@
     "@types/node": "24.19.2",
     "@types/pg": "8.23.1",
     "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@matrix-org/matrix-sdk-crypto-nodejs"
+    ]
   }
 }

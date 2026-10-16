@@ -35,7 +35,8 @@ import { businessReport, experimentsReport, StaffReports, waitlistReport } from 
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
 import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugReportFile, submitBugReport, type BugReportDeps } from "./bug-reports.js";
-import { Intake } from "./intake.js";
+import { Intake, verifyIntakeSignature } from "./intake.js";
+import { SupportBot } from "./support.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -45,18 +46,20 @@ const auth = new MatrixAuth(config);
 const staff = new StaffGate(auth, mas);
 const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
-const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
+const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID] });
 const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
 const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
 const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_INTAKE_KEY);
-const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL };
+const support = new SupportBot(db, config, intake);
+const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL, support };
 console.log(`badges: ${badges.state}`);
 console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" : "off (no STARLINGS_APP_INTAKE_KEY)"}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
+console.log(`support bot: ${support.enabled ? "on" : "off (no SUPPORT_ACCESS_TOKEN or SUPPORT_STORE_PASSPHRASE)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 
 const limits = {
@@ -106,6 +109,9 @@ const limits = {
   // Problem reports (bipe#367).
   bugReport: new RateLimiter(10, 3_600_000),
   bugReportGlobal: new RateLimiter(500, 3_600_000),
+  // Support DM (ADR 0114).
+  supportRoom: new RateLimiter(30, 3_600_000),
+  starlingsReply: new RateLimiter(600, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -139,6 +145,7 @@ const pruneWaitlistEntries = () =>
     .catch((e) => console.error(`waitlist prune failed: ${(e as Error).message}`));
 pruneWaitlistEntries();
 setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
+support.start();
 const pruneReports = () =>
   void pruneBugReports(db, config.BUG_REPORTS_DIR)
     .then((n) => n > 0 && console.log(`problem reports pruned: ${n}`))
@@ -219,9 +226,9 @@ const signatureBody = bodyLimit({ maxSize: 160 * 1024, onError: (c) => c.json({ 
 const reportBody = bodyLimit({ maxSize: BODY_MAX_BYTES, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
 const photoBody = bodyLimit({ maxSize: profileRules.photoMaxBytes, onError: (c) => c.json({ error: "photo_invalid", reason: "too_large" }, 413) });
 app.use("*", (c, next) => {
+  if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
   if (c.req.path === PHOTO_PATH) return photoBody(c, next);
-  if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   return smallBody(c, next);
 });
 
@@ -488,7 +495,42 @@ app.post(BUG_REPORT_PATH, async (c) => {
 app.post("/internal/v1/may-invite", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
   const { inviter, invitee, shares_room } = await parse(c, MayInviteBody);
+  // The support account (ADR 0114) opens one support room per user, whatever their policy.
+  if (inviter === config.SUPPORT_USER_ID) return c.json({ allow: true, policy: await policyOf(db, invitee) });
   return c.json(await mayInvite(db, inviter, invitee, shares_room));
+});
+
+// Support DM (ADR 0114): the caller's room with the support account.
+app.post("/v1/me/support", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.supportRoom.check(userId);
+  return c.json({ room_id: await support.roomFor(userId) });
+});
+
+// A Starlings member's reply (envisioning/starlings#1176), signed with STARLINGS_APP_INTAKE_KEY.
+const StarlingsReplyBody = z.object({
+  message_id: z.string().min(1).max(255),
+  reporter_ref: z.string().min(3).max(255).startsWith("@"),
+  text: z.string().trim().min(1).max(10_000),
+  author: z.object({ name: z.string().max(120) }),
+});
+app.post("/v1/support/starlings", async (c) => {
+  limits.starlingsReply.check("all");
+  if (!config.STARLINGS_APP_INTAKE_KEY) throw new ApiError("support_unavailable");
+  const raw = await c.req.text();
+  if (!verifyIntakeSignature(config.STARLINGS_APP_INTAKE_KEY, "reply", c.req.header("x-starlings-timestamp"), c.req.header("x-starlings-signature"), raw)) {
+    throw new ApiError("unauthorized");
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw new ApiError("bad_request");
+  }
+  const parsed = StarlingsReplyBody.safeParse(json);
+  if (!parsed.success) throw new ApiError("bad_request", parsed.error.issues[0]?.path.join("."));
+  await support.reply(parsed.data);
+  return c.body(null, 204);
 });
 
 app.get("/v1/me/invite-connections", async (c) => {

@@ -85,5 +85,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     growth_events: await growth.rowsOf(userId),
     // Problem reports (bipe#367): text and metadata. The log and screenshot files stay on the server.
     problem_reports: await bugReportsOf(db, userId),
+    // Support DM (ADR 0114): the room ID only. The messages are in the room; the bot keeps no copy.
+    support_room: await one(db, "SELECT room_id, created_at FROM support_rooms WHERE user_id = $1", userId),
   };
 }

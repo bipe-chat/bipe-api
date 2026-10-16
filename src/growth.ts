@@ -43,14 +43,16 @@ export class Growth {
 
   constructor(
     private readonly db: Db,
-    opts: { secret?: string; synapseUrl?: string; serverName: string },
+    opts: { secret?: string; synapseUrl?: string; serverName: string; skipUsers?: string[] },
   ) {
     this.secret = opts.secret;
     this.synapse = opts.secret && opts.synapseUrl ? new pg.Pool({ connectionString: opts.synapseUrl, max: 2 }) : null;
     this.serverSuffix = `:${opts.serverName}`;
+    this.skipUsers = new Set(opts.skipUsers ?? []);
   }
 
   private readonly serverSuffix: string;
+  private readonly skipUsers: Set<string>;
 
   get enabled(): boolean {
     return this.secret !== undefined;
@@ -198,12 +200,12 @@ export class Growth {
     console.log(`growth: back-filled ${signups.rowCount} sign-ups, ${sent.rowCount} invite days, ${redeemed.rowCount} redeem days`);
   }
 
-  /** Local people: no application services, guests, bots or support accounts. */
+  /** Local people: no application services, guests, bots or support accounts (SUPPORT_USER_ID is skipped by name). */
   private async localUsers(): Promise<Set<string>> {
     const { rows } = await this.synapse!.query<{ name: string }>(
       "SELECT name FROM users WHERE appservice_id IS NULL AND is_guest = 0 AND user_type IS NULL",
     );
-    return new Set(rows.map((r) => r.name).filter((n) => n.endsWith(this.serverSuffix)));
+    return new Set(rows.map((r) => r.name).filter((n) => n.endsWith(this.serverSuffix) && !this.skipUsers.has(n)));
   }
 
   /** active_day, first_message_sent and call_started from new events, in stream order. */
