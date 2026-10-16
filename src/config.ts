@@ -42,6 +42,10 @@ const Env = z.object({
   BIPE_GROWTH_HMAC_SECRET: emptyAsUnset(z.string().min(32)),
   // Read-only role bipe_growth on the Synapse database (column grants only). Without it only API events are kept.
   SYNAPSE_DATABASE_URL: emptyAsUnset(z.string().min(1)),
+  // Same role on the Umami database, for the staff visit report. Without it /v1/admin/visits answers "internal".
+  UMAMI_DATABASE_URL: emptyAsUnset(z.string().min(1)),
+  // The bipe.chat website in Umami. Public: the site sends it with each visit (bipe-web src/config.ts).
+  UMAMI_WEBSITE_ID: z.uuid().default("4f1c2a6e-8b3d-4e57-9a0c-2d6b7e9f1a35"),
   // Device-first accounts (ADR 0057): secret key for the PIN hashes, 32 bytes as hex. Never in the database.
   // Without it the PIN routes answer "internal". A value that is not 64 hex characters stops the start.
   BIPE_PIN_PEPPER: emptyAsUnset(z.string().regex(/^[0-9a-fA-F]{64}$/, "64 hex characters")),

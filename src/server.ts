@@ -26,6 +26,7 @@ import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, mov
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth } from "./growth.js";
+import { Visits } from "./visits.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -37,6 +38,8 @@ const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
 const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth };
+const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
+console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 
@@ -559,7 +562,7 @@ app.post("/v1/me/business/domains/:domain/check", async (c) => {
   return c.json(await checkDomain(db, userId, c.req.param("domain")));
 });
 
-// Staff report (ADR 0056) for the page bipe.chat/admin/convites/.
+// Staff reports (ADR 0056): bipe.chat/admin/convites/ and /admin/visitas/.
 app.use("/v1/admin/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"], allowHeaders: ["authorization"] }));
 
 app.get("/v1/admin/inviters", async (c) => {
@@ -568,6 +571,13 @@ app.get("/v1/admin/inviters", async (c) => {
   if (!limit.success) throw new ApiError("bad_request");
   const rows = await inviterReport(db, limit.data);
   return c.json({ inviters: rows.map((r) => ({ ...r, last_join: r.last_join?.toISOString() ?? null })) });
+});
+
+app.get("/v1/admin/visits", async (c) => {
+  await staff.userId(c.req.header("authorization"));
+  const days = z.coerce.number().int().min(1).max(400).default(30).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return c.json(await visits.report(days.data));
 });
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
