@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "$comment": "Settings structure (ADR 0112 in bipe/docs/adr). One source for the order of groups, sections and rows on iOS and Android. `root` is the order of the group rows under Configurações in the Você tab; `profile` opens from the Você header. A group with `screen: \"element\"` keeps the Element screen and lists no rows here. Row kinds: link (opens a screen), choice (opens a picker), switch, info (a value, no action), url (opens a page from `urls`), action (runs something), destructive. `gate`: absent = always shown; `ios` or `android` = that platform only; `flag:<name>` = behind that app feature flag; `planned:<issue>` = hidden until bipe-chat/bipe#<issue> ships. Titles are bipe_* string keys; a row without its own string has no place here. A new top-level group needs a new ADR.",
+  "root": ["privacy", "account", "notifications", "chats", "help"],
+  "urls": {
+    "docs": { "pt": "https://bipe.chat/docs/", "en": "https://bipe.chat/en/docs/" },
+    "terms": { "pt": "https://bipe.chat/termos/", "en": "https://bipe.chat/en/terms/" },
+    "privacy": { "pt": "https://bipe.chat/privacidade/", "en": "https://bipe.chat/en/privacy/" },
+    "whoCanRead": { "pt": "https://bipe.chat/quem-pode-ler/", "en": "https://bipe.chat/en/who-can-read/" },
+    "lgpd": { "pt": "https://bipe.chat/lgpd/", "en": "https://bipe.chat/en/lgpd/" }
+  },
+  "groups": [
+    {
+      "key": "profile",
+      "title": "bipe_settings_profile",
+      "sections": [
+        {
+          "key": "main",
+          "rows": [
+            { "key": "namePhoto", "title": "bipe_settings_profile_name_photo", "kind": "link" },
+            { "key": "handle", "title": "bipe_settings_handle", "kind": "link", "adr": "0016" },
+            { "key": "publicProfile", "title": "bipe_settings_public_profile", "kind": "link", "adr": "0041" }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "privacy",
+      "title": "bipe_settings_privacy",
+      "sections": [
+        {
+          "key": "talk",
+          "title": "bipe_privacy_who_can_talk",
+          "rows": [
+            { "key": "messaging", "title": "bipe_messaging_title", "kind": "choice", "adr": "0016" },
+            { "key": "requestPhotos", "title": "bipe_privacy_requests_hide_photos", "footer": "bipe_privacy_requests_hide_photos_footer", "kind": "switch" },
+            { "key": "blocked", "title": "bipe_privacy_blocked", "kind": "link" }
+          ]
+        },
+        {
+          "key": "find",
+          "title": "bipe_privacy_who_can_find",
+          "rows": [
+            { "key": "number", "title": "bipe_privacy_number", "kind": "info", "adr": "0015" },
+            { "key": "discovery", "title": "bipe_discovery_toggle", "footer": "bipe_discovery_footer", "kind": "switch", "adr": "0063" },
+            { "key": "contacts", "title": "bipe_contacts_title", "kind": "link", "adr": "0015" }
+          ]
+        },
+        {
+          "key": "see",
+          "title": "bipe_privacy_what_others_see",
+          "rows": [
+            { "key": "presence", "title": "bipe_privacy_presence", "footer": "bipe_privacy_presence_footer", "kind": "switch", "adr": "0050" },
+            { "key": "readReceipts", "title": "bipe_privacy_read_receipts", "footer": "bipe_privacy_read_receipts_footer", "kind": "info", "adr": "0050" },
+            { "key": "whoCanRead", "title": "bipe_privacy_who_can_read", "kind": "url", "url": "whoCanRead", "adr": "0109" }
+          ]
+        },
+        {
+          "key": "data",
+          "title": "bipe_privacy_your_data",
+          "rows": [
+            { "key": "export", "title": "bipe_privacy_export", "footer": "bipe_privacy_export_footer", "kind": "action", "adr": "0112" },
+            { "key": "whatBipeKeeps", "title": "bipe_privacy_what_bipe_keeps", "kind": "url", "url": "lgpd", "adr": "0090" }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "account",
+      "title": "bipe_settings_account",
+      "sections": [
+        {
+          "key": "status",
+          "title": "bipe_fallback_title",
+          "rows": [
+            { "key": "waysBackStatus", "title": "bipe_account_ways_back", "kind": "info", "adr": "0059" }
+          ]
+        },
+        {
+          "key": "pin",
+          "title": "bipe_account_pin_section",
+          "footer": "bipe_account_pin_footer",
+          "rows": [
+            { "key": "changePin", "title": "bipe_pin_change_title", "kind": "link", "adr": "0057" },
+            { "key": "biometricUnlock", "title": "bipe_account_biometric_unlock", "kind": "switch", "adr": "0057" }
+          ]
+        },
+        {
+          "key": "waysBack",
+          "title": "bipe_account_ways_back",
+          "rows": [
+            { "key": "email", "title": "bipe_email_title", "kind": "link", "adr": "0059" },
+            { "key": "linkedAccounts", "title": "bipe_linked_accounts_title", "kind": "link", "gate": "planned:307", "adr": "0096" },
+            { "key": "recoveryKey", "title": "bipe_account_recovery_key", "footer": "bipe_account_recovery_key_footer", "kind": "link", "adr": "0073" }
+          ]
+        },
+        {
+          "key": "devices",
+          "title": "bipe_account_devices",
+          "rows": [
+            { "key": "thisDevice", "title": "bipe_account_this_device", "kind": "info" },
+            { "key": "linkDevice", "title": "bipe_account_link_device", "kind": "action", "gate": "flag:linkNewDevice" }
+          ]
+        },
+        {
+          "key": "leave",
+          "rows": [
+            { "key": "signOut", "title": "bipe_account_sign_out", "kind": "destructive" }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "notifications",
+      "title": "bipe_settings_notifications",
+      "screen": "element",
+      "sections": []
+    },
+    {
+      "key": "chats",
+      "title": "bipe_settings_chats",
+      "sections": [
+        {
+          "key": "main",
+          "rows": [
+            { "key": "appearance", "title": "bipe_chats_appearance", "kind": "choice" },
+            { "key": "language", "title": "bipe_settings_language", "footer": "bipe_settings_language_footer", "kind": "action", "gate": "ios" },
+            { "key": "mediaQuality", "title": "bipe_chats_media_quality", "kind": "link" },
+            { "key": "showMedia", "title": "bipe_chats_show_media", "kind": "choice" },
+            { "key": "liveLocation", "title": "bipe_chats_live_location", "footer": "bipe_chats_live_location_footer", "kind": "link" }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "help",
+      "title": "bipe_settings_help",
+      "sections": [
+        {
+          "key": "main",
+          "footer": "bipe_about_steward",
+          "rows": [
+            { "key": "docs", "title": "bipe_help_docs", "kind": "url", "url": "docs" },
+            { "key": "terms", "title": "bipe_help_terms", "kind": "url", "url": "terms" },
+            { "key": "privacy", "title": "bipe_help_privacy", "kind": "url", "url": "privacy" },
+            { "key": "licenses", "title": "bipe_help_licenses", "kind": "link" }
+          ]
+        }
+      ]
+    }
+  ]
+}
