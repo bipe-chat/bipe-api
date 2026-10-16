@@ -26,8 +26,9 @@ import { legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
-import { Growth } from "./growth.js";
+import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
+import { staffGrowth } from "./staff-report.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -592,6 +593,15 @@ app.get("/v1/admin/visits", async (c) => {
   const days = z.coerce.number().int().min(1).max(400).default(30).safeParse(c.req.query("days"));
   if (!days.success) throw new ApiError("bad_request");
   return c.json(await visits.report(days.data));
+});
+
+app.get("/v1/admin/growth", async (c) => {
+  await staff.userId(c.req.header("authorization"));
+  const since = z.iso.date().optional().safeParse(c.req.query("since"));
+  if (!since.success) throw new ApiError("bad_request");
+  // Default: the last 90 days. The sync stays on its 15-minute job; the page reads stored rows.
+  const from = since.data ?? new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+  return c.json(staffGrowth(await growthNumbers(db, from), from));
 });
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));

@@ -1,9 +1,11 @@
 import pg from "pg";
 import { ApiError } from "./errors.js";
+import { MIN_CELL } from "./staff-report.js";
 
 // Staff report for bipe.chat/admin/visitas/ (ADR 0098): Umami visits in Brazil by state and city.
 // Role bipe_growth reads only the Umami columns that bipe-infra scripts/setup-growth.sh grants.
 // Umami takes the place from the visitor IP and keeps no IP. The report has no URL, referrer or session ID.
+// Cities below MIN_CELL fold into one row per state with city null (bipe#371). States stay as they are.
 
 type Count = { visitors: number; views: number };
 export type VisitReport = {
@@ -11,10 +13,23 @@ export type VisitReport = {
   brazil: Count;
   other_countries: Count;
   states: (Count & { state: string | null })[];
-  cities: (Count & { state: string | null; city: string })[];
+  cities: (Count & { state: string | null; city: string | null })[];
 };
 
 const CITY_LIMIT = 200;
+
+/** Cities below MIN_CELL become one row per state with city null; then the top CITY_LIMIT rows, most visitors first. */
+function foldSmall(rows: (Count & { state: string | null; city: string })[]): VisitReport["cities"] {
+  const out: VisitReport["cities"] = [];
+  const rest = new Map<string | null, Count>();
+  for (const r of rows) {
+    if (r.visitors >= MIN_CELL) { out.push(r); continue; }
+    const o = rest.get(r.state) ?? { visitors: 0, views: 0 };
+    rest.set(r.state, { visitors: o.visitors + r.visitors, views: o.views + r.views });
+  }
+  for (const [state, c] of rest) out.push({ state, city: null, ...c });
+  return out.sort((a, b) => b.visitors - a.visitors || b.views - a.views).slice(0, CITY_LIMIT);
+}
 
 export class Visits {
   private readonly pool: pg.Pool | null;
@@ -47,13 +62,13 @@ export class Visits {
         `${base} SELECT state, count(*)::int AS visitors, coalesce(sum(views), 0)::int AS views FROM p WHERE country = 'BR' GROUP BY state ORDER BY visitors DESC, views DESC`, args),
       this.pool.query<Count & { state: string | null; city: string }>(
         `${base} SELECT state, city, count(*)::int AS visitors, coalesce(sum(views), 0)::int AS views FROM p
-         WHERE country = 'BR' AND city IS NOT NULL GROUP BY state, city ORDER BY visitors DESC, views DESC LIMIT ${CITY_LIMIT}`, args),
+         WHERE country = 'BR' AND city IS NOT NULL GROUP BY state, city`, args),
     ]);
     const total = (brazil: boolean): Count => {
       const r = totals.rows.find((t) => t.brazil === brazil);
       return { visitors: r?.visitors ?? 0, views: r?.views ?? 0 };
     };
-    return { days, brazil: total(true), other_countries: total(false), states: states.rows, cities: cities.rows };
+    return { days, brazil: total(true), other_countries: total(false), states: states.rows, cities: foldSmall(cities.rows) };
   }
 
   async close(): Promise<void> {

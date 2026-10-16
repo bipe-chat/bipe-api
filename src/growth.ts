@@ -314,6 +314,12 @@ export class Growth {
 
 export type FunnelStep = { step: string; users: number; of_signups: string; of_previous: string };
 export type RetentionRow = { week: string; signups: number } & Record<string, string | number>;
+/** Raw numbers behind the report. `due` counts the sign-ups whose day N is over; `kept` those active on day N. */
+export type GrowthNumbers = {
+  funnel: { step: string; users: number }[];
+  retention: { week: string; signups: number; days: { day: number; kept: number; due: number }[] }[];
+  totals: { event: string; users: number; count: number }[];
+};
 
 const pct = (a: number, b: number) => (b ? `${((100 * a) / b).toFixed(1)}%` : "-");
 
@@ -321,7 +327,7 @@ const pct = (a: number, b: number) => (b ? `${((100 * a) / b).toFixed(1)}%` : "-
  * Funnel over every recorded sign-up since `since` (a user counts at a step only with every earlier step), and
  * retention by sign-up week: the share with the retention event on day N, out of those whose day N is over.
  */
-export async function growthReport(db: Db, since: string): Promise<{ funnel: FunnelStep[]; retention: RetentionRow[]; totals: Record<string, number> }> {
+export async function growthNumbers(db: Db, since: string): Promise<GrowthNumbers> {
   const funnelEvents = growthRules.funnel;
   const { rows } = await db.query<{ uid: string; events: string[] }>(
     `SELECT s.uid, array_agg(DISTINCT g.event) AS events
@@ -329,12 +335,9 @@ export async function growthReport(db: Db, since: string): Promise<{ funnel: Fun
       WHERE s.event = 'signup_done' AND s.day >= $1::date GROUP BY s.uid`,
     [since, funnelEvents],
   );
-  const reached = funnelEvents.map((_, k) => rows.filter((r) => funnelEvents.slice(0, k + 1).every((e) => r.events.includes(e))).length);
   const funnel = funnelEvents.map((step, k) => ({
     step,
-    users: reached[k]!,
-    of_signups: pct(reached[k]!, reached[0]!),
-    of_previous: k === 0 ? "-" : pct(reached[k]!, reached[k - 1]!),
+    users: rows.filter((r) => funnelEvents.slice(0, k + 1).every((e) => r.events.includes(e))).length,
   }));
 
   const today = dayOf(Date.now());
@@ -349,24 +352,41 @@ export async function growthReport(db: Db, since: string): Promise<{ funnel: Fun
   );
   const weeks = new Map<string, typeof cohort.rows>();
   for (const r of cohort.rows) weeks.set(r.week, [...(weeks.get(r.week) ?? []), r]);
-  const retention = [...weeks].map(([week, people]) => {
-    const row: RetentionRow = { week, signups: people.length };
-    for (const n of growthRules.retentionDays) {
-      const due = people.filter((p) => p.age > n);
-      const kept = due.filter((p) => p.offsets?.includes(n)).length;
-      row[`d${n}`] = due.length ? `${kept}/${due.length} ${pct(kept, due.length)}` : "-";
-    }
-    return row;
-  });
+  const retention = [...weeks].map(([week, people]) => ({
+    week,
+    signups: people.length,
+    days: growthRules.retentionDays.map((day) => {
+      const due = people.filter((p) => p.age > day);
+      return { day, kept: due.filter((p) => p.offsets?.includes(day)).length, due: due.length };
+    }),
+  }));
 
-  const all = await db.query<{ event: string; users: number; n: number }>(
-    "SELECT event, count(DISTINCT uid)::int AS users, sum(n)::int AS n FROM growth_events WHERE day >= $1::date GROUP BY 1 ORDER BY 1",
+  const all = await db.query<{ event: string; users: number; count: number }>(
+    "SELECT event, count(DISTINCT uid)::int AS users, sum(n)::int AS count FROM growth_events WHERE day >= $1::date GROUP BY 1 ORDER BY 1",
     [since],
   );
+  return { funnel, retention, totals: all.rows };
+}
+
+/** The same numbers as text tables, for the CLI. */
+export async function growthReport(db: Db, since: string): Promise<{ funnel: FunnelStep[]; retention: RetentionRow[]; totals: Record<string, number> }> {
+  const g = await growthNumbers(db, since);
+  const first = g.funnel[0]?.users ?? 0;
+  const funnel = g.funnel.map((f, k) => ({
+    step: f.step,
+    users: f.users,
+    of_signups: pct(f.users, first),
+    of_previous: k === 0 ? "-" : pct(f.users, g.funnel[k - 1]!.users),
+  }));
+  const retention = g.retention.map((w) => {
+    const row: RetentionRow = { week: w.week, signups: w.signups };
+    for (const d of w.days) row[`d${d.day}`] = d.due ? `${d.kept}/${d.due} ${pct(d.kept, d.due)}` : "-";
+    return row;
+  });
   const totals: Record<string, number> = {};
-  for (const r of all.rows) {
+  for (const r of g.totals) {
     totals[`${r.event} (users)`] = r.users;
-    totals[`${r.event} (count)`] = r.n;
+    totals[`${r.event} (count)`] = r.count;
   }
   return { funnel, retention, totals };
 }
