@@ -54,6 +54,16 @@ export class Growth {
     return createHmac("sha256", this.secret!).update(userId, "utf8").digest("hex");
   }
 
+  /** The caller's own rows, for the data export (ADR 0112). Empty when growth events are off. */
+  async rowsOf(userId: string): Promise<{ event: string; day: string; n: number }[]> {
+    if (!this.secret) return [];
+    const { rows } = await this.db.query<{ event: string; day: string; n: number }>(
+      "SELECT event, to_char(day, 'YYYY-MM-DD') AS day, n FROM growth_events WHERE uid = $1 ORDER BY day, event",
+      [this.uid(userId)],
+    );
+    return rows;
+  }
+
   /** Adds n to (user, event, day). For a `once` event, only the first day counts. */
   private async put(q: Queryable, uid: string, event: string, day: string, n = 1): Promise<void> {
     const rule = events.get(event);

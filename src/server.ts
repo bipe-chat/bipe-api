@@ -30,6 +30,7 @@ import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
 import { staffGrowth } from "./staff-report.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
+import { exportData } from "./export.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -65,6 +66,7 @@ const limits = {
   contactsLookup: new RateLimiter(30, 3_600_000),
   attestChallenge: new RateLimiter(20, 3_600_000),
   setMessaging: new RateLimiter(30, 3_600_000),
+  dataExport: new RateLimiter(3, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
   partners: new RateLimiter(3, 3_600_000),
@@ -410,6 +412,17 @@ app.put("/v1/me/messaging", async (c) => {
   const { who_can_message } = await parse(c, MessagingBody);
   await setPolicy(db, userId, who_can_message);
   return c.json({ who_can_message });
+});
+
+// Data export (LGPD art. 18, ADR 0112). The app asks for a biometric check first.
+app.get("/v1/me/export", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.dataExport.check(userId);
+  const now = new Date();
+  const body = await exportData(db, growth, userId, now);
+  c.header("cache-control", "no-store");
+  c.header("content-disposition", `attachment; filename="bipe-dados-${now.toISOString().slice(0, 10)}.json"`);
+  return c.json(body);
 });
 
 // Called by the Synapse module before every invite. Caddy does not route /internal/*.
