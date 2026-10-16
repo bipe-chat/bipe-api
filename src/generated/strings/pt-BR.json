@@ -218,13 +218,15 @@
     "bipe_sticker_saved": "Sticker salvo em Meus stickers",
     "bipe_sticker_save_failed": "O sticker não foi salvo. Tente de novo.",
     "bipe_stickers_from_photo": "Criar de uma foto",
-    "bipe_contacts_title": "Contatos no Bipe",
+    "bipe_contacts_title": "Contatos e convites",
     "bipe_contacts_intro": "Veja quem dos seus contatos já está no Bipe. O servidor só compara os números e não guarda nenhum.",
     "bipe_contacts_allow": "Permitir acesso aos contatos",
     "bipe_contacts_denied": "O Bipe não tem acesso aos seus contatos. Você pode liberar nos Ajustes do iPhone.",
     "bipe_contacts_open_settings": "Abrir Ajustes",
     "bipe_contacts_none": "Nenhum contato seu está no Bipe ainda.",
     "bipe_contacts_invite": "Convidar quem não está",
+    "bipe_contacts_joined_with_invite": "Entrou com seu convite",
+    "bipe_contacts_pending_invites": "Convites ainda não usados",
     "bipe_discovery_toggle": "Quem tem meu número pode me encontrar",
     "bipe_discovery_footer": "Ninguém vê o seu número. Só quem já salvou seu número consegue te achar.",
     "bipe_phone_not_linked": "Seu número ainda não está vinculado, então ninguém te encontra por ele por enquanto.",
@@ -614,6 +616,11 @@
     "bipe_order_push_accepted": "%1$s aceitou seu pedido.",
     "bipe_order_push_refused": "%1$s recusou seu pedido. Confira o motivo no Bipe.",
     "bipe_order_push_done": "Pedido em %1$s entregue.",
-    "bipe_order_push_cancelled": "Pedido em %1$s cancelado."
+    "bipe_order_push_cancelled": "Pedido em %1$s cancelado.",
+    "bipe_dm_invite_to_group": "Convidar para um grupo",
+    "bipe_dm_invite_to_group_empty": "Você não está em nenhum grupo em que possa convidar pessoas.",
+    "bipe_dm_invite_to_group_sent": "Convite enviado",
+    "bipe_dm_invite_to_group_already_member": "Essa pessoa já está nesse grupo",
+    "bipe_dm_leave_body": "A conversa some da sua lista."
   }
 }

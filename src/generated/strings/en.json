@@ -218,13 +218,15 @@
     "bipe_sticker_saved": "Sticker saved to My stickers",
     "bipe_sticker_save_failed": "The sticker was not saved. Try again.",
     "bipe_stickers_from_photo": "Make from a photo",
-    "bipe_contacts_title": "Contacts on Bipe",
+    "bipe_contacts_title": "Contacts and invites",
     "bipe_contacts_intro": "See which of your contacts are already on Bipe. The server only compares the numbers and stores none of them.",
     "bipe_contacts_allow": "Allow access to contacts",
     "bipe_contacts_denied": "Bipe has no access to your contacts. You can allow it in iPhone Settings.",
     "bipe_contacts_open_settings": "Open Settings",
     "bipe_contacts_none": "None of your contacts are on Bipe yet.",
     "bipe_contacts_invite": "Invite people who are not here",
+    "bipe_contacts_joined_with_invite": "Joined with your invite",
+    "bipe_contacts_pending_invites": "Unused invites",
     "bipe_discovery_toggle": "People who have my number can find me",
     "bipe_discovery_footer": "Your number is never shown to anyone. Only people who already have you in their contacts can find you.",
     "bipe_phone_not_linked": "Your number is not linked yet, so nobody can find you by it for now.",
@@ -614,6 +616,11 @@
     "bipe_order_push_accepted": "%1$s accepted your order.",
     "bipe_order_push_refused": "%1$s declined your order. Check the reason in Bipe.",
     "bipe_order_push_done": "Order at %1$s delivered.",
-    "bipe_order_push_cancelled": "Order at %1$s cancelled."
+    "bipe_order_push_cancelled": "Order at %1$s cancelled.",
+    "bipe_dm_invite_to_group": "Invite to a group",
+    "bipe_dm_invite_to_group_empty": "You are not in any group where you can invite people.",
+    "bipe_dm_invite_to_group_sent": "Invite sent",
+    "bipe_dm_invite_to_group_already_member": "This person is already in this group",
+    "bipe_dm_leave_body": "The chat disappears from your list."
   }
 }
