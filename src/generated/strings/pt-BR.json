@@ -87,6 +87,7 @@
     "bipe_error_attestation_failed": "Não deu para confirmar este celular com a Apple. Confira a internet e tente de novo.",
     "bipe_signup_display_name_footer": "É o nome que aparece nas conversas. Dá para mudar depois.",
     "bipe_start_chat_handle_not_found": "Ninguém usa @%1$s no Bipe. Confira se digitou certo.",
+    "bipe_start_chat_search_by_handle": "No Bipe, você encontra as pessoas pelo @. Peça o @ para quem você procura.",
     "bipe_profile_share": "Compartilhar perfil",
     "bipe_profile_qr_action": "QR code",
     "bipe_profile_qr_title": "Seu QR code",

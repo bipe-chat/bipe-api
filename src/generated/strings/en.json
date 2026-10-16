@@ -87,6 +87,7 @@
     "bipe_error_attestation_failed": "We couldn't check this phone with Apple. Check your connection and try again.",
     "bipe_signup_display_name_footer": "This is the name people see in chats. You can change it later.",
     "bipe_start_chat_handle_not_found": "Nobody on Bipe uses @%1$s. Check the spelling.",
+    "bipe_start_chat_search_by_handle": "On Bipe, you find people by their @. Ask them for it.",
     "bipe_profile_share": "Share profile",
     "bipe_profile_qr_action": "QR code",
     "bipe_profile_qr_title": "Your QR code",
