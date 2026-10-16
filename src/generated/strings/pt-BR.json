@@ -625,6 +625,14 @@
     "bipe_dm_invite_to_group_empty": "Você não está em nenhum grupo em que possa convidar pessoas.",
     "bipe_dm_invite_to_group_sent": "Convite enviado",
     "bipe_dm_invite_to_group_already_member": "Essa pessoa já está nesse grupo",
-    "bipe_dm_leave_body": "A conversa some da sua lista."
+    "bipe_dm_leave_body": "A conversa some da sua lista.",
+    "bipe_dm_details_title": "Informações da conversa",
+    "bipe_dm_left": "%1$s saiu da conversa",
+    "bipe_dm_left_by_you": "Você saiu da conversa",
+    "bipe_dm_leaving": "Saindo da conversa",
+    "bipe_dm_error_muting": "Não foi possível silenciar a conversa. Tente de novo.",
+    "bipe_dm_error_unmuting": "Não foi possível reativar o som da conversa. Tente de novo.",
+    "bipe_dm_media_empty": "As fotos e os vídeos desta conversa aparecem aqui.",
+    "bipe_dm_files_empty": "Os documentos, áudios e mensagens de voz desta conversa aparecem aqui."
   }
 }

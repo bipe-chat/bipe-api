@@ -625,6 +625,14 @@
     "bipe_dm_invite_to_group_empty": "You are not in any group where you can invite people.",
     "bipe_dm_invite_to_group_sent": "Invite sent",
     "bipe_dm_invite_to_group_already_member": "This person is already in this group",
-    "bipe_dm_leave_body": "The chat disappears from your list."
+    "bipe_dm_leave_body": "The chat disappears from your list.",
+    "bipe_dm_details_title": "Chat info",
+    "bipe_dm_left": "%1$s left the chat",
+    "bipe_dm_left_by_you": "You left the chat",
+    "bipe_dm_leaving": "Leaving the chat",
+    "bipe_dm_error_muting": "Could not mute the chat. Try again.",
+    "bipe_dm_error_unmuting": "Could not unmute the chat. Try again.",
+    "bipe_dm_media_empty": "Photos and videos from this chat show up here.",
+    "bipe_dm_files_empty": "Documents, audio and voice messages from this chat show up here."
   }
 }
