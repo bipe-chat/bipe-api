@@ -10,6 +10,34 @@ pnpm install
 pnpm build
 ```
 
+## App Attest policy
+
+Set `APP_ATTEST_ENVIRONMENT` to `production` or `development` and
+`APP_ATTEST_APP_IDS` to a comma-separated list of approved `TEAMID.bundleid`
+values. Both settings are required. The API stops at startup if either is
+missing or invalid. `NODE_ENV=production` also refuses a development policy.
+
+The environment describes the attestation evidence, not the bundle's suffix.
+The current TestFlight app uses `992N457T8D.chat.bipe.app.dev` with production
+evidence. Keep that ID explicit until the release cutover. A future App Store
+ID must be added deliberately; there is no implicit allowlist.
+
+`SIGNUP_ATTEST_REQUIRED=false` still permits a request without a proof. A
+supplied proof is always checked against the environment, approved App IDs,
+single-use challenge and Apple's pinned certificate root. This switch stays
+separate while Android attestation is built (bipe#92/#132).
+
+Run the isolated policy tests:
+
+```bash
+pnpm test:attest
+```
+
+They use synthetic certificate chains. They cover production/development
+separation, team and bundle mismatches, pinned trust, challenge reuse and
+expiry, nonce binding, startup validation and optional signup behavior.
+They do not prove that a real TestFlight device can attest.
+
 ## Scheduling calculation
 
 ```bash
