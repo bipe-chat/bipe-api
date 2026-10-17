@@ -71,6 +71,19 @@ export class Visits {
     return { days, brazil: total(true), other_countries: total(false), states: states.rows, cities: foldSmall(cities.rows) };
   }
 
+  /** Retention check (bipe#381): event count, oldest event, events older than `limitDays`. */
+  async age(limitDays: number): Promise<{ rows: number; oldest: string | null; over: number }> {
+    if (!this.pool) throw new ApiError("internal");
+    const { rows } = await this.pool.query<{ rows: number; oldest: Date | null; over: number }>(
+      `SELECT count(*)::int AS rows, min(created_at) AS oldest,
+              count(*) FILTER (WHERE created_at <= now() - make_interval(days => $2))::int AS over
+         FROM website_event WHERE website_id = $1`,
+      [this.websiteId, limitDays],
+    );
+    const r = rows[0]!;
+    return { rows: r.rows, oldest: r.oldest?.toISOString() ?? null, over: r.over };
+  }
+
   async close(): Promise<void> {
     await this.pool?.end();
   }

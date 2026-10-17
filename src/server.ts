@@ -29,6 +29,7 @@ import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
 import { staffGrowth } from "./staff-report.js";
+import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -41,6 +42,7 @@ const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INV
 const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
+const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
@@ -602,6 +604,22 @@ app.get("/v1/admin/growth", async (c) => {
   // Default: the last 90 days. The sync stays on its 15-minute job; the page reads stored rows.
   const from = since.data ?? new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
   return c.json(staffGrowth(await growthNumbers(db, from), from));
+});
+
+// Read-only staff reports (bipe#368). Each route: staff gate first, then one report.
+const staffGet = (path: string, report: (c: Context) => Promise<unknown>) =>
+  app.get(path, async (c) => {
+    await staff.userId(c.req.header("authorization"));
+    return c.json(await report(c));
+  });
+staffGet("/v1/admin/experiments", () => experimentsReport(db));
+staffGet("/v1/admin/waitlist", () => waitlistReport(db));
+staffGet("/v1/admin/business", () => businessReport(db));
+staffGet("/v1/admin/retention", () => staffReports.retention());
+staffGet("/v1/admin/reports", (c) => {
+  const days = z.coerce.number().int().min(1).max(400).default(90).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return staffReports.reports(days.data);
 });
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
