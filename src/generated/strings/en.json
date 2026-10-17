@@ -656,6 +656,7 @@
     "bipe_account_pin_section": "PIN",
     "bipe_account_biometric_unlock": "Unlock with %1$s",
     "bipe_account_pin_footer": "The same %1$s-digit PIN locks the app and protects your way back into your account.",
+    "bipe_account_pin_footer_device": "This PIN protects your way back into this account. The one that locks the app belongs to the phone and stays the same.",
     "bipe_account_ways_back": "Ways back",
     "bipe_account_email_none": "Not added",
     "bipe_account_recovery_key": "Recovery key",
