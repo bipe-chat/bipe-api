@@ -3,6 +3,8 @@
   "version": 1,
   "owners": {},
   "handles": {
-    "mz": "@fmfwxwwys6v2:bipe.net.br"
+    "mz": "@fmfwxwwys6v2:bipe.net.br",
+    "bipe": "@bipe:bipe.net.br",
+    "suporte": "@suporte:bipe.net.br"
   }
 }
