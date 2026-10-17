@@ -649,6 +649,11 @@ const staffGet = (path: string, report: (c: Context) => Promise<unknown>) =>
     return c.json(await report(c));
   });
 staffGet("/v1/admin/summary", () => staffReports.summary());
+staffGet("/v1/admin/metrics", (c) => {
+  const days = z.coerce.number().int().min(14).max(365).default(90).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return staffReports.metrics(days.data);
+});
 staffGet("/v1/admin/experiments", () => experimentsReport(db));
 staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));

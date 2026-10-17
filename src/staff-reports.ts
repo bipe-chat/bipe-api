@@ -12,6 +12,7 @@ import type { Visits } from "./visits.js";
 // never message content, IPs, emails or growth pseudonyms. Counts that tie a small group to an action go
 // through cell() (bipe#371).
 
+const TZ = "America/Sao_Paulo";
 const ms = (d: Date | null) => d?.toISOString() ?? null;
 
 /** Headline tests (bipe#376, ADR 0032): every experiment with its arms. */
@@ -188,6 +189,118 @@ export class StaffReports {
       part("lgpd", async () => ({ over: (await this.retention()).items.reduce((sum, i) => sum + i.over, 0) })),
     ]);
     return { min_cell: MIN_CELL, crescimento, convites, visitas, experimentos, espera, empresas, denuncias, lgpd };
+  }
+
+  /**
+   * Staff dashboard on /admin/: daily series for the last `days` days in Brazil time, and growth rates.
+   * Rates come from the raw counts; every count in the answer goes through cell(). Each source runs alone,
+   * like summary(): an off or failed source gives null for its part and its series column.
+   * Windows end today and include today. DAU is yesterday: active_day for today fills during the day.
+   */
+  async metrics(days: number) {
+    const part = async <T>(key: string, f: () => Promise<T>): Promise<T | null> => {
+      try { return await f(); } catch (e) {
+        if (!(e instanceof ApiError)) console.error(`metrics ${key} failed: ${(e as Error).name}`);
+        return null;
+      }
+    };
+    const span = Math.max(days, 56);
+    const daily = async (sql: string): Promise<Map<string, number>> => {
+      const { rows } = await this.db.query<{ day: string; n: number }>(sql, [span]);
+      return new Map(rows.map((r) => [r.day, r.n]));
+    };
+    const local = (col: string) => `to_char(${col} AT TIME ZONE '${TZ}', 'YYYY-MM-DD')`;
+    const since = `now() - make_interval(days => $1)`;
+
+    const { rows: [clock] } = await this.db.query<{ today: string }>(`SELECT to_char(now() AT TIME ZONE '${TZ}', 'YYYY-MM-DD') AS today`);
+    const today = clock!.today;
+    // The span as calendar days, oldest first.
+    const calendar: string[] = [];
+    for (let i = span - 1; i >= 0; i--) calendar.push(new Date(Date.parse(`${today}T12:00:00Z`) - i * 86_400_000).toISOString().slice(0, 10));
+
+    const [accounts, signups, joins, waitlist, active, visitors, people] = await Promise.all([
+      part("accounts", async () => (await this.db.query<{ n: number }>("SELECT count(*)::int AS n FROM signups")).rows[0]!.n),
+      part("signups", () => daily(`SELECT ${local("created_at")} AS day, count(*)::int AS n FROM signups WHERE created_at > ${since} GROUP BY 1`)),
+      part("joins", () => daily(
+        `SELECT ${local("s.created_at")} AS day, count(*)::int AS n FROM signups s JOIN invites i ON i.id = s.invite_id
+          WHERE i.created_by IS NOT NULL AND s.created_at > ${since} GROUP BY 1`)),
+      part("waitlist", () => daily(`SELECT ${local("created_at")} AS day, count(*)::int AS n FROM waitlist WHERE created_at > ${since} GROUP BY 1`)),
+      part("active", () => daily(
+        `SELECT to_char(day, 'YYYY-MM-DD') AS day, count(DISTINCT uid)::int AS n FROM growth_events
+          WHERE event = 'active_day' AND day > current_date - $1::int GROUP BY 1`)),
+      part("visitors", () => this.visits.brazilDaily(span)),
+      // Distinct active people over windows, and activation of recent sign-ups (pseudonyms stay in the query).
+      part("people", async () => {
+        const { rows } = await this.db.query<{ wau: number; mau: number; signed_28: number; messaged_28: number }>(
+          `SELECT (SELECT count(DISTINCT uid)::int FROM growth_events WHERE event = 'active_day' AND day > $1::date - 7) AS wau,
+                  (SELECT count(DISTINCT uid)::int FROM growth_events WHERE event = 'active_day' AND day > $1::date - 30) AS mau,
+                  count(DISTINCT s.uid)::int AS signed_28,
+                  count(DISTINCT m.uid)::int AS messaged_28
+             FROM growth_events s LEFT JOIN growth_events m ON m.uid = s.uid AND m.event = 'first_message_sent'
+            WHERE s.event = 'signup_done' AND s.day > $1::date - 28`,
+          [today],
+        );
+        return rows[0]!;
+      }),
+    ]);
+
+    const at = (m: Map<string, number> | null, day: string) => (m ? m.get(day) ?? 0 : null);
+    // Sum of the `len` days that end `back` days before today.
+    const sum = (m: Map<string, number> | null, len: number, back = 0) =>
+      m ? calendar.slice(calendar.length - back - len, calendar.length - back).reduce((n, d) => n + (m.get(d) ?? 0), 0) : null;
+    const change = (now: number | null, before: number | null) => (now === null || !before ? null : Math.round((1000 * (now - before)) / before) / 10);
+    const ratio = (a: number | null, b: number | null) => (a === null || !b ? null : Math.round((1000 * a) / b) / 10);
+    const pair = (m: Map<string, number> | null, len: number) => {
+      const now = sum(m, len), before = sum(m, len, len);
+      return { now: now === null ? null : cell(now), before: before === null ? null : cell(before), change: change(now, before) };
+    };
+
+    // Accounts at the start of each of the last 4 weeks, from today's total minus later sign-ups.
+    const s28 = sum(signups, 28);
+    const weekly = accounts !== null && signups !== null && accounts - s28! > 0
+      ? Math.round(1000 * ((accounts / (accounts - s28!)) ** (1 / 4) - 1)) / 10
+      : null;
+    const yesterday = calendar[calendar.length - 2]!;
+    const dau = at(active, yesterday);
+
+    return {
+      min_cell: MIN_CELL,
+      today,
+      accounts: accounts === null ? null : cell(accounts),
+      growth: {
+        signups_7d: pair(signups, 7),
+        signups_28d: pair(signups, 28),
+        /** Average weekly growth of all accounts over the last 4 weeks, compounded. */
+        accounts_weekly_pct: weekly,
+        accounts_28d_pct: accounts !== null && s28 !== null ? ratio(s28, accounts - s28) : null,
+        invite_share_28d_pct: ratio(sum(joins, 28), s28),
+        joins_28d: pair(joins, 28),
+      },
+      engagement: people === null && active === null ? null : {
+        dau: dau === null ? null : cell(dau),
+        wau: people ? cell(people.wau) : null,
+        mau: people ? cell(people.mau) : null,
+        dau_mau_pct: people ? ratio(dau, people.mau) : null,
+        wau_mau_pct: people ? ratio(people.wau, people.mau) : null,
+        activation_28d_pct: people ? ratio(people.messaged_28, people.signed_28) : null,
+      },
+      site: visitors === null ? null : {
+        visitors_7d: pair(visitors, 7),
+        visitors_28d: pair(visitors, 28),
+        signup_per_visitor_28d_pct: ratio(s28, sum(visitors, 28)),
+      },
+      waitlist: waitlist === null ? null : { joins_7d: pair(waitlist, 7), joins_28d: pair(waitlist, 28) },
+      series: calendar.slice(-days).map((day) => {
+        const c = (m: Map<string, number> | null) => { const n = at(m, day); return n === null ? null : cell(n); };
+        return { day, signups: c(signups), joins: c(joins), waitlist: c(waitlist), active: c(active), visitors: c(visitors) };
+      }),
+      // 7-day windows that end today, 7 days back, and so on; oldest first. Sums before cell(), so small days still count.
+      weeks: Array.from({ length: Math.floor(days / 7) }, (_, k) => k).reverse().map((k) => {
+        const c = (m: Map<string, number> | null) => { const n = sum(m, 7, 7 * k); return n === null ? null : cell(n); };
+        return { end: calendar[calendar.length - 1 - 7 * k]!, signups: c(signups), joins: c(joins), waitlist: c(waitlist), visitors: c(visitors) };
+      }),
+      sources: { signups: signups !== null, joins: joins !== null, waitlist: waitlist !== null, active: active !== null, visitors: visitors !== null },
+    };
   }
 
   async close(): Promise<void> {

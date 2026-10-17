@@ -83,6 +83,19 @@ export class Visits {
     return rows[0]!.visitors;
   }
 
+  /** Brazil visitors (sessions) per day in Brazil time, last `days` days, for /v1/admin/metrics. Days without visits are absent. */
+  async brazilDaily(days: number): Promise<Map<string, number>> {
+    if (!this.pool) throw new ApiError("internal");
+    const { rows } = await this.pool.query<{ day: string; visitors: number }>(
+      `SELECT to_char(e.created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS day, count(DISTINCT e.session_id)::int AS visitors
+         FROM website_event e JOIN session x ON x.session_id = e.session_id AND x.website_id = $1
+        WHERE e.website_id = $1 AND e.created_at > now() - make_interval(days => $2) AND x.country = 'BR'
+        GROUP BY 1`,
+      [this.websiteId, days],
+    );
+    return new Map(rows.map((r) => [r.day, r.visitors]));
+  }
+
   /** Retention check (bipe#381): event count, oldest event, events older than `limitDays`. */
   async age(limitDays: number): Promise<{ rows: number; oldest: string | null; over: number }> {
     if (!this.pool) throw new ApiError("internal");
