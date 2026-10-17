@@ -27,6 +27,8 @@ const Env = z.object({
   SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   // Personal invites each user may hold (pending plus used), before admin grants.
   INVITES_PER_USER: z.coerce.number().int().nonnegative().default(10),
+  // ADR 0086: personal accounts one phone may hold (max_accounts in GET /v1/me/account). Default: the shared registry.
+  MAX_PERSONAL_ACCOUNTS: z.coerce.number().int().positive().optional(),
   // A used invite gives its slot back this many days after the invitee joined.
   INVITE_RESPAWN_DAYS: z.coerce.number().int().positive().default(7),
   // Shared with the Synapse module bipe_messaging only. Guards /internal/*.
