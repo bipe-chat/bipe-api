@@ -32,6 +32,7 @@ import { finishWebLink, Geo } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
+import { Badges } from "./badges.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -46,6 +47,8 @@ const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
+const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
+console.log(`badges: ${badges.state}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
@@ -76,6 +79,7 @@ const limits = {
   events: new RateLimiter(30, 3_600_000),
   profile: new RateLimiter(60, 60_000),
   profilePhoto: new RateLimiter(120, 60_000),
+  badge: new RateLimiter(120, 60_000),
   setProfile: new RateLimiter(30, 3_600_000),
   setProfilePhoto: new RateLimiter(10, 3_600_000),
   eventsGlobal: new RateLimiter(20_000, 3_600_000),
@@ -523,7 +527,7 @@ app.use("/v1/profiles/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, "
 
 app.get("/v1/profiles/:handle", async (c) => {
   limits.profile.check(clientIp(c));
-  const profile = await publicProfile(db, config.PUBLIC_API_URL, c.req.param("handle"));
+  const profile = await publicProfile(db, config.PUBLIC_API_URL, c.req.param("handle"), badges);
   // Turning a profile off must hide it at once.
   c.header("cache-control", "no-store");
   return c.json(profile);
@@ -537,6 +541,22 @@ app.get("/v1/profiles/:handle/photo", async (c) => {
     "cache-control": "public, max-age=300",
     "x-content-type-options": "nosniff",
   });
+});
+
+// Badges (bipe#399, ADR 0123). Public: anyone who sees a message may check the sender's seal. Apps verify the
+// envelope locally and never trust the status alone.
+app.use("/v1/badges/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+
+app.get("/v1/badges/:userId", async (c) => {
+  limits.badge.check(clientIp(c));
+  const userId = c.req.param("userId");
+  if (!/^@[^:\s]{1,255}:[^\s]{1,255}$/.test(userId)) throw new ApiError("not_found");
+  const result = await badges.forUser(userId);
+  // A revoke must show within minutes; the badge itself expires within lifeDays anyway.
+  c.header("cache-control", "public, max-age=300");
+  if (result.status === 410) return c.json({ reason: result.reason }, 410);
+  if (result.status === 404) throw new ApiError("not_found");
+  return c.json(result.envelope);
 });
 
 app.get("/v1/me/profile", async (c) => {
