@@ -229,6 +229,16 @@ const MIGRATIONS = [
    );`,
   // Company mode (ADR 0087, bipe#269): a company account is a second account of its owner's phone.
   `ALTER TABLE signups ADD COLUMN account_type text NOT NULL DEFAULT 'personal' CHECK (account_type IN ('personal', 'company'));`,
+  // Organisation form (ADR 0126, bipe#410): the partner table becomes the organisation table, with the
+  // questions on how many customers an organisation talks to and what it pays today. No email notice.
+  `ALTER TABLE partner_requests RENAME TO organisation_requests;
+   ALTER TABLE organisation_requests
+     ADD COLUMN role text,
+     ADD COLUMN cnpj text,
+     ADD COLUMN customers_band text,
+     ADD COLUMN channels text[] NOT NULL DEFAULT '{}',
+     ADD COLUMN spend_band text,
+     ADD COLUMN spend_note text;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

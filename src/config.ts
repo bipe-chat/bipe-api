@@ -69,8 +69,6 @@ const Env = z.object({
   BIPE_SMTP_PORT: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.coerce.number().int().min(1).max(65535).default(587)),
   BIPE_SMTP_USER: emptyAsUnset(z.string()),
   BIPE_SMTP_PASSWORD: emptyAsUnset(z.string()),
-  // Inbox for partner requests from the site (bipe#177). Moves to a @bipe.chat address later (bipe#234).
-  BIPE_PARTNERS_TO: z.email().default("contact@envisioning.com"),
   BIPE_MAIL_FROM: z.string().regex(/^[^\r\n<>]*<[^\s<>@]+@[^\s<>@]+>$|^[^\s<>@]+@[^\s<>@]+$/, "an address, or a name and <address>").default("Bipe <nao-responda@bipe.chat>"),
 });
 
