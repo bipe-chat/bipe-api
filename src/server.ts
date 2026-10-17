@@ -28,6 +28,7 @@ import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth } from "./growth.js";
 import { Visits } from "./visits.js";
+import { researchRoutes } from "./research/routes.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -578,6 +579,7 @@ app.post("/v1/me/business/domains/:domain/check", async (c) => {
 
 // Staff reports (ADR 0056): bipe.chat/admin/convites/ and /admin/visitas/.
 app.use("/v1/admin/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"], allowHeaders: ["authorization"] }));
+app.route("/v1/admin/research", researchRoutes(staff));
 
 app.get("/v1/admin/inviters", async (c) => {
   await staff.userId(c.req.header("authorization"));
