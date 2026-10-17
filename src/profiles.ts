@@ -1,6 +1,7 @@
 // Public profiles (ADR 0041 in bipe/docs/adr). Opt-in, reachable by the exact handle only, separate from
-// the Matrix profile. No badge store exists yet, so no profile carries a badge.
+// the Matrix profile. A verified company's profile carries its signed badge (bipe#399).
 import { randomBytes } from "node:crypto";
+import type { Badges } from "./badges.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { problemWithProfile, profileRules } from "./registry.js";
@@ -15,20 +16,26 @@ function handleKey(raw: string): string {
   return raw.replace(/^@/, "").toLowerCase();
 }
 
-export async function publicProfile(db: Db, apiUrl: string, raw: string) {
-  const { rows } = await db.query<Row & { handle: string }>(
-    `SELECT h.handle, p.enabled, p.name, p.bio, p.photo_version
+export async function publicProfile(db: Db, apiUrl: string, raw: string, badges: Badges) {
+  const { rows } = await db.query<Row & { handle: string; user_id: string }>(
+    `SELECT h.handle, h.user_id, p.enabled, p.name, p.bio, p.photo_version
      FROM handles h JOIN public_profiles p ON p.user_id = h.user_id
      WHERE h.handle = $1 AND p.enabled`,
     [handleKey(raw)],
   );
   const row = rows[0];
   if (!row) throw new ApiError("not_found");
+  // The same envelope as GET /v1/badges/{userId}. A badge failure must not hide the profile: no badge then.
+  const badge = await badges.forUser(row.user_id).catch((e: Error) => {
+    console.error(`profile badge failed: ${e.message}`);
+    return null;
+  });
   return {
     handle: row.handle,
     name: row.name,
     ...(row.bio ? { bio: row.bio } : {}),
     ...(row.photo_version ? { photo_url: photoUrl(apiUrl, row.handle, row.photo_version) } : {}),
+    ...(badge?.status === 200 ? { badge: badge.envelope } : {}),
   };
 }
 

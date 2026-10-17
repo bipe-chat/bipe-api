@@ -1,0 +1,142 @@
+// Signed CNPJ badges (bipe#399, ADR 0123; format: bipe-shared/docs/badge-attestation.md). The server signs on
+// read: a verified claim plus the account's cross-signing master key from Synapse give a lvl "cnpj" badge.
+// Fail closed: no signing key, no master key or no registry record means no badge (404).
+import { createPrivateKey, sign, type KeyObject } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import pg from "pg";
+import type { Db } from "./db.js";
+import { badgeRules } from "./registry.js";
+
+const KID = /^prod-\d{4}-(0[1-9]|1[0-2])$/;
+// Matrix unpadded base64 of a 32-byte Ed25519 key.
+const MASTER_KEY = /^[A-Za-z0-9+/]{43}$/;
+const DAY = 86_400;
+
+export type BadgeEnvelope = { v: 1; kid: string; payload: string; sig: string };
+/** 404: no badge. 410: the claim was revoked (contract BadgeGone). */
+export type BadgeResult =
+  | { status: 200; envelope: BadgeEnvelope }
+  | { status: 404 }
+  | { status: 410; reason: "revoked" | "not_active" | "not_found" | "staff" };
+
+type ClaimRow = {
+  cnpj: string;
+  status: string;
+  reason: string | null;
+  method: string | null;
+  verified_at: Date | null;
+  active: boolean | null;
+  legal_name: string | null;
+  trade_name: string | null;
+  release_month: string | null;
+};
+type Cached = { key: string; exp: number; envelope: BadgeEnvelope };
+
+export class Badges {
+  private readonly key: { kid: string; privateKey: KeyObject } | null;
+  private readonly synapse: pg.Pool | null;
+  private readonly cache = new Map<string, Cached>();
+
+  /** keyDir holds key.pem (PKCS#8 Ed25519) and kid, mounted from Secret bipe-badge-key. */
+  constructor(private readonly db: Db, opts: { keyDir?: string; synapseUrl?: string }) {
+    this.key = opts.keyDir ? loadKey(opts.keyDir) : null;
+    this.synapse = opts.synapseUrl ? new pg.Pool({ connectionString: opts.synapseUrl, max: 2 }) : null;
+  }
+
+  /** For the start log only. Never the key itself. */
+  get state(): string {
+    if (!this.key) return "off (no signing key)";
+    if (!this.synapse) return "off (no SYNAPSE_DATABASE_URL)";
+    const trusted = this.key.kid in badgeRules.keys ? "" : ", not in registries/badge-keys.json: the apps reject its badges";
+    return `on (kid ${this.key.kid}${trusted})`;
+  }
+
+  async forUser(userId: string, now = Math.floor(Date.now() / 1000)): Promise<BadgeResult> {
+    const { rows } = await this.db.query<ClaimRow>(
+      `SELECT c.cnpj, c.status, c.reason, c.method, c.verified_at, r.active, r.legal_name, r.trade_name, r.release_month
+         FROM business_claims c LEFT JOIN cnpj_registry r ON r.cnpj = c.cnpj WHERE c.user_id = $1`,
+      [userId],
+    );
+    const claim = rows[0];
+    if (claim?.status === "revoked") return { status: 410, reason: goneReason(claim.reason) };
+    if (claim?.status !== "verified" || !claim.method || !claim.verified_at) return { status: 404 };
+    if (!claim.active || !claim.legal_name || !claim.release_month || !this.key || !this.synapse) return { status: 404 };
+    const msk = await this.masterKey(userId);
+    if (!msk) return { status: 404 };
+
+    // A changed claim, registry record or master key needs a new signature at once.
+    const cacheKey = JSON.stringify([claim.cnpj, claim.method, claim.verified_at.toISOString(), claim.legal_name, claim.trade_name, claim.release_month, msk, this.key.kid]);
+    const cached = this.cache.get(userId);
+    if (cached && cached.key === cacheKey && now < cached.exp - badgeRules.renewDaysBeforeExpiry * DAY) {
+      return { status: 200, envelope: cached.envelope };
+    }
+    const iat = now;
+    const exp = iat + badgeRules.lifeDays * DAY;
+    // Field order is fixed here; verifiers check the exact bytes, so the order does not matter to them.
+    const payload = {
+      sub: userId,
+      lvl: "cnpj",
+      name: claim.trade_name || claim.legal_name,
+      cnpj: claim.cnpj,
+      legal_name: claim.legal_name,
+      ...(claim.trade_name ? { trade_name: claim.trade_name } : {}),
+      method: claim.method,
+      checked_month: claim.release_month,
+      msk,
+      iat,
+      exp,
+    };
+    const bytes = Buffer.from(JSON.stringify(payload), "utf8");
+    const envelope: BadgeEnvelope = {
+      v: 1,
+      kid: this.key.kid,
+      payload: bytes.toString("base64url"),
+      sig: sign(null, bytes, this.key.privateKey).toString("base64url"),
+    };
+    this.cache.set(userId, { key: cacheKey, exp, envelope });
+    return { status: 200, envelope };
+  }
+
+  /** The newest master key Synapse holds for the user, or null. Public key JSON; anything unexpected is null. */
+  private async masterKey(userId: string): Promise<string | null> {
+    const { rows } = await this.synapse!.query<{ keydata: string }>(
+      "SELECT keydata FROM e2e_cross_signing_keys WHERE user_id = $1 AND keytype = 'master' ORDER BY stream_id DESC LIMIT 1",
+      [userId],
+    );
+    if (!rows[0]) return null;
+    try {
+      const data = JSON.parse(rows[0].keydata) as { user_id?: unknown; usage?: unknown; keys?: Record<string, unknown> };
+      if (data.user_id !== userId || !Array.isArray(data.usage) || !data.usage.includes("master")) return null;
+      const entries = Object.entries(data.keys ?? {});
+      if (entries.length !== 1) return null;
+      const [id, key] = entries[0]!;
+      return typeof key === "string" && id === `ed25519:${key}` && MASTER_KEY.test(key) ? key : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async close(): Promise<void> {
+    await this.synapse?.end();
+  }
+}
+
+function goneReason(reason: string | null): "revoked" | "not_active" | "not_found" | "staff" {
+  return reason === "not_active" || reason === "not_found" || reason === "staff" ? reason : "revoked";
+}
+
+/** Missing files: badges off. A present but bad key stops the start, so a broken secret does not go unseen. */
+function loadKey(dir: string): { kid: string; privateKey: KeyObject } | null {
+  let pem: string, kid: string;
+  try {
+    pem = readFileSync(join(dir, "key.pem"), "utf8");
+    kid = readFileSync(join(dir, "kid"), "utf8").trim();
+  } catch {
+    return null;
+  }
+  if (!KID.test(kid)) throw new Error("badge key: kid must be prod-YYYY-MM");
+  const privateKey = createPrivateKey(pem);
+  if (privateKey.asymmetricKeyType !== "ed25519") throw new Error("badge key: not an Ed25519 key");
+  return { kid, privateKey };
+}
