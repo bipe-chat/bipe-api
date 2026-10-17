@@ -125,7 +125,7 @@ function openSealed(key: string, sealed: Buffer): { password: string; recovery_t
 async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: string | null) {
   const { db, mas, config } = deps;
   // App Attest first: it is the cheapest check that stops scripted sign-ups. A given attestation must be valid.
-  if (input.attestation) verifyAttestation(input.attestation, config.APP_ATTEST_APP_IDS);
+  if (input.attestation) verifyAttestation(input.attestation, config.APP_ATTEST_APP_IDS, config.APP_ATTEST_ENVIRONMENT);
   else if (config.SIGNUP_ATTEST_REQUIRED || input.account_type === "company") throw new ApiError("attestation_invalid");
   const accountType: AccountType = input.account_type ?? "personal";
   // ADR 0113: before anything is created. The row goes in with the signups row.

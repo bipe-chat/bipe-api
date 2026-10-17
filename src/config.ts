@@ -22,8 +22,11 @@ const Env = z.object({
   // Clickwrap terms (ADR 0113). Anything but "false" refuses a sign-up without the current terms_version.
   // "false" only lets app builds from before ADR 0113 sign up; a given version is still checked and recorded.
   SIGNUP_TERMS_REQUIRED: z.string().default("true").transform((v) => v !== "false"),
-  // App IDs (TEAMID.bundleid) whose attestations are accepted, comma separated.
-  APP_ATTEST_APP_IDS: z.string().default("992N457T8D.chat.bipe.app.dev").transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean)),
+  // Explicit per-deployment policy (ADR 0127). No implicit development App ID or mixed environment.
+  APP_ATTEST_ENVIRONMENT: z.enum(["production", "development"]),
+  APP_ATTEST_APP_IDS: z.string().transform((v) => v.split(",").map((s) => s.trim())).pipe(
+    z.array(z.string().regex(/^[A-Z0-9]{10}\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/, "TEAMID.bundleid")).min(1),
+  ),
   SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   // Personal invites each user may hold (pending plus used), before admin grants.
   INVITES_PER_USER: z.coerce.number().int().nonnegative().default(10),
@@ -76,12 +79,15 @@ export type Config = z.infer<typeof Env>;
 const MailEnv = Env.pick({ PUBLIC_SITE_URL: true, BIPE_SMTP_HOST: true, BIPE_SMTP_PORT: true, BIPE_SMTP_USER: true, BIPE_SMTP_PASSWORD: true, BIPE_MAIL_FROM: true });
 export type MailConfig = z.infer<typeof MailEnv>;
 
-export function loadConfig(): Config {
-  const parsed = Env.safeParse(process.env);
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const parsed = Env.safeParse(env);
   if (!parsed.success) {
     // Names only: never print values, some are secrets.
     const names = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
     throw new Error(`invalid environment: ${names}`);
+  }
+  if (env.NODE_ENV === "production" && parsed.data.APP_ATTEST_ENVIRONMENT !== "production") {
+    throw new Error("invalid environment: APP_ATTEST_ENVIRONMENT");
   }
   return parsed.data;
 }
