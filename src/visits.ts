@@ -71,6 +71,18 @@ export class Visits {
     return { days, brazil: total(true), other_countries: total(false), states: states.rows, cities: foldSmall(cities.rows) };
   }
 
+  /** Brazil visitors (sessions) in the last `days` days, for the staff index (bipe#394). One cheap count. */
+  async brazilVisitors(days: number): Promise<number> {
+    if (!this.pool) throw new ApiError("internal");
+    const { rows } = await this.pool.query<{ visitors: number }>(
+      `SELECT count(DISTINCT e.session_id)::int AS visitors
+         FROM website_event e JOIN session x ON x.session_id = e.session_id AND x.website_id = $1
+        WHERE e.website_id = $1 AND e.created_at > now() - make_interval(days => $2) AND x.country = 'BR'`,
+      [this.websiteId, days],
+    );
+    return rows[0]!.visitors;
+  }
+
   /** Retention check (bipe#381): event count, oldest event, events older than `limitDays`. */
   async age(limitDays: number): Promise<{ rows: number; oldest: string | null; over: number }> {
     if (!this.pool) throw new ApiError("internal");

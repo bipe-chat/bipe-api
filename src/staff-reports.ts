@@ -5,7 +5,7 @@ import { experimentReport } from "./experiments.js";
 import { HANDLE_CHANGE_KEEP_DAYS } from "./handles.js";
 import { PARTNER_KEEP_DAYS } from "./partners.js";
 import { growthRules } from "./registry.js";
-import { cell } from "./staff-report.js";
+import { cell, MIN_CELL } from "./staff-report.js";
 import type { Visits } from "./visits.js";
 
 // Read-only staff reports for bipe.chat/admin/* (bipe#368). Each one returns aggregates or business records,
@@ -135,6 +135,59 @@ export class StaffReports {
     ]);
     if (this.visits.enabled) items.push({ id: "site-visits", limit_days: 395, ...(await this.visits.age(395)) });
     return { items };
+  }
+
+  /**
+   * Staff index (bipe#394): one small object per staff page, so /admin/ makes one call. Each part runs alone:
+   * a failed or off source gives null for its page, never a 500 for the whole index. Counts of people go
+   * through cell(). Counts of business records and reports stay plain: their pages list the rows.
+   */
+  async summary() {
+    const part = async <T>(key: string, f: () => Promise<T>): Promise<T | null> => {
+      try { return await f(); } catch (e) {
+        // Off sources throw ApiError("internal"); log only real failures, without query text or values.
+        if (!(e instanceof ApiError)) console.error(`summary ${key} failed: ${(e as Error).name}`);
+        return null;
+      }
+    };
+    const count = async (sql: string, args: unknown[] = []) => (await this.db.query<{ n: number }>(sql, args)).rows[0]!.n;
+    const [crescimento, convites, visitas, experimentos, espera, empresas, denuncias, lgpd] = await Promise.all([
+      // Sign-ups from the signups table: it is on without growth events (BIPE_GROWTH_HMAC_SECRET).
+      part("crescimento", async () => ({
+        signups_7d: cell(await count("SELECT count(*)::int AS n FROM signups WHERE created_at > now() - interval '7 days'")),
+      })),
+      part("convites", async () => ({
+        joins_30d: cell(await count(
+          `SELECT count(*)::int AS n FROM signups s JOIN invites i ON i.id = s.invite_id
+            WHERE i.created_by IS NOT NULL AND s.created_at > now() - interval '30 days'`)),
+      })),
+      part("visitas", async () => ({ brazil_7d: cell(await this.visits.brazilVisitors(7)) })),
+      // The API does not read headlineTest in bipe-shared product.json, so "active" is the experiment with the newest day.
+      part("experimentos", async () => {
+        const { rows } = await this.db.query<{ experiment: string; visitors: number }>(
+          `SELECT experiment, coalesce(sum(n) FILTER (WHERE event = 'assign'), 0)::int AS visitors
+             FROM experiment_counts GROUP BY experiment ORDER BY max(day) DESC LIMIT 1`);
+        const r = rows[0];
+        if (!r) throw new ApiError("internal");
+        return { id: r.experiment, visitors: r.visitors };
+      }),
+      part("espera", async () => ({ waiting: await count("SELECT count(*)::int AS n FROM waitlist WHERE invite_id IS NULL") })),
+      part("empresas", async () => {
+        const { rows } = await this.db.query<{ awaiting_proof: number; verified: number }>(
+          `SELECT count(*) FILTER (WHERE status = 'awaiting_proof')::int AS awaiting_proof,
+                  count(*) FILTER (WHERE status = 'verified')::int AS verified FROM business_claims`);
+        return rows[0]!;
+      }),
+      part("denuncias", async () => {
+        if (!this.synapse) throw new ApiError("internal");
+        const { rows } = await this.synapse.query<{ n: number }>(
+          `SELECT count(id)::int AS n FROM event_reports
+            WHERE received_ts > (extract(epoch FROM now()) * 1000)::bigint - 7 * 86400000`);
+        return { reports_7d: rows[0]!.n };
+      }),
+      part("lgpd", async () => ({ over: (await this.retention()).items.reduce((sum, i) => sum + i.over, 0) })),
+    ]);
+    return { min_cell: MIN_CELL, crescimento, convites, visitas, experimentos, espera, empresas, denuncias, lgpd };
   }
 
   async close(): Promise<void> {

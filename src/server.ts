@@ -648,6 +648,7 @@ const staffGet = (path: string, report: (c: Context) => Promise<unknown>) =>
     await staff.userId(c.req.header("authorization"));
     return c.json(await report(c));
   });
+staffGet("/v1/admin/summary", () => staffReports.summary());
 staffGet("/v1/admin/experiments", () => experimentsReport(db));
 staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));
