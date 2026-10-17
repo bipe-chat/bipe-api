@@ -72,4 +72,5 @@ test("optional signup still verifies a supplied proof and required signup refuse
   await assert.rejects(signup({ config }, {}), (error) => error.id === "invite_invalid");
   await assert.rejects(signup({ config }, { attestation: { key_id: "x", challenge: newChallenge(), attestation_object: "x" } }), refused);
   await assert.rejects(signup({ config: { ...config, SIGNUP_ATTEST_REQUIRED: true } }, {}), refused);
+  await assert.rejects(signup({ config }, { account_type: "company" }), refused);
 });

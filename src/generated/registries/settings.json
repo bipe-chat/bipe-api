@@ -103,6 +103,13 @@
           ]
         },
         {
+          "key": "company",
+          "footer": "bipe_company_create_footer",
+          "rows": [
+            { "key": "createCompany", "title": "bipe_company_create", "kind": "action", "gate": "flag:companyAccount", "adr": "0087" }
+          ]
+        },
+        {
           "key": "leave",
           "rows": [
             { "key": "signOut", "title": "bipe_account_sign_out", "kind": "destructive" }

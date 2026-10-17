@@ -22,7 +22,7 @@ const Env = z.object({
   // Clickwrap terms (ADR 0113). Anything but "false" refuses a sign-up without the current terms_version.
   // "false" only lets app builds from before ADR 0113 sign up; a given version is still checked and recorded.
   SIGNUP_TERMS_REQUIRED: z.string().default("true").transform((v) => v !== "false"),
-  // Explicit per-deployment policy (ADR 0126). No implicit development App ID or mixed environment.
+  // Explicit per-deployment policy (ADR 0127). No implicit development App ID or mixed environment.
   APP_ATTEST_ENVIRONMENT: z.enum(["production", "development"]),
   APP_ATTEST_APP_IDS: z.string().transform((v) => v.split(",").map((s) => s.trim())).pipe(
     z.array(z.string().regex(/^[A-Z0-9]{10}\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/, "TEAMID.bundleid")).min(1),
@@ -30,6 +30,8 @@ const Env = z.object({
   SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   // Personal invites each user may hold (pending plus used), before admin grants.
   INVITES_PER_USER: z.coerce.number().int().nonnegative().default(10),
+  // ADR 0086: personal accounts one phone may hold (max_accounts in GET /v1/me/account). Default: the shared registry.
+  MAX_PERSONAL_ACCOUNTS: z.coerce.number().int().positive().optional(),
   // A used invite gives its slot back this many days after the invitee joined.
   INVITE_RESPAWN_DAYS: z.coerce.number().int().positive().default(7),
   // Shared with the Synapse module bipe_messaging only. Guards /internal/*.
@@ -43,6 +45,9 @@ const Env = z.object({
   // GeoIP city database for the web sign-in place (ADR 0118): DB-IP "IP to City Lite" in MMDB format.
   // Unset or missing file: GET /v1/web-link/place answers {}.
   GEOIP_CITY_DB: emptyAsUnset(z.string()),
+  // Badge signing key (ADR 0123): a directory with key.pem and kid, mounted from Secret bipe-badge-key.
+  // Unset or no files: GET /v1/badges answers 404 for everyone.
+  BIPE_BADGE_KEY_DIR: emptyAsUnset(z.string()),
   // Base of absolute URLs the API hands out (profile photos).
   PUBLIC_API_URL: z.url().default("https://api.bipe.net.br"),
   // HMAC key for stored phone numbers. Without it the phone endpoints answer "internal".

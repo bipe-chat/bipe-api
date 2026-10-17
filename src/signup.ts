@@ -27,7 +27,11 @@ export interface SignupInput {
   attestation?: Attestation;
   signup_key?: string;
   terms_version?: string;
+  account_type?: AccountType;
 }
+
+/** ADR 0087: a company account. It needs an attested device (ADR 0043) and does not count in the phone's cap (ADR 0086). */
+export type AccountType = "personal" | "company";
 
 // ADR 0094: a retry with the same signup_key gets the same account. Sealed copies live this long at most.
 export const SIGNUP_REPLAY_DAYS = 7;
@@ -122,12 +126,14 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
   const { db, mas, config } = deps;
   // App Attest first: it is the cheapest check that stops scripted sign-ups. A given attestation must be valid.
   if (input.attestation) verifyAttestation(input.attestation, config.APP_ATTEST_APP_IDS, config.APP_ATTEST_ENVIRONMENT);
-  else if (config.SIGNUP_ATTEST_REQUIRED) throw new ApiError("attestation_invalid");
+  else if (config.SIGNUP_ATTEST_REQUIRED || input.account_type === "company") throw new ApiError("attestation_invalid");
+  const accountType: AccountType = input.account_type ?? "personal";
   // ADR 0113: before anything is created. The row goes in with the signups row.
   const termsVersion = checkTermsVersion(input.terms_version, config.SIGNUP_TERMS_REQUIRED);
 
   const legacy = input.password !== undefined;
   if (legacy && input.email === undefined) throw new ApiError("bad_request", "email");
+  if (legacy && accountType === "company") throw new ApiError("bad_request", "account_type");
   if (legacy && input.pin !== undefined) throw new ApiError("bad_request", "pin");
   const email = input.email !== undefined ? normalizeEmail(input.email) : null;
   const wanted = input.handle ? validHandle(input.handle, "") : null;
@@ -166,7 +172,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        await client.query("INSERT INTO signups (user_id, invite_id) VALUES ($1, $2)", [userId, inviteId]);
+        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, inviteId, accountType]);
         if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
         await client.query("COMMIT");
       } catch (e) {
@@ -186,7 +192,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        await client.query("INSERT INTO signups (user_id, invite_id) VALUES ($1, $2)", [userId, inviteId]);
+        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, inviteId, accountType]);
         if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
         await client.query(
           `INSERT INTO account_secrets (user_id, device_first, pin_hash, pin_set_at, token_hash, token_set_at)

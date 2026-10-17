@@ -219,8 +219,9 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
   return row.state;
 }
 
-export async function accountStatus({ db }: AccountDeps, userId: string) {
-  const [secrets, emails, recoveries, termsVersion] = await Promise.all([
+/** `maxAccounts`: the live cap of personal accounts per phone (ADR 0086). Company accounts do not count. */
+export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts) {
+  const [secrets, emails, recoveries, termsVersion, signupRow] = await Promise.all([
     db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
       "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
       [userId],
@@ -236,6 +237,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string) {
       [userId, SHOWN_MS / 1000],
     ),
     acceptedTermsVersion(db, userId),
+    db.query<{ account_type: string }>("SELECT account_type FROM signups WHERE user_id = $1", [userId]),
   ]);
   const s = secrets.rows[0];
   const e = emails.rows[0];
@@ -260,6 +262,9 @@ export async function accountStatus({ db }: AccountDeps, userId: string) {
       ...(r.ended_at ? { ended_at: r.ended_at.toISOString() } : {}),
     })),
     ...(termsVersion ? { terms_version: termsVersion } : {}),
+    max_accounts: maxAccounts,
+    // ADR 0087. Accounts made before the column, and beta accounts without a signups row, are personal.
+    account_type: signupRow.rows[0]?.account_type === "company" ? "company" : "personal",
   };
 }
 
