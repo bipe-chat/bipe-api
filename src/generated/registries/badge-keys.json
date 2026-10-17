@@ -1,7 +1,9 @@
 {
   "version": 1,
   "$comment": "Badge signing keys the apps trust (docs/badge-attestation.md, bipe ADR 0123). kid to raw Ed25519 public key, base64url without padding. Only public keys. The private key is made on the cluster and never leaves it (bipe-infra scripts/setup-badge-key.sh prints the public key). Never list a test-only-* kid here. lifeDays: badge life from iat to exp. renewDaysBeforeExpiry: the API signs a new badge when the cached one has less life than this.",
-  "keys": {},
+  "keys": {
+    "prod-2026-10": "9j3_slBroZbxa3B6Tdgcm_U-O_LIdrNFXzDgY8oLwxE"
+  },
   "lifeDays": 7,
   "renewDaysBeforeExpiry": 1
 }
