@@ -39,68 +39,74 @@ export interface Attestation {
   challenge: string; // from POST /v1/attest/challenge; the app hashes its UTF-8 bytes as clientDataHash
 }
 
-/** Throws ApiError("attestation_invalid") unless the attestation is genuine for one of the app IDs. */
-export function verifyAttestation(att: Attestation, appIds: string[]): void {
-  const fail = (step: string): never => {
-    // Step name only: attestation data is not secret but is large and device-specific.
-    console.error(`app attest: failed at ${step}`);
-    throw new ApiError("attestation_invalid");
+/** Bind a trust root in code, never from a request or environment setting. Tests use a synthetic CA. */
+export function createAttestationVerifier(root: X509Certificate) {
+  return function verifyAttestation(att: Attestation, appIds: readonly string[], environment: "production" | "development"): void {
+    const fail = (step: string): never => {
+      // Step name only: attestation data is not secret but is large and device-specific.
+      console.error(`app attest: failed at ${step}`);
+      throw new ApiError("attestation_invalid");
+    };
+    if (!takeChallenge(att.challenge)) fail("challenge");
+
+    let obj: Map<string, unknown>;
+    try {
+      obj = decodeCbor(Buffer.from(att.attestation_object, "base64")) as Map<string, unknown>;
+    } catch {
+      return fail("cbor");
+    }
+    if (obj.get("fmt") !== "apple-appattest") fail("fmt");
+    const stmt = obj.get("attStmt") as Map<string, unknown> | undefined;
+    const x5c = stmt?.get("x5c") as Buffer[] | undefined;
+    const authData = obj.get("authData") as Buffer | undefined;
+    if (!x5c || x5c.length < 2 || !Buffer.isBuffer(authData) || authData.length < 55) return fail("structure");
+
+    // 1. Certificate chain: credential cert <- intermediate <- Apple App Attestation Root CA.
+    let cred: X509Certificate, inter: X509Certificate;
+    try {
+      cred = new X509Certificate(x5c[0]!);
+      inter = new X509Certificate(x5c[1]!);
+    } catch {
+      return fail("certificates");
+    }
+    const now = new Date();
+    for (const c of [cred, inter]) if (new Date(c.validFrom) > now || new Date(c.validTo) < now) fail("validity");
+    if (!cred.checkIssued(inter) || !cred.verify(inter.publicKey)) fail("chain-leaf");
+    if (!inter.checkIssued(root) || !inter.verify(root.publicKey)) fail("chain-root");
+
+    // 2-4. Nonce = SHA256(authData || SHA256(challenge)) must equal the certificate extension value.
+    const clientDataHash = sha256(Buffer.from(att.challenge, "utf8"));
+    const nonce = sha256(authData, clientDataHash);
+    const extNonce = extensionNonce(cred.raw);
+    if (!extNonce || !extNonce.equals(nonce)) fail("nonce");
+
+    // 5. Key ID = SHA256 of the credential public key (uncompressed EC point).
+    const jwk = cred.publicKey.export({ format: "jwk" }) as { x?: string; y?: string };
+    if (!jwk.x || !jwk.y) return fail("public-key");
+    const point = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x, "base64url"), Buffer.from(jwk.y, "base64url")]);
+    const keyId = Buffer.from(att.key_id, "base64");
+    if (!sha256(point).equals(keyId)) fail("key-id");
+
+    // 6. RP ID hash = SHA256(appId) for one of our App IDs (TEAMID.bundleid).
+    const rpIdHash = authData.subarray(0, 32);
+    if (!appIds.some((id) => sha256(Buffer.from(id)).equals(rpIdHash))) fail("app-id");
+
+    // 7. Counter is 0 on attestation.
+    if (authData.readUInt32BE(33) !== 0) fail("counter");
+
+    // 8. AAGUID must match this deployment's environment, independently of the bundle ID.
+    const aaguid = authData.subarray(37, 53);
+    const expected = environment === "production" ? AAGUID_PRODUCTION : environment === "development" ? AAGUID_DEVELOPMENT : null;
+    if (!expected || !aaguid.equals(expected)) fail("aaguid");
+
+    // 9. Credential ID equals the key ID.
+    const credLen = authData.readUInt16BE(53);
+    if (!authData.subarray(55, 55 + credLen).equals(keyId)) fail("credential-id");
   };
-  if (!takeChallenge(att.challenge)) fail("challenge");
-
-  let obj: Map<string, unknown>;
-  try {
-    obj = decodeCbor(Buffer.from(att.attestation_object, "base64")) as Map<string, unknown>;
-  } catch {
-    return fail("cbor");
-  }
-  if (obj.get("fmt") !== "apple-appattest") fail("fmt");
-  const stmt = obj.get("attStmt") as Map<string, unknown> | undefined;
-  const x5c = stmt?.get("x5c") as Buffer[] | undefined;
-  const authData = obj.get("authData") as Buffer | undefined;
-  if (!x5c || x5c.length < 2 || !Buffer.isBuffer(authData)) return fail("structure");
-
-  // 1. Certificate chain: credential cert <- intermediate <- Apple App Attestation Root CA.
-  let cred: X509Certificate, inter: X509Certificate;
-  try {
-    cred = new X509Certificate(x5c[0]!);
-    inter = new X509Certificate(x5c[1]!);
-  } catch {
-    return fail("certificates");
-  }
-  const now = new Date();
-  for (const c of [cred, inter]) if (new Date(c.validFrom) > now || new Date(c.validTo) < now) fail("validity");
-  if (!cred.checkIssued(inter) || !cred.verify(inter.publicKey)) fail("chain-leaf");
-  if (!inter.checkIssued(ROOT) || !inter.verify(ROOT.publicKey)) fail("chain-root");
-
-  // 2-4. Nonce = SHA256(authData || SHA256(challenge)) must equal the certificate extension value.
-  const clientDataHash = sha256(Buffer.from(att.challenge, "utf8"));
-  const nonce = sha256(authData, clientDataHash);
-  const extNonce = extensionNonce(cred.raw);
-  if (!extNonce || !extNonce.equals(nonce)) fail("nonce");
-
-  // 5. Key ID = SHA256 of the credential public key (uncompressed EC point).
-  const jwk = cred.publicKey.export({ format: "jwk" }) as { x?: string; y?: string };
-  if (!jwk.x || !jwk.y) return fail("public-key");
-  const point = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x, "base64url"), Buffer.from(jwk.y, "base64url")]);
-  const keyId = Buffer.from(att.key_id, "base64");
-  if (!sha256(point).equals(keyId)) fail("key-id");
-
-  // 6. RP ID hash = SHA256(appId) for one of our App IDs (TEAMID.bundleid).
-  const rpIdHash = authData.subarray(0, 32);
-  if (!appIds.some((id) => sha256(Buffer.from(id)).equals(rpIdHash))) fail("app-id");
-
-  // 7. Counter is 0 on attestation.
-  if (authData.readUInt32BE(33) !== 0) fail("counter");
-
-  // 8. AAGUID: production or development App Attest environment.
-  const aaguid = authData.subarray(37, 53);
-  if (!aaguid.equals(AAGUID_PRODUCTION) && !aaguid.equals(AAGUID_DEVELOPMENT)) fail("aaguid");
-
-  // 9. Credential ID equals the key ID.
-  const credLen = authData.readUInt16BE(53);
-  if (!authData.subarray(55, 55 + credLen).equals(keyId)) fail("credential-id");
 }
+
+/** Production callers always use Apple's pinned root. Only synthetic tests construct another verifier. */
+export const verifyAttestation = createAttestationVerifier(ROOT);
 
 // The extension value is DER: SEQUENCE { [1] { OCTET STRING (32 bytes) } }. Take the 32-byte OCTET STRING after the OID.
 function extensionNonce(der: Buffer): Buffer | null {
