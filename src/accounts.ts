@@ -219,7 +219,8 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
   return row.state;
 }
 
-export async function accountStatus({ db }: AccountDeps, userId: string) {
+/** `maxAccounts`: the live cap of personal accounts per phone (ADR 0086). Company accounts do not count. */
+export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts) {
   const [secrets, emails, recoveries, termsVersion] = await Promise.all([
     db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
       "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
@@ -260,6 +261,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string) {
       ...(r.ended_at ? { ended_at: r.ended_at.toISOString() } : {}),
     })),
     ...(termsVersion ? { terms_version: termsVersion } : {}),
+    max_accounts: maxAccounts,
   };
 }
 
