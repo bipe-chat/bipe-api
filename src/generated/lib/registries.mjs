@@ -15,6 +15,7 @@ export function loadRegistries(root) {
     homoglyphs: read("registries/homoglyphs.json"),
     handles: read("registries/handles.json"),
     owners: read("registries/reserved-name-owners.json"),
+    officialAccounts: read("registries/official-accounts.json"),
     profiles: read("registries/profiles.json"),
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
@@ -43,6 +44,22 @@ export function validateLinkedRecovery(accounts) {
   }
 }
 
+export function validateOfficialAccounts(reg) {
+  const accounts = reg.officialAccounts.accounts;
+  if (!accounts || typeof accounts !== "object" || Array.isArray(accounts) || !Object.keys(accounts).length) fail("official accounts: accounts must be a non-empty map");
+  const userIds = new Set();
+  const handles = new Set();
+  for (const [role, account] of Object.entries(accounts)) {
+    if (!/^[a-z][a-z0-9_]*$/.test(role)) fail(`official accounts: role "${role}"`);
+    if (!account || typeof account.userId !== "string" || !/^@[a-z0-9._=\/+-]+:[a-z0-9.-]+$/.test(account.userId)) fail(`official accounts: ${role} must have a Matrix user ID`);
+    if (typeof account.handle !== "string" || !new RegExp(reg.handles.pattern).test(account.handle) || handleSkeleton(account.handle, reg) !== account.handle) fail(`official accounts: ${role} must have a canonical handle`);
+    if (userIds.has(account.userId) || handles.has(account.handle)) fail(`official accounts: duplicate account or handle for ${role}`);
+    if (reg.owners.handles[account.handle] !== account.userId) fail(`official accounts: ${role} handle owner does not match`);
+    userIds.add(account.userId);
+    handles.add(account.handle);
+  }
+}
+
 function validate(reg) {
   validateTrustRegistry(reg.trust);
   validateAgendaTemplates(reg);
@@ -50,6 +67,7 @@ function validate(reg) {
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
+  validateOfficialAccounts(reg);
   for (const [cat, names] of Object.entries(reg.reserved.categories)) {
     if (!/^[a-z]+$/.test(cat)) fail(`reserved category id "${cat}"`);
     // Entries must already be in normalised form so lookups are exact.
@@ -91,7 +109,7 @@ function validate(reg) {
   for (const [handle, owner] of Object.entries(reg.owners.handles)) {
     if (handle.length < h.ownerMinLength || handle.length > h.maxLength || !new RegExp(h.pattern).test(handle)) fail(`reserved-name-owners: handle "${handle}" breaks the handle rules`);
     if (handleSkeleton(handle, reg) !== handle) fail(`reserved-name-owners: handle "${handle}" must be its own skeleton`);
-    if (reservedHandleSkeletons(reg).includes(handle)) fail(`reserved-name-owners: handle "${handle}" is a reserved name`);
+    if (reservedHandleSkeletons(reg).includes(handle) && !Object.values(reg.officialAccounts.accounts).some((a) => a.handle === handle && a.userId === owner)) fail(`reserved-name-owners: handle "${handle}" is a reserved name without an official account`);
     if (!/^@[a-z0-9._=\/+-]+:[a-z0-9.-]+$/.test(owner)) fail(`reserved-name-owners: handle "${handle}" owner "${owner}" is not a Matrix user ID`);
   }
   const pr = reg.profiles;
@@ -314,8 +332,8 @@ export function handleProblem(handle, reg, claimant) {
   if (handle.length < h.minLength && !Object.hasOwn(owned, handle)) return "too_short";
   if (!new RegExp(h.pattern).test(handle)) return "invalid_characters";
   const skeleton = handleSkeleton(handle, reg);
+  if (Object.hasOwn(owned, skeleton)) return claimant === undefined || owned[skeleton] === claimant ? null : "reserved";
   if (reservedHandleSkeletons(reg).includes(skeleton)) return "reserved";
-  if (claimant !== undefined && Object.hasOwn(owned, skeleton) && owned[skeleton] !== claimant) return "reserved";
   return null;
 }
 
