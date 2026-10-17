@@ -255,7 +255,7 @@ app.get("/v1/me/account", async (c) => {
   // The app signed in, so it has its credentials: the sealed sign-up copy (ADR 0094) can go.
   await forgetSignupReplay(db, userId);
   growth.onboarded(userId);
-  return c.json(await accountStatus(accounts, userId));
+  return c.json(await accountStatus(accounts, userId, config.MAX_PERSONAL_ACCOUNTS));
 });
 
 // ADR 0113: accounts from before the clickwrap, and everyone after a new legalVersion, accept on a re-accept screen.
