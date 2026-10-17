@@ -17,6 +17,7 @@
 //   node dist/cli.js registry fetch [YYYY-MM]          (download a Receita CNPJ release; newest when no month)
 //   node dist/cli.js registry scan [--all]             (scan the newest release for claims; --all re-checks verified ones)
 //   node dist/cli.js business list
+//   node dist/cli.js business claim <user_id> <cnpj>  (staff: starts the claim as POST /v1/me/business does; then business verify)
 //   node dist/cli.js business verify <user_id>         (staff path, ADR 0042; registry must show the CNPJ active)
 //   node dist/cli.js business revoke <user_id>
 //   node dist/cli.js handle set <user_id> <handle>    (staff: skips the 30-day cooldown; still validates, holds the old handle, refuses a taken one)
@@ -32,7 +33,7 @@ import { experimentReport } from "./experiments.js";
 import { Growth, growthReport } from "./growth.js";
 import { ApiError } from "./errors.js";
 import { setHandle } from "./handles.js";
-import { revokeByStaff, runScan, verifyByStaff } from "./business.js";
+import { createClaim, revokeByStaff, runScan, verifyByStaff } from "./business.js";
 import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import { type Config, loadMailConfig } from "./config.js";
 
@@ -123,6 +124,26 @@ try {
       console.error(`refused: ${e.id}${e.reason ? ` (${e.reason})` : ""}`);
       process.exitCode = 1;
     }
+  } else if (group === "business" && command === "claim" && arg?.startsWith("@") && arg2) {
+    // Same rules as POST /v1/me/business (cnpj_invalid, cnpj_taken, already_verified). A CNPJ not in the registry
+    // copy yet waits for a scan, so run one here, like the API does.
+    const server = process.env.SERVER_NAME?.trim();
+    if (server && !arg.endsWith(`:${server}`)) throw new Error(`${arg} is not a user on ${server}`);
+    const cfg = { RECEITA_DIR: process.env.RECEITA_DIR ?? "/data/receita" } as Config;
+    try {
+      let claim = await createClaim(db, cfg, arg, arg2, () => {});
+      if (claim.status === "registry_pending") {
+        await runScan(db, cfg, "pending");
+        const { rows } = await db.query<{ status: string; reason: string | null }>("SELECT status, reason FROM business_claims WHERE user_id = $1", [arg]);
+        claim = { ...claim, status: rows[0]!.status as typeof claim.status, ...(rows[0]!.reason ? { reason: rows[0]!.reason } : {}) };
+      }
+      console.log(`${arg}: claim ${claim.cnpj} ${claim.status}${claim.reason ? ` (${claim.reason})` : ""}`);
+      if (claim.status === "awaiting_proof") console.log(`next: e-CNPJ proof in the app, or staff: node dist/cli.js business verify ${arg}`);
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e;
+      console.error(`refused: ${e.id}${e.reason ? ` (${e.reason})` : ""}`);
+      process.exitCode = 1;
+    }
   } else if (group === "business" && command === "verify" && arg?.startsWith("@")) {
     await verifyByStaff(db, arg);
     console.log(`verified ${arg} (staff)`);
@@ -155,7 +176,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business verify @user | business revoke @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user");
     process.exitCode = 2;
   }
 } finally {

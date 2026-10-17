@@ -15,6 +15,9 @@ export const growthRules = reg.growth as {
   events: { id: string; once: boolean; source: "api" | "synapse_db"; detail: string }[];
 };
 
+/** Badge trust list and life (ADR 0123, registries/badge-keys.json). */
+export const badgeRules = reg.badgeKeys as { keys: Record<string, string>; lifeDays: number; renewDaysBeforeExpiry: number };
+
 export type HandleProblem = "too_short" | "too_long" | "invalid_characters" | "reserved";
 
 export const handleRules = reg.handles as {

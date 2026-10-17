@@ -24,6 +24,7 @@ export function loadRegistries(root) {
     growth: read("registries/growth-events.json"),
     trust: read("registries/trust-facts.json"),
     settings: read("registries/settings.json"),
+    badgeKeys: read("registries/badge-keys.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -41,6 +42,17 @@ export function validateLinkedRecovery(accounts) {
   if (linked.delayHours !== 24 || linked.requiresPin !== true || linked.allowsPinReset !== false || linked.maxAccountsPerProvider !== 1) {
     fail("accounts: linked recovery must preserve ADR 0096 (24 hours, existing PIN, no PIN reset, one account per provider)");
   }
+}
+
+/** Release trust list (ADR 0123): prod-YYYY-MM kids only, each a raw 32-byte Ed25519 public key in base64url. */
+export function validateBadgeKeys(b) {
+  if (!b.keys || typeof b.keys !== "object" || Array.isArray(b.keys)) fail("badge-keys: keys must be an object");
+  for (const [kid, key] of Object.entries(b.keys)) {
+    if (!/^prod-\d{4}-(0[1-9]|1[0-2])$/.test(kid)) fail(`badge-keys: kid "${kid}" must be prod-YYYY-MM (never test-only-*)`);
+    if (typeof key !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(key) || Buffer.from(key, "base64url").length !== 32) fail(`badge-keys: ${kid} is not a 32-byte base64url key`);
+  }
+  if (!(Number.isInteger(b.lifeDays) && b.lifeDays > 0)) fail("badge-keys: lifeDays");
+  if (!(Number.isInteger(b.renewDaysBeforeExpiry) && b.renewDaysBeforeExpiry > 0 && b.renewDaysBeforeExpiry < b.lifeDays)) fail("badge-keys: renewDaysBeforeExpiry must be below lifeDays");
 }
 
 function validate(reg) {
@@ -110,6 +122,7 @@ function validate(reg) {
   if (!/^[0-9]$/.test(ph.mobilePrefix)) fail("phones: mobilePrefix");
   if (!(Number.isInteger(ph.maxInputLength) && ph.maxInputLength > 0)) fail("phones: maxInputLength");
   if (!(Number.isInteger(ph.internationalMinDigits) && ph.internationalMinDigits > 0 && ph.internationalMaxDigits >= ph.internationalMinDigits)) fail("phones: international digit range");
+  validateBadgeKeys(reg.badgeKeys);
   const ac = reg.accounts;
   validateLinkedRecovery(ac);
   // DDMMYYYY and YYYYMMDD need exactly 8 digits.
