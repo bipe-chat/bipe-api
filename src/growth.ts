@@ -6,6 +6,7 @@ import { growthRules } from "./registry.js";
 // Server-side growth events (ADR 0098, bipe#67). The apps send no telemetry. The event list is
 // bipe-shared registries/growth-events.json. One row per pseudonymous user, event and day, with a count:
 // the user is HMAC-SHA256(BIPE_GROWTH_HMAC_SECRET, Matrix ID). No content, no Matrix ID, no room ID, no IP.
+// The platform events (ADR 0124) keep ios, android or web only: the user agent string is dropped after platformOf().
 // Synapse-side events come from the Synapse database through the read-only role bipe_growth. That role has
 // SELECT only on the columns these queries name (bipe-infra scripts/setup-growth-role.sh). Change both together.
 
@@ -16,6 +17,15 @@ const CALL_TYPES = ["m.call.invite", "m.call.member", "org.matrix.msc3401.call.m
 // A call event counts as a start when the room had no call event in this window before it.
 const CALL_GAP_MS = 3_600_000;
 const LOCK = 7140198;
+
+/** The platform of a Synapse device user agent, or null. Rule: bipe-shared registries/growth-events.json, platform_ios. */
+export function platformOf(ua: string | null): "ios" | "android" | "web" | null {
+  if (!ua) return null;
+  if (ua.includes("Mozilla/")) return "web";
+  if (/\b(iOS|iPhone|iPad|macOS)\b/.test(ua)) return "ios";
+  if (/\bAndroid\b/.test(ua)) return "android";
+  return null;
+}
 
 const events = new Map(growthRules.events.map((e) => [e.id, e]));
 
@@ -126,6 +136,7 @@ export class Growth {
           await this.syncReceipts(users);
           await this.syncVerifications(users);
           await this.syncGroups(users);
+          await this.syncPlatforms(users);
         }
         await this.db.query("DELETE FROM growth_events WHERE day < current_date - $1::int", [growthRules.retentionDaysKept]);
       } finally {
@@ -314,6 +325,33 @@ export class Growth {
           [this.uid(user), day, n],
         );
       }
+    });
+  }
+
+  /** platform_*: one row per user, platform and day a device was last seen. Only the platform is kept. */
+  private async syncPlatforms(users: Set<string>): Promise<void> {
+    const from = await this.position(this.db, "synapse_devices");
+    const { rows } = await this.synapse!.query<{ user_id: string; ua: string | null; ts: string }>(
+      "SELECT user_id, user_agent AS ua, last_seen AS ts FROM devices WHERE last_seen > $1",
+      [from],
+    );
+    if (rows.length === 0) return;
+    let to = from;
+    const seen = new Set<string>();
+    for (const r of rows) {
+      to = Math.max(to, Number(r.ts));
+      const platform = platformOf(r.ua);
+      if (platform && users.has(r.user_id)) seen.add(`${r.user_id}\n${platform}\n${dayOf(Number(r.ts))}`);
+    }
+    await this.tx(async (q) => {
+      for (const key of seen) {
+        const [user, platform, day] = key.split("\n") as [string, string, string];
+        await q.query(
+          "INSERT INTO growth_events (uid, event, day, n) VALUES ($1, $2, $3::date, 1) ON CONFLICT DO NOTHING",
+          [this.uid(user), `platform_${platform}`, day],
+        );
+      }
+      await this.setPosition(q, "synapse_devices", to);
     });
   }
 

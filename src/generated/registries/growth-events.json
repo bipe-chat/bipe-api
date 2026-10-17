@@ -1,5 +1,5 @@
 {
-  "$comment": "Server-side growth events (ADR 0098 in bipe/docs/adr, bipe#67). The apps send no telemetry: the Bipe API derives each event from what the server already sees. It keeps a row per pseudonymous user (HMAC-SHA256 of the Matrix ID under BIPE_GROWTH_HMAC_SECRET), event and day, with a count. No event carries content, room IDs, Matrix IDs, IPs or devices. source: api = a Bipe API action; synapse_db = read from the Synapse database by the read-only role bipe_growth, which has SELECT only on the columns that bipe-api src/growth.ts names (no event content, no IP). once: the API keeps only the first day per user. funnel: the steps of the report, in order; a user counts at a step only with every earlier step. retentionEvent and retentionDays: the report shows the share of each sign-up week with retentionEvent on day N after sign-up. retentionDaysKept: rows older than this are deleted. A new event needs a line here, not a new ADR.",
+  "$comment": "Server-side growth events (ADR 0098 in bipe/docs/adr, bipe#67). The apps send no telemetry: the Bipe API derives each event from what the server already sees. It keeps a row per pseudonymous user (HMAC-SHA256 of the Matrix ID under BIPE_GROWTH_HMAC_SECRET), event and day, with a count. No event carries content, room IDs, Matrix IDs, IPs or devices. The platform events (ADR 0124) keep only ios, android or web: never the user agent, the model or the OS version. source: api = a Bipe API action; synapse_db = read from the Synapse database by the read-only role bipe_growth, which has SELECT only on the columns that bipe-api src/growth.ts names (no event content, no IP, no device name). once: the API keeps only the first day per user. funnel: the steps of the report, in order; a user counts at a step only with every earlier step. retentionEvent and retentionDays: the report shows the share of each sign-up week with retentionEvent on day N after sign-up. retentionDaysKept: rows older than this are deleted. A new event needs a line here, not a new ADR.",
   "version": 1,
   "retentionDaysKept": 395,
   "funnel": ["signup_done", "onboarding_finished", "first_message_sent", "contact_verified", "invite_sent"],
@@ -67,6 +67,27 @@
       "once": false,
       "source": "synapse_db",
       "detail": "The user sent any event that day, or sent a read receipt (receipts_linearized: user_id, stream_id; day = day the API sees it). A push that only wakes the app does not count.",
+      "content": "none"
+    },
+    {
+      "id": "platform_ios",
+      "once": false,
+      "source": "synapse_db",
+      "detail": "A device of the user was last seen that day with an iOS app user agent (devices: user_id, user_agent, last_seen; not display_name, not ip). The API reads the user agent, keeps only the platform and drops the string. n = 1. Rule: a user agent with Mozilla/ is web; else iOS, iPhone, iPad or macOS is ios (the iOS app on a Mac counts as ios); else Android is android; else no event.",
+      "content": "none"
+    },
+    {
+      "id": "platform_android",
+      "once": false,
+      "source": "synapse_db",
+      "detail": "A device of the user was last seen that day with an Android app user agent. Same source and rule as platform_ios. n = 1.",
+      "content": "none"
+    },
+    {
+      "id": "platform_web",
+      "once": false,
+      "source": "synapse_db",
+      "detail": "A device of the user was last seen that day with a browser user agent (Element Web at chat.bipe.net.br). Same source and rule as platform_ios. n = 1.",
       "content": "none"
     }
   ]
