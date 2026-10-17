@@ -164,6 +164,8 @@ const SignupBody = z.object({
     .optional(),
   signup_key: z.string().regex(SECRET_PATTERN).optional(),
   terms_version: z.string().regex(TERMS_VERSION_PATTERN).optional(),
+  // ADR 0087: company accounts need an attestation and are device-first only.
+  account_type: z.enum(["personal", "company"]).optional(),
 });
 const TermsBody = z.object({ terms_version: z.string().regex(TERMS_VERSION_PATTERN) });
 const SignupResumeBody = z.object({ signup_key: z.string().regex(SECRET_PATTERN) });

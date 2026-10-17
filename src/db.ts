@@ -227,6 +227,8 @@ const MIGRATIONS = [
      accepted_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (user_id, version)
    );`,
+  // Company mode (ADR 0087, bipe#269): a company account is a second account of its owner's phone.
+  `ALTER TABLE signups ADD COLUMN account_type text NOT NULL DEFAULT 'personal' CHECK (account_type IN ('personal', 'company'));`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
