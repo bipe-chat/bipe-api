@@ -26,9 +26,13 @@ import { legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
-import { Growth } from "./growth.js";
+import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
 import { researchRoutes } from "./research/routes.js";
+import { finishWebLink, Geo } from "./weblink.js";
+import { staffGrowth } from "./staff-report.js";
+import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
+import { exportData } from "./export.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -41,6 +45,8 @@ const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INV
 const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
+const geo = new Geo(config.GEOIP_CITY_DB);
+const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
@@ -63,6 +69,7 @@ const limits = {
   contactsLookup: new RateLimiter(30, 3_600_000),
   attestChallenge: new RateLimiter(20, 3_600_000),
   setMessaging: new RateLimiter(30, 3_600_000),
+  dataExport: new RateLimiter(3, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
   partners: new RateLimiter(3, 3_600_000),
@@ -88,6 +95,9 @@ const limits = {
   recoveryEmailAddress: new RateLimiter(3, 3_600_000),
   recoveryConfirm: new RateLimiter(10, 3_600_000),
   recoveryClaim: new RateLimiter(120, 3_600_000),
+  // Web sign-in approval (ADR 0118).
+  webLinkFinish: new RateLimiter(20, 3_600_000),
+  webLinkPlace: new RateLimiter(60, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -268,6 +278,24 @@ app.post("/v1/me/pin/check", async (c) => {
   return c.body(null, 204);
 });
 
+// Web sign-in approval on the phone (ADR 0118). Never log the IP.
+const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }) });
+app.post("/v1/web-link/finish", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.webLinkFinish.check(userId);
+  const finished = await finishWebLink(mas, userId, (await parse(c, WebLinkFinishBody)).since);
+  return c.json({ finished });
+});
+
+app.get("/v1/web-link/place", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.webLinkPlace.check(userId);
+  const ip = c.req.query("ip") ?? "";
+  if (ip.length > 45) throw new ApiError("bad_request", "ip");
+  c.header("cache-control", "no-store");
+  return c.json(geo.place(ip));
+});
+
 app.post("/v1/me/device-first", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.credentials.check(userId);
@@ -408,6 +436,17 @@ app.put("/v1/me/messaging", async (c) => {
   const { who_can_message } = await parse(c, MessagingBody);
   await setPolicy(db, userId, who_can_message);
   return c.json({ who_can_message });
+});
+
+// Data export (LGPD art. 18, ADR 0112). The app asks for a biometric check first.
+app.get("/v1/me/export", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.dataExport.check(userId);
+  const now = new Date();
+  const body = await exportData(db, growth, userId, now);
+  c.header("cache-control", "no-store");
+  c.header("content-disposition", `attachment; filename="bipe-dados-${now.toISOString().slice(0, 10)}.json"`);
+  return c.json(body);
 });
 
 // Called by the Synapse module before every invite. Caddy does not route /internal/*.
@@ -594,6 +633,37 @@ app.get("/v1/admin/visits", async (c) => {
   const days = z.coerce.number().int().min(1).max(400).default(30).safeParse(c.req.query("days"));
   if (!days.success) throw new ApiError("bad_request");
   return c.json(await visits.report(days.data));
+});
+
+app.get("/v1/admin/growth", async (c) => {
+  await staff.userId(c.req.header("authorization"));
+  const since = z.iso.date().optional().safeParse(c.req.query("since"));
+  if (!since.success) throw new ApiError("bad_request");
+  // Default: the last 90 days. The sync stays on its 15-minute job; the page reads stored rows.
+  const from = since.data ?? new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+  return c.json(staffGrowth(await growthNumbers(db, from), from));
+});
+
+// Read-only staff reports (bipe#368). Each route: staff gate first, then one report.
+const staffGet = (path: string, report: (c: Context) => Promise<unknown>) =>
+  app.get(path, async (c) => {
+    await staff.userId(c.req.header("authorization"));
+    return c.json(await report(c));
+  });
+staffGet("/v1/admin/summary", () => staffReports.summary());
+staffGet("/v1/admin/metrics", (c) => {
+  const days = z.coerce.number().int().min(14).max(365).default(90).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return staffReports.metrics(days.data);
+});
+staffGet("/v1/admin/experiments", () => experimentsReport(db));
+staffGet("/v1/admin/waitlist", () => waitlistReport(db));
+staffGet("/v1/admin/business", () => businessReport(db));
+staffGet("/v1/admin/retention", () => staffReports.retention());
+staffGet("/v1/admin/reports", (c) => {
+  const days = z.coerce.number().int().min(1).max(400).default(90).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return staffReports.reports(days.data);
 });
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));

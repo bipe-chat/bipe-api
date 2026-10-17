@@ -37,6 +37,9 @@ const Env = z.object({
   RECEITA_WEBDAV_URL: z.url().default("https://arquivos.receitafederal.gov.br/public.php/webdav"),
   RECEITA_SHARE_TOKEN: z.string().min(1).default("YggdBLfdninEJX9"),
   ICP_BRASIL_ROOTS_DIR: z.string().default("certs/icp-brasil"),
+  // GeoIP city database for the web sign-in place (ADR 0118): DB-IP "IP to City Lite" in MMDB format.
+  // Unset or missing file: GET /v1/web-link/place answers {}.
+  GEOIP_CITY_DB: emptyAsUnset(z.string()),
   // Base of absolute URLs the API hands out (profile photos).
   PUBLIC_API_URL: z.url().default("https://api.bipe.net.br"),
   // HMAC key for stored phone numbers. Without it the phone endpoints answer "internal".

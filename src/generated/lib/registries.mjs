@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { evaluateTrustFacts, validateTrustRegistry } from "./trust.mjs";
 import { validateAgendaTemplates } from "./agenda-templates.mjs";
+import { validateSettings } from "./gen-settings.mjs";
 
 export function loadRegistries(root) {
   const read = (p) => JSON.parse(readFileSync(join(root, p), "utf8"));
@@ -22,6 +23,7 @@ export function loadRegistries(root) {
     agendaTemplates: read("registries/agenda-templates.json"),
     growth: read("registries/growth-events.json"),
     trust: read("registries/trust-facts.json"),
+    settings: read("registries/settings.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -44,6 +46,7 @@ export function validateLinkedRecovery(accounts) {
 function validate(reg) {
   validateTrustRegistry(reg.trust);
   validateAgendaTemplates(reg);
+  validateSettings(reg);
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
