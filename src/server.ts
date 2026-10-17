@@ -28,6 +28,7 @@ import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
+import { finishWebLink, Geo } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
@@ -43,6 +44,7 @@ const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INV
 const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
+const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
@@ -92,6 +94,9 @@ const limits = {
   recoveryEmailAddress: new RateLimiter(3, 3_600_000),
   recoveryConfirm: new RateLimiter(10, 3_600_000),
   recoveryClaim: new RateLimiter(120, 3_600_000),
+  // Web sign-in approval (ADR 0118).
+  webLinkFinish: new RateLimiter(20, 3_600_000),
+  webLinkPlace: new RateLimiter(60, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -270,6 +275,24 @@ app.post("/v1/me/pin/check", async (c) => {
   limits.pinCheck.check(userId);
   await verifyPin(accounts, userId, (await parse(c, PinBody)).pin);
   return c.body(null, 204);
+});
+
+// Web sign-in approval on the phone (ADR 0118). Never log the IP.
+const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }) });
+app.post("/v1/web-link/finish", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.webLinkFinish.check(userId);
+  const finished = await finishWebLink(mas, userId, (await parse(c, WebLinkFinishBody)).since);
+  return c.json({ finished });
+});
+
+app.get("/v1/web-link/place", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.webLinkPlace.check(userId);
+  const ip = c.req.query("ip") ?? "";
+  if (ip.length > 45) throw new ApiError("bad_request", "ip");
+  c.header("cache-control", "no-store");
+  return c.json(geo.place(ip));
 });
 
 app.post("/v1/me/device-first", async (c) => {

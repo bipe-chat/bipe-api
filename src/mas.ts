@@ -57,6 +57,29 @@ export class Mas {
     return true;
   }
 
+  /** IDs of the active MAS browser sessions of a user that started after `after` (web sign-in, ADR 0118). */
+  async activeBrowserSessionsSince(userId: string, after: Date): Promise<string[]> {
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    // A user has few browser sessions; the loop stops at 10 pages in case MAS misbehaves.
+    for (let page = 0; page < 10; page++) {
+      const q = new URLSearchParams({ "filter[user]": userId, "filter[status]": "active", "filter[created-after]": after.toISOString(), "page[first]": "100" });
+      if (cursor) q.set("page[after]", cursor);
+      const body = await this.json(await this.call("GET", `/user-sessions?${q}`));
+      const data = body.data as { id: string }[];
+      ids.push(...data.map((s) => s.id));
+      if (data.length < 100) break;
+      cursor = data.at(-1)!.id;
+    }
+    return ids;
+  }
+
+  async finishBrowserSession(sessionId: string): Promise<void> {
+    const res = await this.call("POST", `/user-sessions/${encodeURIComponent(sessionId)}/finish`, {});
+    // 400: the session is already finished.
+    if (!res.ok && res.status !== 400) await this.json(res);
+  }
+
   async deactivate(userId: string): Promise<void> {
     const res = await this.call("POST", `/users/${userId}/deactivate`, {});
     if (!res.ok) await this.json(res);
