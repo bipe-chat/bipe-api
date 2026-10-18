@@ -118,6 +118,11 @@ public struct BipeOnboardingButton: Sendable, Equatable {
     public let titleKey: String
     public let target: BipeOnboardingTarget
 
+    public init(titleKey: String, target: BipeOnboardingTarget) {
+        self.titleKey = titleKey
+        self.target = target
+    }
+
     public var title: String { NSLocalizedString(titleKey, tableName: "Bipe", bundle: .module, comment: "") }
 }
 
