@@ -4,6 +4,7 @@ import { ApiError } from "./errors.js";
 import { experimentReport } from "./experiments.js";
 import { HANDLE_CHANGE_KEEP_DAYS } from "./handles.js";
 import { ORGANISATION_KEEP_DAYS } from "./organisations.js";
+import { RETENTION_DAYS as BUG_REPORT_KEEP_DAYS } from "./bug-reports.js";
 import { growthRules } from "./registry.js";
 import { cell, MIN_CELL } from "./staff-report.js";
 import type { Visits } from "./visits.js";
@@ -131,6 +132,9 @@ export class StaffReports {
                 count(*) FILTER (WHERE i.id IS NOT NULL AND (i.revoked_at IS NOT NULL OR i.expires_at <= now() - interval '1 day'
                   OR EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id AND s.created_at <= now() - interval '1 day')))::int AS over
            FROM waitlist w LEFT JOIN invites i ON i.id = w.invite_id`),
+      one("problem-reports", BUG_REPORT_KEEP_DAYS,
+        "SELECT count(*)::int AS rows, min(created_at) AS oldest, count(*) FILTER (WHERE created_at <= now() - make_interval(days => $1))::int AS over FROM bug_reports",
+        [BUG_REPORT_KEEP_DAYS + 1]),
       one("signup-replays", 7,
         "SELECT count(*)::int AS rows, min(created_at) AS oldest, count(*) FILTER (WHERE created_at <= now() - interval '8 days')::int AS over FROM signup_replays"),
     ]);

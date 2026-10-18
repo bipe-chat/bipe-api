@@ -150,6 +150,7 @@
             { "key": "docs", "title": "bipe_help_docs", "kind": "url", "url": "docs" },
             { "key": "terms", "title": "bipe_help_terms", "kind": "url", "url": "terms" },
             { "key": "privacy", "title": "bipe_help_privacy", "kind": "url", "url": "privacy" },
+            { "key": "reportProblem", "title": "bipe_help_report_problem", "kind": "action" },
             { "key": "licenses", "title": "bipe_help_licenses", "kind": "link" }
           ]
         }

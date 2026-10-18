@@ -14,6 +14,9 @@
 //   node dist/cli.js waitlist release <platform> --count N [--days 14]   (ADR 0089: oldest entries first, one invite email each)
 //   node dist/cli.js partners list                   (organisation requests from the site, newest first)
 //   node dist/cli.js partners forget <email>         (LGPD deletion request)
+//   node dist/cli.js bugreports list                 (problem reports, newest first: id, platform, version, files; no text)
+//   node dist/cli.js bugreports show <id>            (one report with its text and file names)
+//   node dist/cli.js bugreports forget <user_id>     (LGPD deletion request: rows and files)
 //   node dist/cli.js registry fetch [YYYY-MM]          (download a Receita CNPJ release; newest when no month)
 //   node dist/cli.js registry scan [--all]             (scan the newest release for claims; --all re-checks verified ones)
 //   node dist/cli.js business list
@@ -36,6 +39,7 @@ import { setHandle } from "./handles.js";
 import { createClaim, revokeByStaff, runScan, verifyByStaff } from "./business.js";
 import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import { type Config, loadMailConfig } from "./config.js";
+import { forgetBugReports, getBugReport, listBugReports } from "./bug-reports.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -109,6 +113,15 @@ try {
   } else if (group === "partners" && command === "forget" && arg) {
     const { rowCount } = await db.query("DELETE FROM organisation_requests WHERE email = $1", [arg.trim().toLowerCase()]);
     console.log(`deleted ${rowCount} rows`);
+  } else if (group === "bugreports" && command === "list") {
+    for (const r of (await listBugReports(db)).reports) {
+      console.log(`${r.id}  ${r.created_at.slice(0, 16)}  ${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"})  logs ${r.log_count}  shots ${r.screenshot_count}  ${r.relayed ? "relayed" : "not relayed"}`);
+    }
+  } else if (group === "bugreports" && command === "show" && arg) {
+    const r = await getBugReport(db, arg);
+    console.log(`${r.id}  ${r.created_at}  ${r.user_id}\n${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"}) ${r.os ?? ""}\nlabels: ${r.labels.join(", ") || "-"}\nfiles: ${r.files.join(", ") || "-"}\n\n${r.text}`);
+  } else if (group === "bugreports" && command === "forget" && arg) {
+    console.log(`deleted ${await forgetBugReports(db, process.env.BUG_REPORTS_DIR ?? "/data/bug-reports", arg.trim())} reports`);
   } else if (group === "registry" && command === "fetch") {
     // Same defaults as config.ts; the CLI does not need the MAS settings.
     const base = process.env.RECEITA_WEBDAV_URL ?? "https://arquivos.receitafederal.gov.br/public.php/webdav";
