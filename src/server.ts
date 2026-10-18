@@ -17,7 +17,7 @@ import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
-import { askToPartner, PartnerBody, prunePartnerRequests } from "./partners.js";
+import { askAsOrganisation, OrganisationBody, pruneOrganisationRequests } from "./organisations.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
@@ -74,8 +74,8 @@ const limits = {
   dataExport: new RateLimiter(3, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
-  partners: new RateLimiter(3, 3_600_000),
-  partnersGlobal: new RateLimiter(60, 3_600_000),
+  organisations: new RateLimiter(3, 3_600_000),
+  organisationsGlobal: new RateLimiter(60, 3_600_000),
   events: new RateLimiter(30, 3_600_000),
   profile: new RateLimiter(60, 60_000),
   profilePhoto: new RateLimiter(120, 60_000),
@@ -122,12 +122,12 @@ const pruneReplays = () =>
     .catch((e) => console.error(`signup replay prune failed: ${(e as Error).message}`));
 pruneReplays();
 setInterval(pruneReplays, 24 * 3_600_000).unref();
-const prunePartners = () =>
-  void prunePartnerRequests(db)
-    .then((n) => n > 0 && console.log(`partner requests pruned: ${n}`))
-    .catch((e) => console.error(`partner request prune failed: ${(e as Error).message}`));
-prunePartners();
-setInterval(prunePartners, 24 * 3_600_000).unref();
+const pruneOrganisations = () =>
+  void pruneOrganisationRequests(db)
+    .then((n) => n > 0 && console.log(`organisation requests pruned: ${n}`))
+    .catch((e) => console.error(`organisation request prune failed: ${(e as Error).message}`));
+pruneOrganisations();
+setInterval(pruneOrganisations, 24 * 3_600_000).unref();
 const pruneWaitlistEntries = () =>
   void pruneWaitlist(db)
     .then((n) => n > 0 && console.log(`waitlist entries pruned: ${n}`))
@@ -387,15 +387,17 @@ app.post("/v1/waitlist", async (c) => {
   return c.body(null, 202);
 });
 
-// The partner form on the public site posts from the browser (bipe#177).
-app.use("/v1/partners", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
-
-app.post("/v1/partners", async (c) => {
-  limits.partners.check(clientIp(c));
-  limits.partnersGlobal.check("all");
-  await askToPartner(db, accounts.mailer, config.BIPE_PARTNERS_TO, await parse(c, PartnerBody));
-  return c.body(null, 202);
-});
+// The organisation form on the public site posts from the browser (ADR 0126, bipe#410).
+// /v1/partners is the old name; it stays until the form moves to Starlings (bipe#273).
+for (const path of ["/v1/organisations", "/v1/partners"]) {
+  app.use(path, cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
+  app.post(path, async (c) => {
+    limits.organisations.check(clientIp(c));
+    limits.organisationsGlobal.check("all");
+    await askAsOrganisation(db, await parse(c, OrganisationBody));
+    return c.body(null, 202);
+  });
+}
 
 // sendBeacon from the public site: text/plain JSON, no preflight, the browser reads no response.
 app.post("/v1/events", async (c) => {
