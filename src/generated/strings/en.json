@@ -270,7 +270,7 @@
     "bipe_pin_enter_title": "Enter your PIN",
     "bipe_pin_wrong": "Wrong PIN. Tries left: %1$s.",
     "bipe_pin_blocked_title": "PIN locked",
-    "bipe_pin_blocked_body": "The PIN locked after %1$s wrong tries. Create a new one by email, through your guardians or with your verified CPF.",
+    "bipe_pin_blocked_body": "The PIN locked after %1$s wrong tries. Create a new one with your recovery email.",
     "bipe_pin_forgot": "I forgot my PIN",
     "bipe_pin_change_title": "Change PIN",
     "bipe_pin_change_biometric_reason": "Confirm it is you to change the PIN.",

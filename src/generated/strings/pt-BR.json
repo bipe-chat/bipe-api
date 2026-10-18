@@ -270,7 +270,7 @@
     "bipe_pin_enter_title": "Digite sua senha",
     "bipe_pin_wrong": "Senha errada. Tentativas que sobram: %1$s.",
     "bipe_pin_blocked_title": "Senha travada",
-    "bipe_pin_blocked_body": "A senha travou depois de %1$s tentativas erradas. Crie outra pelo e-mail, pelos guardiões ou pelo CPF verificado.",
+    "bipe_pin_blocked_body": "A senha travou depois de %1$s tentativas erradas. Crie outra pelo e-mail de recuperação.",
     "bipe_pin_forgot": "Esqueci minha senha",
     "bipe_pin_change_title": "Trocar senha",
     "bipe_pin_change_biometric_reason": "Confirme que é você para trocar a senha.",
