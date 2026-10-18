@@ -11,6 +11,7 @@ import { availability, handleChanges, lookup, myHandle, pruneHandleChanges, remo
 import { createPersonalInvite, inviteConnections, inviterReport, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
+import { SignupLimits } from "./signup-limits.js";
 import { newChallenge } from "./attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
@@ -54,12 +55,8 @@ console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 
 const limits = {
-  signup: new RateLimiter(5, 3_600_000),
-  // Brazilian carriers put many phones behind one IP (CGNAT). A sign-up with App Attest gets more room per IP;
-  // a forged attestation still fails in signup().
-  signupAttested: new RateLimiter(30, 3_600_000),
+  signup: new SignupLimits(config.SIGNUP_MAX_PER_HOUR),
   signupResume: new RateLimiter(30, 3_600_000),
-  signupGlobal: new RateLimiter(config.SIGNUP_MAX_PER_HOUR, 3_600_000),
   terms: new RateLimiter(10, 3_600_000),
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
@@ -227,9 +224,8 @@ app.post("/v1/signup", async (c) => {
       return c.json(earlier, 201);
     }
   }
-  (body.attestation ? limits.signupAttested : limits.signup).check(clientIp(c));
-  limits.signupGlobal.check("all");
-  const result = await signup(accounts, body);
+  limits.signup.attempt(clientIp(c), body.attestation !== undefined);
+  const result = await signup(accounts, body, limits.signup.creation);
   // Device-first: the body carries the hidden password and the recovery token, once.
   c.header("cache-control", "no-store");
   return c.json(result, 201);

@@ -21,4 +21,26 @@ export class RateLimiter {
     }
     if (++w.count > this.limit) throw new ApiError("rate_limited");
   }
+
+  /**
+   * Takes one use and returns the function that gives it back. A refused take uses nothing, so a flood of refused
+   * takes cannot keep the window full. A give-back after the window ended, or a second one, does nothing.
+   */
+  take(key: string): () => void {
+    const now = Date.now();
+    let w = this.windows.get(key);
+    if (!w || w.resetAt <= now) {
+      w = { count: 0, resetAt: now + this.windowMs };
+      this.windows.set(key, w);
+    }
+    if (w.count >= this.limit) throw new ApiError("rate_limited");
+    w.count++;
+    const taken = w;
+    let given = false;
+    return () => {
+      if (given) return;
+      given = true;
+      if (this.windows.get(key) === taken && taken.count > 0) taken.count--;
+    };
+  }
 }
