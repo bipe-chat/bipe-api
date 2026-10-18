@@ -15,6 +15,9 @@ export const growthRules = reg.growth as {
   events: { id: string; once: boolean; source: "api" | "synapse_db"; detail: string }[];
 };
 
+/** Badge trust list and life (ADR 0123, registries/badge-keys.json). */
+export const badgeRules = reg.badgeKeys as { keys: Record<string, string>; lifeDays: number; renewDaysBeforeExpiry: number };
+
 export type HandleProblem = "too_short" | "too_long" | "invalid_characters" | "reserved";
 
 export const handleRules = reg.handles as {
@@ -101,6 +104,7 @@ export const accountRules = reg.accounts as {
   recoveryLinkMinutes: number;
   emailVerifyLinkHours: number;
   recoveryClaimDays: number;
+  maxPersonalAccounts: number;
 };
 
 /** Terms and privacy accepted at sign-up (ADR 0113, registries/legal.json). */

@@ -12,11 +12,12 @@
 //   node dist/cli.js waitlist clear <platform>       (after the launch email: deletes those rows)
 //   node dist/cli.js waitlist forget <email>         (LGPD deletion request)
 //   node dist/cli.js waitlist release <platform> --count N [--days 14]   (ADR 0089: oldest entries first, one invite email each)
-//   node dist/cli.js partners list                   (partner requests from the site, newest first)
+//   node dist/cli.js partners list                   (organisation requests from the site, newest first)
 //   node dist/cli.js partners forget <email>         (LGPD deletion request)
 //   node dist/cli.js registry fetch [YYYY-MM]          (download a Receita CNPJ release; newest when no month)
 //   node dist/cli.js registry scan [--all]             (scan the newest release for claims; --all re-checks verified ones)
 //   node dist/cli.js business list
+//   node dist/cli.js business claim <user_id> <cnpj>  (staff: starts the claim as POST /v1/me/business does; then business verify)
 //   node dist/cli.js business verify <user_id>         (staff path, ADR 0042; registry must show the CNPJ active)
 //   node dist/cli.js business revoke <user_id>
 //   node dist/cli.js handle set <user_id> <handle>    (staff: skips the 30-day cooldown; still validates, holds the old handle, refuses a taken one)
@@ -32,7 +33,7 @@ import { experimentReport } from "./experiments.js";
 import { Growth, growthReport } from "./growth.js";
 import { ApiError } from "./errors.js";
 import { setHandle } from "./handles.js";
-import { revokeByStaff, runScan, verifyByStaff } from "./business.js";
+import { createClaim, revokeByStaff, runScan, verifyByStaff } from "./business.js";
 import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import { type Config, loadMailConfig } from "./config.js";
 
@@ -93,11 +94,20 @@ try {
     const r = await releaseWaitlist(db, new Mailer(mail), mail.PUBLIC_SITE_URL, platform, count, days);
     console.log(`${r.note}: sent ${r.sent}, failed ${r.failed} (failed entries stay on the list)`);
   } else if (group === "partners" && command === "list") {
-    const { rows } = await db.query("SELECT id, created_at, organisation, kind, name, email, lang, message FROM partner_requests ORDER BY created_at DESC");
-    for (const r of rows) console.log(`#${r.id} ${r.created_at.toISOString()} ${r.organisation} (${r.kind}, ${r.lang})\n  ${r.name} <${r.email}>\n  ${r.message ?? "(sem mensagem)"}\n`);
+    const { rows } = await db.query(
+      `SELECT id, created_at, organisation, kind, cnpj, name, role, email, lang, customers_band, channels, spend_band, spend_note, message
+       FROM organisation_requests ORDER BY created_at DESC`,
+    );
+    for (const r of rows) {
+      console.log(`#${r.id} ${r.created_at.toISOString()} ${r.organisation} (${r.kind}, ${r.lang})${r.cnpj ? ` CNPJ ${r.cnpj}` : ""}`);
+      console.log(`  ${r.name}${r.role ? `, ${r.role}` : ""} <${r.email}>`);
+      console.log(`  customers ${r.customers_band ?? "-"}, channels ${r.channels.length ? r.channels.join(" ") : "-"}, spend ${r.spend_band ?? "-"}`);
+      if (r.spend_note) console.log(`  spend note: ${r.spend_note}`);
+      console.log(`  ${r.message ?? "(sem mensagem)"}\n`);
+    }
     console.log(`${rows.length} requests`);
   } else if (group === "partners" && command === "forget" && arg) {
-    const { rowCount } = await db.query("DELETE FROM partner_requests WHERE email = $1", [arg.trim().toLowerCase()]);
+    const { rowCount } = await db.query("DELETE FROM organisation_requests WHERE email = $1", [arg.trim().toLowerCase()]);
     console.log(`deleted ${rowCount} rows`);
   } else if (group === "registry" && command === "fetch") {
     // Same defaults as config.ts; the CLI does not need the MAS settings.
@@ -118,6 +128,26 @@ try {
     try {
       const result = await setHandle(db, arg, arg2, { staff: true });
       console.log(`${arg} has handle @${"handle" in result ? result.handle : "?"} (staff)`);
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e;
+      console.error(`refused: ${e.id}${e.reason ? ` (${e.reason})` : ""}`);
+      process.exitCode = 1;
+    }
+  } else if (group === "business" && command === "claim" && arg?.startsWith("@") && arg2) {
+    // Same rules as POST /v1/me/business (cnpj_invalid, cnpj_taken, already_verified). A CNPJ not in the registry
+    // copy yet waits for a scan, so run one here, like the API does.
+    const server = process.env.SERVER_NAME?.trim();
+    if (server && !arg.endsWith(`:${server}`)) throw new Error(`${arg} is not a user on ${server}`);
+    const cfg = { RECEITA_DIR: process.env.RECEITA_DIR ?? "/data/receita" } as Config;
+    try {
+      let claim = await createClaim(db, cfg, arg, arg2, () => {});
+      if (claim.status === "registry_pending") {
+        await runScan(db, cfg, "pending");
+        const { rows } = await db.query<{ status: string; reason: string | null }>("SELECT status, reason FROM business_claims WHERE user_id = $1", [arg]);
+        claim = { ...claim, status: rows[0]!.status as typeof claim.status, ...(rows[0]!.reason ? { reason: rows[0]!.reason } : {}) };
+      }
+      console.log(`${arg}: claim ${claim.cnpj} ${claim.status}${claim.reason ? ` (${claim.reason})` : ""}`);
+      if (claim.status === "awaiting_proof") console.log(`next: e-CNPJ proof in the app, or staff: node dist/cli.js business verify ${arg}`);
     } catch (e) {
       if (!(e instanceof ApiError)) throw e;
       console.error(`refused: ${e.id}${e.reason ? ` (${e.reason})` : ""}`);
@@ -155,7 +185,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business verify @user | business revoke @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user");
     process.exitCode = 2;
   }
 } finally {

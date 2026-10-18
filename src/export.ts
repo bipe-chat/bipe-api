@@ -22,7 +22,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     generated_at: now.toISOString(),
     user_id: userId,
     not_included: ["messages", "contacts", "media"],
-    sign_up: await one(db, "SELECT created_at FROM signups WHERE user_id = $1", userId),
+    sign_up: await one(db, "SELECT created_at, account_type FROM signups WHERE user_id = $1", userId),
     account: await one(
       db,
       `SELECT device_first, pin_hash IS NOT NULL AS pin_set, pin_set_at, pin_wrong_tries, pin_blocked_at,
