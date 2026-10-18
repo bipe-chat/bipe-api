@@ -1,0 +1,22 @@
+#!/bin/sh
+# Runs what the required CI checks run: attest, scheduling (UTC and Pacific/Auckland), recovery.
+# The pre-push hook in .bipe-hooks calls it. recovery needs Postgres: set BIPE_TEST_DATABASE_URL
+# (see .github/workflows/recovery-tests.yml), else it is skipped with a warning.
+# Usage: scripts/verify [--all]
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+base=$(git merge-base HEAD origin/main 2>/dev/null || echo HEAD)
+if [ "${1:-}" != --all ] && [ -z "$(git diff --name-only "$base" HEAD | grep -v '\.md$' || true)" ]; then
+  echo "verify: only Markdown changed since origin/main, nothing to check (scripts/verify --all forces it)"
+  exit 0
+fi
+pnpm install --frozen-lockfile --prefer-offline
+pnpm test:attest
+TZ=UTC pnpm test:scheduling
+TZ=Pacific/Auckland pnpm test:scheduling
+if [ -n "${BIPE_TEST_DATABASE_URL:-}" ]; then
+  pnpm test:integration
+else
+  echo "verify: WARNING recovery (pnpm test:integration) not run: BIPE_TEST_DATABASE_URL is not set"
+fi
+echo "verify: ok"
