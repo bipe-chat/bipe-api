@@ -43,15 +43,18 @@ const running = new Set<string>();
  * and a recovery token and returns both once; email is an optional recovery fallback, kept here and not in MAS.
  * Legacy (beta apps): email and password, both set in MAS as login, as before.
  */
-export async function signup(deps: AccountDeps, input: SignupInput) {
-  if (input.signup_key === undefined || input.password !== undefined) return createAccount(deps, input, null);
+/** Takes one account creation from the global allowance (bipe#395) and returns the function that gives it back. */
+export type CreationSlot = () => () => void;
+
+export async function signup(deps: AccountDeps, input: SignupInput, creation?: CreationSlot) {
+  if (input.signup_key === undefined || input.password !== undefined) return createAccount(deps, input, null, creation);
   const key = input.signup_key;
   const keyHash = secretHash(key);
   // Check and add in one step (no await between), so two tries with one key cannot both create an account.
   if (running.has(keyHash)) throw new ApiError("rate_limited", "signup_in_progress");
   running.add(keyHash);
   try {
-    return (await replaySignup(deps.db, key)) ?? (await createAccount(deps, input, key));
+    return (await replaySignup(deps.db, key)) ?? (await createAccount(deps, input, key, creation));
   } finally {
     running.delete(keyHash);
   }
@@ -122,7 +125,7 @@ function openSealed(key: string, sealed: Buffer): { password: string; recovery_t
   }
 }
 
-async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: string | null) {
+async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: string | null, creation?: CreationSlot) {
   const { db, mas, config } = deps;
   // App Attest first: it is the cheapest check that stops scripted sign-ups. A given attestation must be valid.
   if (input.attestation) verifyAttestation(input.attestation, config.APP_ATTEST_APP_IDS, config.APP_ATTEST_ENVIRONMENT);
@@ -154,7 +157,10 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
   if (!code && config.SIGNUP_INVITE_REQUIRED) throw new ApiError("invite_invalid");
 
   let masUserId: string | null = null;
+  let giveBack: (() => void) | null = null;
   try {
+    // bipe#395: every proof above passed. Only now does the sign-up take one of the hour's account creations.
+    giveBack = creation?.() ?? null;
     let localpart = "";
     for (let attempt = 0; attempt < 3 && !masUserId; attempt++) {
       localpart = randomLocalpart();
@@ -238,6 +244,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       ...(secrets ?? {}),
     };
   } catch (e) {
+    giveBack?.();
     // Undo: MAS users cannot be deleted, only deactivated. Give the invite use back.
     if (masUserId) await mas.deactivate(masUserId).catch(() => console.error("signup: deactivate after failure failed"));
     if (signupKey) await db.query("DELETE FROM signup_replays WHERE key_hash = $1", [secretHash(signupKey)]).catch(() => {});

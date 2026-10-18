@@ -2,12 +2,21 @@ import assert from "node:assert/strict";
 import http from "node:http";
 
 export async function masStub(t) {
-  const state = { mode: "ok", passwords: new Map(), passwordCalls: 0 };
+  const state = { mode: "ok", passwords: new Map(), passwordCalls: 0, deactivated: 0 };
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://127.0.0.1");
       const json = (body, status = 200) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
       if (url.pathname === "/oauth2/token") return json({ access_token: "test-only-access-token", expires_in: 3600 });
+      if (url.pathname === "/api/admin/v1/users" && req.method === "POST") {
+        let body = "";
+        for await (const chunk of req) { body += chunk; if (body.length > 4096) throw new Error("oversized test request"); }
+        return json({ data: { id: `mas-${JSON.parse(body).username}` } }, 201);
+      }
+      if (/^\/api\/admin\/v1\/users\/[^/]+\/deactivate$/.test(url.pathname) && req.method === "POST") {
+        state.deactivated++;
+        return json({ data: {} });
+      }
       const lookup = /^\/api\/admin\/v1\/users\/by-username\/([^/]+)$/.exec(url.pathname);
       if (lookup && req.method === "GET") return json({ data: { id: decodeURIComponent(lookup[1]) } });
       const password = /^\/api\/admin\/v1\/users\/([^/]+)\/set-password$/.exec(url.pathname);
@@ -37,5 +46,5 @@ export async function masStub(t) {
     server.closeAllConnections();
     await closed;
   });
-  return { ...state, get mode() { return state.mode; }, set mode(value) { state.mode = value; }, get passwordCalls() { return state.passwordCalls; }, url: `http://127.0.0.1:${server.address().port}` };
+  return { ...state, get mode() { return state.mode; }, set mode(value) { state.mode = value; }, get passwordCalls() { return state.passwordCalls; }, get deactivated() { return state.deactivated; }, url: `http://127.0.0.1:${server.address().port}` };
 }
