@@ -122,7 +122,7 @@
     "bipe_invite_already_signed_in": "You already have an account. Invites are for people not on Bipe yet.",
     "bipe_invites_title": "Invite people",
     "bipe_invites_available": "Invites available: %1$s",
-    "bipe_invites_explainer": "Each invite works for one person and lasts 30 days. Invite people you know.",
+    "bipe_invites_explainer": "Invite your family first. Each invite works for one person and lasts 30 days.",
     "bipe_invites_create": "Create invite",
     "bipe_invites_invite_someone": "Invite someone",
     "bipe_invites_show_qr": "Show QR code",
