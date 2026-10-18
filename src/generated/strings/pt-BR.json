@@ -122,7 +122,7 @@
     "bipe_invite_already_signed_in": "Você já tem uma conta. O convite é para quem ainda não está no Bipe.",
     "bipe_invites_title": "Convidar pessoas",
     "bipe_invites_available": "Convites disponíveis: %1$s",
-    "bipe_invites_explainer": "Cada convite vale para uma pessoa, por 30 dias. Convide quem você conhece.",
+    "bipe_invites_explainer": "Convide sua família primeiro. Cada convite vale para uma pessoa, por 30 dias.",
     "bipe_invites_create": "Criar convite",
     "bipe_invites_invite_someone": "Convidar alguém",
     "bipe_invites_show_qr": "Mostrar QR code",
