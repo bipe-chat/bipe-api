@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { evaluateTrustFacts, validateTrustRegistry } from "./trust.mjs";
 import { validateAgendaTemplates } from "./agenda-templates.mjs";
 import { validateSettings } from "./gen-settings.mjs";
+import { validateOnboarding } from "./gen-onboarding.mjs";
 
 export function loadRegistries(root) {
   const read = (p) => JSON.parse(readFileSync(join(root, p), "utf8"));
@@ -25,6 +26,7 @@ export function loadRegistries(root) {
     growth: read("registries/growth-events.json"),
     trust: read("registries/trust-facts.json"),
     settings: read("registries/settings.json"),
+    onboarding: read("registries/onboarding.json"),
     badgeKeys: read("registries/badge-keys.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -76,6 +78,7 @@ function validate(reg) {
   validateTrustRegistry(reg.trust);
   validateAgendaTemplates(reg);
   validateSettings(reg);
+  validateOnboarding(reg);
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
