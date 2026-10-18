@@ -44,6 +44,12 @@ Bipe API: invite sign-up, device-first accounts and the handle directory (docs/u
 - Web sign-in approval (ADR 0118 in bipe/docs/adr, bipe#389; `src/weblink.ts`): `POST /v1/web-link/finish` with `since` (at most 15 minutes old) finishes, through the MAS admin API (`user-sessions`), the caller's active MAS browser sessions created after `since` minus 60 s. Older sessions stay. `GET /v1/web-link/place?ip=` reads the GeoIP file at `GEOIP_CITY_DB` (DB-IP "IP to City Lite", CC BY 4.0, MMDB; bipe-infra `k8s/bipe/geoip.yaml` updates it monthly) and returns `city`, `region`, `country`, or `{}`. It reloads the file when its mtime changes (checked hourly). Never log the IP. The app must show "IP Geolocation by DB-IP" next to the place (licence).
 - Write docs in ASD-STE100 style.
 
+## Before you push
+
+- CI must stay green. `scripts/verify` runs what the required checks of the `main` ruleset run. Run it before every push; the pre-push hook runs it when this clone has `git config core.hooksPath .bipe-hooks` (set it once per clone; worktrees share it).
+- A push with red local checks is not allowed. Never use `git push --no-verify`.
+- If CI still fails on your pull request, fix it before you start other work. Never leave a red pull request at the end of a run.
+
 ## Decisions
 
 Product and architecture decisions for all Bipe repos are ADRs in the umbrella repo: `../bipe/docs/adr/` (index: `README.md`). Check them before changing a decided behaviour. A new decision gets an ADR there, not a note in this repo.
