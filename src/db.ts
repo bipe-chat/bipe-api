@@ -280,6 +280,12 @@ const MIGRATIONS = [
      message_id text PRIMARY KEY,
      created_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Remote critical banner (ADR 0117, bipe#386): at most one row.
+  `CREATE TABLE remote_banner (
+     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+     body jsonb NOT NULL,
+     set_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
