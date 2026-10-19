@@ -286,6 +286,9 @@ const MIGRATIONS = [
      body jsonb NOT NULL,
      set_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Organisation requests moved to the Bipe workspace on Starlings (bipe#273). The table was empty
+  // when this was written (19 October 2026, after the one test row was deleted).
+  `DROP TABLE IF EXISTS organisation_requests;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
