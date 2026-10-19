@@ -55,6 +55,7 @@ type InviteStatus = "pending" | "used" | "expired" | "revoked";
 
 interface InviteRow {
   id: string;
+  name: string | null;
   created_at: Date;
   expires_at: Date;
   revoked_at: Date | null;
@@ -106,7 +107,7 @@ async function slotsTaken(db: Db | pg.PoolClient, userId: string, respawnDays: n
 
 export async function myInvites(db: Db, userId: string, policy: InvitePolicy) {
   const { rows } = await db.query<InviteRow>(
-    `SELECT i.id, i.created_at, i.expires_at, i.revoked_at, s.user_id AS joined_user_id, s.created_at AS joined_at
+    `SELECT i.id, i.name, i.created_at, i.expires_at, i.revoked_at, s.user_id AS joined_user_id, s.created_at AS joined_at
      FROM invites i LEFT JOIN signups s ON s.invite_id = i.id
      WHERE i.created_by = $1 ORDER BY i.created_at DESC LIMIT 200`,
     [userId],
@@ -122,6 +123,7 @@ export async function myInvites(db: Db, userId: string, policy: InvitePolicy) {
       created_at: r.created_at.toISOString(),
       expires_at: r.expires_at.toISOString(),
       ...(status === "used" && r.joined_user_id ? { joined_user_id: r.joined_user_id } : {}),
+      ...(r.name ? { name: r.name } : {}),
     };
   });
   const available = Math.max(0, quota - releases.length);
@@ -170,6 +172,18 @@ export async function revokePersonalInvite(db: Db, userId: string, inviteId: str
        AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)`,
     [inviteId, userId],
   );
+  if (rowCount !== 1) throw new ApiError("not_found");
+}
+
+/** Names one of the caller's invites, any status. A blank name removes it. Foreign invites are not_found. */
+export async function nameInvite(db: Db, userId: string, inviteId: string, name: string): Promise<void> {
+  if (!/^[0-9]{1,18}$/.test(inviteId)) throw new ApiError("not_found");
+  const trimmed = name.trim();
+  const { rowCount } = await db.query("UPDATE invites SET name = $3 WHERE id = $1 AND created_by = $2", [
+    inviteId,
+    userId,
+    trimmed === "" ? null : trimmed,
+  ]);
   if (rowCount !== 1) throw new ApiError("not_found");
 }
 
