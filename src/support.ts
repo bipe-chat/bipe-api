@@ -81,8 +81,18 @@ export class SupportBot {
       const boot = await this.machine.bootstrapCrossSigning(true);
       if (boot.uploadKeysReq) await this.send(boot.uploadKeysReq.id, sdk.RequestType.KeysUpload, "POST", "/keys/upload", boot.uploadKeysReq.body);
       await this.matrix("POST", "/keys/device_signing/upload", JSON.parse(boot.uploadSigningKeysReq));
-      await this.send(boot.uploadSignaturesReq.id, sdk.RequestType.SignatureUpload, "POST", "/keys/signatures/upload", boot.uploadSignaturesReq.body);
+      await this.send(boot.uploadSignaturesReq.id, sdk.RequestType.SignatureUpload, "POST", "/keys/signatures/upload", signatureUploadBody(boot.uploadSignaturesReq.body));
       console.log("support bot: cross-signing keys uploaded");
+      return;
+    }
+    // A device that the self-signing key did not sign gets no room keys from Element X. Before the
+    // signed_keys fix the first boot uploaded the keys and lost the device signature. With reset false
+    // the machine keeps its keys and signs the device again; the signing keys on the server stay.
+    const own = await this.machine.getDevice(new sdk.UserId(this.userId), new sdk.DeviceId(who.device_id));
+    if (!own?.isCrossSignedByOwner()) {
+      const boot = await this.machine.bootstrapCrossSigning(false);
+      await this.send(boot.uploadSignaturesReq.id, sdk.RequestType.SignatureUpload, "POST", "/keys/signatures/upload", signatureUploadBody(boot.uploadSignaturesReq.body));
+      console.log("support bot: device signed");
     }
   }
 
@@ -311,7 +321,7 @@ export class SupportBot {
           await this.send(req.id, req.type, "POST", "/keys/claim", req.body);
           break;
         case sdk.RequestType.SignatureUpload:
-          await this.send(req.id, req.type, "POST", "/keys/signatures/upload", req.body);
+          await this.send(req.id, req.type, "POST", "/keys/signatures/upload", signatureUploadBody(req.body));
           break;
         case sdk.RequestType.ToDevice: {
           const r = req as unknown as { eventType: string; txnId: string };
@@ -351,6 +361,16 @@ export class SupportBot {
 }
 
 const enc = encodeURIComponent;
+
+/**
+ * The HTTP body of a SignatureUploadRequest. The crypto SDK wraps the user map in `signed_keys`; the
+ * endpoint takes the user map itself. Synapse reads a wrapped body as a user named "signed_keys" and
+ * answers a failure that the SDK cannot parse ("leading sigil is incorrect or missing").
+ */
+export function signatureUploadBody(body: string): string {
+  const parsed = JSON.parse(body) as { signed_keys?: unknown };
+  return parsed.signed_keys === undefined ? body : JSON.stringify(parsed.signed_keys);
+}
 
 /** The line Starlings gets for one message. Files stay on the Bipe server. */
 function lineText(content: Record<string, unknown>): string {
