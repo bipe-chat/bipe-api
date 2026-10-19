@@ -823,6 +823,11 @@
     "bipe_support_room_topic": "A chat with the Bipe team. The team reads what you write here in a support tool. Photos and files stay on the Bipe server.",
     "bipe_support_welcome": "Hi! This is where you talk to the Bipe team. Tell us what happened or what you want to see in the app. We answer in this chat.",
     "bipe_support_report_received": "We got your problem report. The team will read it and answer in this chat.",
-    "bipe_support_already_open": "You already have a chat with support. Continue here."
+    "bipe_support_already_open": "You already have a chat with support. Continue here.",
+    "bipe_app_lock_title": "Bipe is locked",
+    "bipe_app_lock_biometric": "Use %1$s to open",
+    "bipe_archive_action": "Archive",
+    "bipe_unarchive_action": "Unarchive",
+    "bipe_archived_title": "Archived"
   }
 }
