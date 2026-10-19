@@ -37,6 +37,7 @@ import { Badges } from "./badges.js";
 import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugReportFile, submitBugReport, type BugReportDeps } from "./bug-reports.js";
 import { Intake, verifyIntakeSignature } from "./intake.js";
 import { SupportBot } from "./support.js";
+import { currentBanner } from "./banner.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -112,6 +113,7 @@ const limits = {
   // Support DM (ADR 0114).
   supportRoom: new RateLimiter(30, 3_600_000),
   starlingsReply: new RateLimiter(600, 3_600_000),
+  banner: new RateLimiter(120, 60_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -262,6 +264,13 @@ app.post("/v1/signup", async (c) => {
 app.get("/v1/signup/config", (c) => {
   c.header("cache-control", "public, max-age=300");
   return c.json({ invite_required: config.SIGNUP_INVITE_REQUIRED, terms_version: legalRules.legalVersion });
+});
+
+// Remote critical banner (ADR 0117, bipe#386). No auth: the apps read it on launch and on foreground.
+app.get("/v1/banner", async (c) => {
+  limits.banner.check(clientIp(c));
+  c.header("cache-control", "public, max-age=60");
+  return c.json({ banner: await currentBanner(db) });
 });
 
 // ADR 0094: the app lost the answer of a sign-up. The key is the only proof, so no form and no attestation.

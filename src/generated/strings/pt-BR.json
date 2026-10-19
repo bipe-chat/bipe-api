@@ -812,6 +812,8 @@
     "bipe_notifications_prompt_title_generic": "Quer saber na hora quando responderem?",
     "bipe_notifications_prompt_body": "O Bipe avisa quando chega mensagem nova. Dá para mudar depois em Configurações.",
     "bipe_notifications_prompt_allow": "Ligar notificações",
+    "bipe_remote_banner_update": "Atualizar o Bipe",
+    "bipe_remote_banner_dismiss": "Fechar aviso",
     "bipe_handle_prompt_title": "Escolha seu @",
     "bipe_handle_prompt_body": "Com um @, as pessoas te acham no Bipe.",
     "bipe_handle_prompt_action": "Escolher @",
