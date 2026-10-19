@@ -12,8 +12,6 @@
 //   node dist/cli.js waitlist clear <platform>       (after the launch email: deletes those rows)
 //   node dist/cli.js waitlist forget <email>         (LGPD deletion request)
 //   node dist/cli.js waitlist release <platform> --count N [--days 14]   (ADR 0089: oldest entries first, one invite email each)
-//   node dist/cli.js partners list                   (organisation requests from the site, newest first)
-//   node dist/cli.js partners forget <email>         (LGPD deletion request)
 //   node dist/cli.js support status                  (ADR 0114: support rooms, Starlings lines waiting, last sync)
 //   node dist/cli.js bugreports list                 (problem reports, newest first: id, platform, version, files; no text)
 //   node dist/cli.js bugreports show <id>            (one report with its text and file names)
@@ -103,22 +101,6 @@ try {
     const mail = loadMailConfig();
     const r = await releaseWaitlist(db, new Mailer(mail), mail.PUBLIC_SITE_URL, platform, count, days);
     console.log(`${r.note}: sent ${r.sent}, failed ${r.failed} (failed entries stay on the list)`);
-  } else if (group === "partners" && command === "list") {
-    const { rows } = await db.query(
-      `SELECT id, created_at, organisation, kind, cnpj, name, role, email, lang, customers_band, channels, spend_band, spend_note, message
-       FROM organisation_requests ORDER BY created_at DESC`,
-    );
-    for (const r of rows) {
-      console.log(`#${r.id} ${r.created_at.toISOString()} ${r.organisation} (${r.kind}, ${r.lang})${r.cnpj ? ` CNPJ ${r.cnpj}` : ""}`);
-      console.log(`  ${r.name}${r.role ? `, ${r.role}` : ""} <${r.email}>`);
-      console.log(`  customers ${r.customers_band ?? "-"}, channels ${r.channels.length ? r.channels.join(" ") : "-"}, spend ${r.spend_band ?? "-"}`);
-      if (r.spend_note) console.log(`  spend note: ${r.spend_note}`);
-      console.log(`  ${r.message ?? "(sem mensagem)"}\n`);
-    }
-    console.log(`${rows.length} requests`);
-  } else if (group === "partners" && command === "forget" && arg) {
-    const { rowCount } = await db.query("DELETE FROM organisation_requests WHERE email = $1", [arg.trim().toLowerCase()]);
-    console.log(`deleted ${rowCount} rows`);
   } else if (group === "support" && command === "status") {
     const { rows } = await db.query(
       `SELECT (SELECT count(*)::int FROM support_rooms) AS rooms,

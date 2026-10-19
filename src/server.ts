@@ -18,7 +18,6 @@ import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
-import { pruneOrganisationRequests } from "./organisations.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
@@ -134,12 +133,6 @@ const pruneReplays = () =>
     .catch((e) => console.error(`signup replay prune failed: ${(e as Error).message}`));
 pruneReplays();
 setInterval(pruneReplays, 24 * 3_600_000).unref();
-const pruneOrganisations = () =>
-  void pruneOrganisationRequests(db)
-    .then((n) => n > 0 && console.log(`organisation requests pruned: ${n}`))
-    .catch((e) => console.error(`organisation request prune failed: ${(e as Error).message}`));
-pruneOrganisations();
-setInterval(pruneOrganisations, 24 * 3_600_000).unref();
 const pruneWaitlistEntries = () =>
   void pruneWaitlist(db)
     .then((n) => n > 0 && console.log(`waitlist entries pruned: ${n}`))

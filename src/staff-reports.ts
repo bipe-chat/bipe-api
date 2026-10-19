@@ -3,7 +3,6 @@ import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { experimentReport } from "./experiments.js";
 import { HANDLE_CHANGE_KEEP_DAYS } from "./handles.js";
-import { ORGANISATION_KEEP_DAYS } from "./organisations.js";
 import { RETENTION_DAYS as BUG_REPORT_KEEP_DAYS } from "./bug-reports.js";
 import { growthRules } from "./registry.js";
 import { cell, MIN_CELL } from "./staff-report.js";
@@ -120,9 +119,6 @@ export class StaffReports {
       one("handle-history", HANDLE_CHANGE_KEEP_DAYS,
         "SELECT count(*)::int AS rows, min(changed_at) AS oldest, count(*) FILTER (WHERE changed_at <= now() - make_interval(days => $1))::int AS over FROM handle_changes",
         [HANDLE_CHANGE_KEEP_DAYS]),
-      one("organisation-requests", ORGANISATION_KEEP_DAYS,
-        "SELECT count(*)::int AS rows, min(created_at) AS oldest, count(*) FILTER (WHERE created_at <= now() - make_interval(days => $1))::int AS over FROM organisation_requests",
-        [ORGANISATION_KEEP_DAYS]),
       one("app-growth", growthRules.retentionDaysKept,
         "SELECT count(*)::int AS rows, min(day)::timestamptz AS oldest, count(*) FILTER (WHERE day < current_date - $1::int)::int AS over FROM growth_events",
         [growthRules.retentionDaysKept]),
