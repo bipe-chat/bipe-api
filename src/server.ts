@@ -84,6 +84,7 @@ const limits = {
   profile: new RateLimiter(60, 60_000),
   profilePhoto: new RateLimiter(120, 60_000),
   badge: new RateLimiter(120, 60_000),
+  accountType: new RateLimiter(300, 60_000),
   setProfile: new RateLimiter(30, 3_600_000),
   setProfilePhoto: new RateLimiter(10, 3_600_000),
   eventsGlobal: new RateLimiter(20_000, 3_600_000),
@@ -627,6 +628,18 @@ app.get("/v1/badges/:userId", async (c) => {
   if (result.status === 410) return c.json({ reason: result.reason }, 410);
   if (result.status === 404) throw new ApiError("not_found");
   return c.json(result.envelope);
+});
+
+// Account type (ADR 0132): the apps draw a company avatar as a rounded square. Public, like the badge.
+app.get("/v1/accounts/:userId/type", async (c) => {
+  limits.accountType.check(clientIp(c));
+  const userId = c.req.param("userId");
+  if (!/^@[^:\s]{1,255}:[^\s]{1,255}$/.test(userId)) throw new ApiError("not_found");
+  const { rows } = await db.query<{ account_type: string }>("SELECT account_type FROM signups WHERE user_id = $1", [userId]);
+  if (!rows[0]) throw new ApiError("not_found");
+  // The type never changes after sign-up.
+  c.header("cache-control", "public, max-age=86400");
+  return c.json({ account_type: rows[0].account_type === "company" ? "company" : "personal" });
 });
 
 app.get("/v1/me/profile", async (c) => {
