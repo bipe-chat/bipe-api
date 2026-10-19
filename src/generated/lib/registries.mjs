@@ -6,6 +6,7 @@ import { evaluateTrustFacts, validateTrustRegistry } from "./trust.mjs";
 import { validateAgendaTemplates } from "./agenda-templates.mjs";
 import { validateSettings } from "./gen-settings.mjs";
 import { validateOnboarding } from "./gen-onboarding.mjs";
+import { validateHaptics } from "./gen-haptics.mjs";
 
 export function loadRegistries(root) {
   const read = (p) => JSON.parse(readFileSync(join(root, p), "utf8"));
@@ -27,6 +28,7 @@ export function loadRegistries(root) {
     trust: read("registries/trust-facts.json"),
     settings: read("registries/settings.json"),
     onboarding: read("registries/onboarding.json"),
+    haptics: read("registries/haptics.json"),
     badgeKeys: read("registries/badge-keys.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -79,6 +81,7 @@ function validate(reg) {
   validateAgendaTemplates(reg);
   validateSettings(reg);
   validateOnboarding(reg);
+  validateHaptics(reg.haptics);
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
