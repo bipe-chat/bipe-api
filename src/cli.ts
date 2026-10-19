@@ -26,6 +26,9 @@
 //   node dist/cli.js business revoke <user_id>
 //   node dist/cli.js handle set <user_id> <handle>    (staff: skips the 30-day cooldown; still validates, holds the old handle, refuses a taken one)
 //   node dist/cli.js experiment report <experiment>  (for example headline-77: visitors, clicks, sign-ups per arm)
+//   node dist/cli.js banner set <file.json>          (ADR 0117: the remote critical banner; text through the humanizer first)
+//   node dist/cli.js banner show
+//   node dist/cli.js banner clear
 //   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
@@ -41,6 +44,8 @@ import { createClaim, revokeByStaff, runScan, verifyByStaff } from "./business.j
 import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import { type Config, loadMailConfig } from "./config.js";
 import { forgetBugReports, getBugReport, listBugReports } from "./bug-reports.js";
+import { clearBanner, currentBanner, setBanner } from "./banner.js";
+import { readFileSync } from "node:fs";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -131,6 +136,13 @@ try {
     console.log(`${r.id}  ${r.created_at}  ${r.user_id}\n${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"}) ${r.os ?? ""}\nlabels: ${r.labels.join(", ") || "-"}\nfiles: ${r.files.join(", ") || "-"}\n\n${r.text}`);
   } else if (group === "bugreports" && command === "forget" && arg) {
     console.log(`deleted ${await forgetBugReports(db, process.env.BUG_REPORTS_DIR ?? "/data/bug-reports", arg.trim())} reports`);
+  } else if (group === "banner" && command === "set" && arg) {
+    const banner = await setBanner(db, JSON.parse(readFileSync(arg, "utf8")));
+    console.log(`banner set: ${banner.id}, until ${banner.expires_at}${banner.min_app_version ? `, update below ${banner.min_app_version}` : ""}`);
+  } else if (group === "banner" && command === "show") {
+    console.log(JSON.stringify(await currentBanner(db), null, 2));
+  } else if (group === "banner" && command === "clear") {
+    console.log((await clearBanner(db)) ? "banner cleared" : "no banner");
   } else if (group === "registry" && command === "fetch") {
     // Same defaults as config.ts; the CLI does not need the MAS settings.
     const base = process.env.RECEITA_WEBDAV_URL ?? "https://arquivos.receitafederal.gov.br/public.php/webdav";
