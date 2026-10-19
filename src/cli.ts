@@ -12,8 +12,7 @@
 //   node dist/cli.js waitlist clear <platform>       (after the launch email: deletes those rows)
 //   node dist/cli.js waitlist forget <email>         (LGPD deletion request)
 //   node dist/cli.js waitlist release <platform> --count N [--days 14]   (ADR 0089: oldest entries first, one invite email each)
-//   node dist/cli.js partners list                   (organisation requests from the site, newest first)
-//   node dist/cli.js partners forget <email>         (LGPD deletion request)
+//   node dist/cli.js support status                  (ADR 0114: support rooms, Starlings lines waiting, last sync)
 //   node dist/cli.js bugreports list                 (problem reports, newest first: id, platform, version, files; no text)
 //   node dist/cli.js bugreports show <id>            (one report with its text and file names)
 //   node dist/cli.js bugreports forget <user_id>     (LGPD deletion request: rows and files)
@@ -25,6 +24,9 @@
 //   node dist/cli.js business revoke <user_id>
 //   node dist/cli.js handle set <user_id> <handle>    (staff: skips the 30-day cooldown; still validates, holds the old handle, refuses a taken one)
 //   node dist/cli.js experiment report <experiment>  (for example headline-77: visitors, clicks, sign-ups per arm)
+//   node dist/cli.js banner set <file.json>          (ADR 0117: the remote critical banner; text through the humanizer first)
+//   node dist/cli.js banner show
+//   node dist/cli.js banner clear
 //   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
@@ -40,6 +42,8 @@ import { createClaim, revokeByStaff, runScan, verifyByStaff } from "./business.j
 import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import { type Config, loadMailConfig } from "./config.js";
 import { forgetBugReports, getBugReport, listBugReports } from "./bug-reports.js";
+import { clearBanner, currentBanner, setBanner } from "./banner.js";
+import { readFileSync } from "node:fs";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -76,7 +80,7 @@ try {
   } else if (group === "invite" && command === "top") {
     const limit = Number(values.limit);
     if (!(Number.isInteger(limit) && limit > 0)) throw new Error("--limit must be a positive integer");
-    console.table(await inviterReport(db, limit));
+    console.table(await inviterReport(db, limit, process.env.SERVER_NAME ?? "bipe.net.br"));
   } else if (group === "waitlist" && command === "count") {
     const { rows } = await db.query("SELECT platform, lang, count(*)::int AS n FROM waitlist GROUP BY 1, 2 ORDER BY 1, 2");
     console.table(rows);
@@ -97,22 +101,14 @@ try {
     const mail = loadMailConfig();
     const r = await releaseWaitlist(db, new Mailer(mail), mail.PUBLIC_SITE_URL, platform, count, days);
     console.log(`${r.note}: sent ${r.sent}, failed ${r.failed} (failed entries stay on the list)`);
-  } else if (group === "partners" && command === "list") {
+  } else if (group === "support" && command === "status") {
     const { rows } = await db.query(
-      `SELECT id, created_at, organisation, kind, cnpj, name, role, email, lang, customers_band, channels, spend_band, spend_note, message
-       FROM organisation_requests ORDER BY created_at DESC`,
+      `SELECT (SELECT count(*)::int FROM support_rooms) AS rooms,
+              (SELECT count(*)::int FROM intake_outbox) AS waiting,
+              (SELECT max(tries) FROM intake_outbox) AS max_tries,
+              (SELECT updated_at FROM support_sync WHERE id = 1) AS last_sync`,
     );
-    for (const r of rows) {
-      console.log(`#${r.id} ${r.created_at.toISOString()} ${r.organisation} (${r.kind}, ${r.lang})${r.cnpj ? ` CNPJ ${r.cnpj}` : ""}`);
-      console.log(`  ${r.name}${r.role ? `, ${r.role}` : ""} <${r.email}>`);
-      console.log(`  customers ${r.customers_band ?? "-"}, channels ${r.channels.length ? r.channels.join(" ") : "-"}, spend ${r.spend_band ?? "-"}`);
-      if (r.spend_note) console.log(`  spend note: ${r.spend_note}`);
-      console.log(`  ${r.message ?? "(sem mensagem)"}\n`);
-    }
-    console.log(`${rows.length} requests`);
-  } else if (group === "partners" && command === "forget" && arg) {
-    const { rowCount } = await db.query("DELETE FROM organisation_requests WHERE email = $1", [arg.trim().toLowerCase()]);
-    console.log(`deleted ${rowCount} rows`);
+    console.table(rows);
   } else if (group === "bugreports" && command === "list") {
     for (const r of (await listBugReports(db)).reports) {
       console.log(`${r.id}  ${r.created_at.slice(0, 16)}  ${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"})  logs ${r.log_count}  shots ${r.screenshot_count}  ${r.relayed ? "relayed" : "not relayed"}`);
@@ -122,6 +118,13 @@ try {
     console.log(`${r.id}  ${r.created_at}  ${r.user_id}\n${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"}) ${r.os ?? ""}\nlabels: ${r.labels.join(", ") || "-"}\nfiles: ${r.files.join(", ") || "-"}\n\n${r.text}`);
   } else if (group === "bugreports" && command === "forget" && arg) {
     console.log(`deleted ${await forgetBugReports(db, process.env.BUG_REPORTS_DIR ?? "/data/bug-reports", arg.trim())} reports`);
+  } else if (group === "banner" && command === "set" && arg) {
+    const banner = await setBanner(db, JSON.parse(readFileSync(arg, "utf8")));
+    console.log(`banner set: ${banner.id}, until ${banner.expires_at}${banner.min_app_version ? `, update below ${banner.min_app_version}` : ""}`);
+  } else if (group === "banner" && command === "show") {
+    console.log(JSON.stringify(await currentBanner(db), null, 2));
+  } else if (group === "banner" && command === "clear") {
+    console.log((await clearBanner(db)) ? "banner cleared" : "no banner");
   } else if (group === "registry" && command === "fetch") {
     // Same defaults as config.ts; the CLI does not need the MAS settings.
     const base = process.env.RECEITA_WEBDAV_URL ?? "https://arquivos.receitafederal.gov.br/public.php/webdav";

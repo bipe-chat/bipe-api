@@ -264,6 +264,33 @@ const MIGRATIONS = [
      next_at timestamptz NOT NULL DEFAULT now(),
      created_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Support DM (ADR 0114, ADR 0115): one room per user, the bot's sync position, and member replies already sent.
+  // User texts go to Starlings through intake_outbox.
+  `CREATE TABLE support_rooms (
+     user_id text PRIMARY KEY,
+     room_id text NOT NULL UNIQUE,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE support_sync (
+     id integer PRIMARY KEY CHECK (id = 1),
+     since text NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE support_replies (
+     message_id text PRIMARY KEY,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );`,
+  // Remote critical banner (ADR 0117, bipe#386): at most one row.
+  `CREATE TABLE remote_banner (
+     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+     body jsonb NOT NULL,
+     set_at timestamptz NOT NULL DEFAULT now()
+   );`,
+  // Organisation requests moved to the Bipe workspace on Starlings (bipe#273). The table was empty
+  // when this was written (19 October 2026, after the one test row was deleted).
+  `DROP TABLE IF EXISTS organisation_requests;`,
+  // The name a user gives a personal invite, so it survives a new phone or a reinstall (bipe-shared openapi).
+  `ALTER TABLE invites ADD COLUMN name text;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

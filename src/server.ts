@@ -8,7 +8,7 @@ import { loadConfig } from "./config.js";
 import { migrate, openDb } from "./db.js";
 import { ApiError } from "./errors.js";
 import { availability, handleChanges, lookup, myHandle, pruneHandleChanges, removeHandle, resolve, setHandle } from "./handles.js";
-import { createPersonalInvite, inviteConnections, inviterReport, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
+import { createPersonalInvite, inviteConnections, inviterReport, myInvites, nameInvite, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
 import { SignupLimits } from "./signup-limits.js";
@@ -18,7 +18,6 @@ import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
-import { askAsOrganisation, OrganisationBody, pruneOrganisationRequests } from "./organisations.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
@@ -29,13 +28,16 @@ import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
+import { researchRoutes } from "./research/routes.js";
 import { finishWebLink, Geo } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
 import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugReportFile, submitBugReport, type BugReportDeps } from "./bug-reports.js";
-import { Intake } from "./intake.js";
+import { Intake, verifyIntakeSignature } from "./intake.js";
+import { SupportBot } from "./support.js";
+import { currentBanner } from "./banner.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -45,18 +47,20 @@ const auth = new MatrixAuth(config);
 const staff = new StaffGate(auth, mas);
 const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
-const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
+const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID] });
 const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
 const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
 const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_INTAKE_KEY);
-const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL };
+const support = new SupportBot(db, config, intake);
+const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL, support };
 console.log(`badges: ${badges.state}`);
 console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" : "off (no STARLINGS_APP_INTAKE_KEY)"}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
+console.log(`support bot: ${support.enabled ? "on" : "off (no SUPPORT_ACCESS_TOKEN or SUPPORT_STORE_PASSPHRASE)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 
 const limits = {
@@ -76,12 +80,11 @@ const limits = {
   dataExport: new RateLimiter(3, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
-  organisations: new RateLimiter(3, 3_600_000),
-  organisationsGlobal: new RateLimiter(60, 3_600_000),
   events: new RateLimiter(30, 3_600_000),
   profile: new RateLimiter(60, 60_000),
   profilePhoto: new RateLimiter(120, 60_000),
   badge: new RateLimiter(120, 60_000),
+  accountType: new RateLimiter(300, 60_000),
   setProfile: new RateLimiter(30, 3_600_000),
   setProfilePhoto: new RateLimiter(10, 3_600_000),
   eventsGlobal: new RateLimiter(20_000, 3_600_000),
@@ -106,6 +109,10 @@ const limits = {
   // Problem reports (bipe#367).
   bugReport: new RateLimiter(10, 3_600_000),
   bugReportGlobal: new RateLimiter(500, 3_600_000),
+  // Support DM (ADR 0114).
+  supportRoom: new RateLimiter(30, 3_600_000),
+  starlingsReply: new RateLimiter(600, 3_600_000),
+  banner: new RateLimiter(120, 60_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -127,18 +134,13 @@ const pruneReplays = () =>
     .catch((e) => console.error(`signup replay prune failed: ${(e as Error).message}`));
 pruneReplays();
 setInterval(pruneReplays, 24 * 3_600_000).unref();
-const pruneOrganisations = () =>
-  void pruneOrganisationRequests(db)
-    .then((n) => n > 0 && console.log(`organisation requests pruned: ${n}`))
-    .catch((e) => console.error(`organisation request prune failed: ${(e as Error).message}`));
-pruneOrganisations();
-setInterval(pruneOrganisations, 24 * 3_600_000).unref();
 const pruneWaitlistEntries = () =>
   void pruneWaitlist(db)
     .then((n) => n > 0 && console.log(`waitlist entries pruned: ${n}`))
     .catch((e) => console.error(`waitlist prune failed: ${(e as Error).message}`));
 pruneWaitlistEntries();
 setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
+support.start();
 const pruneReports = () =>
   void pruneBugReports(db, config.BUG_REPORTS_DIR)
     .then((n) => n > 0 && console.log(`problem reports pruned: ${n}`))
@@ -219,9 +221,9 @@ const signatureBody = bodyLimit({ maxSize: 160 * 1024, onError: (c) => c.json({ 
 const reportBody = bodyLimit({ maxSize: BODY_MAX_BYTES, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
 const photoBody = bodyLimit({ maxSize: profileRules.photoMaxBytes, onError: (c) => c.json({ error: "photo_invalid", reason: "too_large" }, 413) });
 app.use("*", (c, next) => {
+  if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
   if (c.req.path === PHOTO_PATH) return photoBody(c, next);
-  if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   return smallBody(c, next);
 });
 
@@ -255,6 +257,13 @@ app.post("/v1/signup", async (c) => {
 app.get("/v1/signup/config", (c) => {
   c.header("cache-control", "public, max-age=300");
   return c.json({ invite_required: config.SIGNUP_INVITE_REQUIRED, terms_version: legalRules.legalVersion });
+});
+
+// Remote critical banner (ADR 0117, bipe#386). No auth: the apps read it on launch and on foreground.
+app.get("/v1/banner", async (c) => {
+  limits.banner.check(clientIp(c));
+  c.header("cache-control", "public, max-age=60");
+  return c.json({ banner: await currentBanner(db) });
 });
 
 // ADR 0094: the app lost the answer of a sign-up. The key is the only proof, so no form and no attestation.
@@ -403,18 +412,6 @@ app.post("/v1/waitlist", async (c) => {
   return c.body(null, 202);
 });
 
-// The organisation form on the public site posts from the browser (ADR 0126, bipe#410).
-// /v1/partners is the old name; it stays until the form moves to Starlings (bipe#273).
-for (const path of ["/v1/organisations", "/v1/partners"]) {
-  app.use(path, cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
-  app.post(path, async (c) => {
-    limits.organisations.check(clientIp(c));
-    limits.organisationsGlobal.check("all");
-    await askAsOrganisation(db, await parse(c, OrganisationBody));
-    return c.body(null, 202);
-  });
-}
-
 // sendBeacon from the public site: text/plain JSON, no preflight, the browser reads no response.
 app.post("/v1/events", async (c) => {
   limits.events.check(clientIp(c));
@@ -488,12 +485,54 @@ app.post(BUG_REPORT_PATH, async (c) => {
 app.post("/internal/v1/may-invite", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
   const { inviter, invitee, shares_room } = await parse(c, MayInviteBody);
+  // The support account (ADR 0114) opens one support room per user, whatever their policy.
+  if (inviter === config.SUPPORT_USER_ID) return c.json({ allow: true, policy: await policyOf(db, invitee) });
   return c.json(await mayInvite(db, inviter, invitee, shares_room));
+});
+
+// Support DM (ADR 0114): the caller's room with the support account.
+app.post("/v1/me/support", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.supportRoom.check(userId);
+  return c.json({ room_id: await support.roomFor(userId) });
+});
+
+// A Starlings member's reply (envisioning/starlings#1176), signed with STARLINGS_APP_INTAKE_KEY.
+const StarlingsReplyBody = z.object({
+  message_id: z.string().min(1).max(255),
+  reporter_ref: z.string().min(3).max(255).startsWith("@"),
+  text: z.string().trim().min(1).max(10_000),
+  author: z.object({ name: z.string().max(120) }),
+});
+app.post("/v1/support/starlings", async (c) => {
+  limits.starlingsReply.check("all");
+  if (!config.STARLINGS_APP_INTAKE_KEY) throw new ApiError("support_unavailable");
+  const raw = await c.req.text();
+  if (!verifyIntakeSignature(config.STARLINGS_APP_INTAKE_KEY, "reply", c.req.header("x-starlings-timestamp"), c.req.header("x-starlings-signature"), raw)) {
+    throw new ApiError("unauthorized");
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw new ApiError("bad_request");
+  }
+  const parsed = StarlingsReplyBody.safeParse(json);
+  if (!parsed.success) throw new ApiError("bad_request", parsed.error.issues[0]?.path.join("."));
+  await support.reply(parsed.data);
+  return c.body(null, 204);
 });
 
 app.get("/v1/me/invite-connections", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   return c.json(await inviteConnections(db, userId));
+});
+
+const InviteNameBody = z.object({ name: z.string().max(80) });
+app.put("/v1/me/invites/:id", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await nameInvite(db, userId, c.req.param("id"), (await parse(c, InviteNameBody)).name);
+  return c.body(null, 204);
 });
 
 app.delete("/v1/me/invites/:id", async (c) => {
@@ -591,6 +630,18 @@ app.get("/v1/badges/:userId", async (c) => {
   return c.json(result.envelope);
 });
 
+// Account type (ADR 0132): the apps draw a company avatar as a rounded square. Public, like the badge.
+app.get("/v1/accounts/:userId/type", async (c) => {
+  limits.accountType.check(clientIp(c));
+  const userId = c.req.param("userId");
+  if (!/^@[^:\s]{1,255}:[^\s]{1,255}$/.test(userId)) throw new ApiError("not_found");
+  const { rows } = await db.query<{ account_type: string }>("SELECT account_type FROM signups WHERE user_id = $1", [userId]);
+  if (!rows[0]) throw new ApiError("not_found");
+  // The type never changes after sign-up.
+  c.header("cache-control", "public, max-age=86400");
+  return c.json({ account_type: rows[0].account_type === "company" ? "company" : "personal" });
+});
+
 app.get("/v1/me/profile", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   return c.json(await myProfile(db, config.PUBLIC_API_URL, userId));
@@ -669,12 +720,13 @@ app.post("/v1/me/business/domains/:domain/check", async (c) => {
 
 // Staff reports (ADR 0056): bipe.chat/admin/convites/ and /admin/visitas/.
 app.use("/v1/admin/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"], allowHeaders: ["authorization"] }));
+app.route("/v1/admin/research", researchRoutes(staff));
 
 app.get("/v1/admin/inviters", async (c) => {
   await staff.userId(c.req.header("authorization"));
   const limit = z.coerce.number().int().min(1).max(1000).default(200).safeParse(c.req.query("limit"));
   if (!limit.success) throw new ApiError("bad_request");
-  const rows = await inviterReport(db, limit.data);
+  const rows = await inviterReport(db, limit.data, config.SERVER_NAME);
   return c.json({ inviters: rows.map((r) => ({ ...r, last_join: r.last_join?.toISOString() ?? null })) });
 });
 

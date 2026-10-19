@@ -25,7 +25,8 @@ export type ErrorId =
   | "pin_not_set"
   | "recovery_invalid"
   | "email_unavailable"
-  | "terms_required";
+  | "terms_required"
+  | "support_unavailable";
 
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503> = {
   bad_request: 400,
@@ -54,6 +55,7 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503> = {
   recovery_invalid: 403,
   email_unavailable: 503,
   terms_required: 403,
+  support_unavailable: 503,
 };
 
 export class ApiError extends Error {

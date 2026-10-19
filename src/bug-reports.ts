@@ -1,23 +1,28 @@
 // Problem reports from the apps (bipe#367): "Avisar sobre um problema". The apps send the rageshake multipart form.
 // The text, the logs and the screenshots stay on the server in Brazil for RETENTION_DAYS. Starlings gets the text and
-// metadata only, with a staff-only link back here. Never log the text, a file, or a user ID next to the text.
+// metadata only, with a staff-only link back here. The support bot (ADR 0114) posts a notice into the user's support
+// room. Never log the text, a file, or a user ID next to the text.
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import type { Intake } from "./intake.js";
+import { appString } from "./registry.js";
+import type { SupportBot } from "./support.js";
 
 export const RETENTION_DAYS = 90;
 export const BODY_MAX_BYTES = 50 * 1024 * 1024;
 const TEXT_MAX = 5000;
 // The Starlings intake line: a long report is cut, the full text stays in the staff view.
 const INTAKE_TEXT_MAX = 4000;
-const MAX_LOGS = 20;
+// Element X sends one gzip part per log file, and a phone can hold many rotated logs. Over the limit the report
+// keeps the first MAX_LOGS and is not refused: BODY_MAX_BYTES caps the size.
+const MAX_LOGS = 100;
 const MAX_SHOTS = 10;
 const MAX_LABELS = 10;
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-export const FILE_NAME_PATTERN = /^(log|shot)-[0-9]{2}\.[a-z0-9]{1,8}$/;
+export const FILE_NAME_PATTERN = /^(log|shot)-[0-9]{2,3}\.[a-z0-9]{1,8}$/;
 
 type FormValue = string | File | (string | File)[];
 type Form = Record<string, FormValue>;
@@ -43,15 +48,14 @@ function platformOf(userAgent: string | undefined): "ios" | "android" | "other" 
   return "other";
 }
 
-export type BugReportDeps = { db: Db; intake: Intake; dir: string; publicApiUrl: string };
+export type BugReportDeps = { db: Db; intake: Intake; dir: string; publicApiUrl: string; support?: SupportBot };
 
 export async function submitBugReport(deps: BugReportDeps, userId: string, form: Form): Promise<{ report_id: string }> {
   const text = field(form, "text", TEXT_MAX + 1);
   if (!text) throw new ApiError("bad_request", "text");
   if (text.length > TEXT_MAX) throw new ApiError("bad_request", "text");
-  const logs = files(form, "compressed-log");
+  const logs = files(form, "compressed-log").slice(0, MAX_LOGS);
   const shots = files(form, "file");
-  if (logs.length > MAX_LOGS) throw new ApiError("bad_request", "compressed-log");
   if (shots.length > MAX_SHOTS) throw new ApiError("bad_request", "file");
 
   const platform = platformOf(field(form, "user_agent", 64));
@@ -103,6 +107,11 @@ export async function submitBugReport(deps: BugReportDeps, userId: string, form:
     throw e;
   }
   console.log(`bug report stored: ${platform}, ${names.length} files`);
+  if (deps.support?.enabled) {
+    void deps.support
+      .notice(userId, appString("pt", "bipe_support_report_received"))
+      .catch((e) => console.error(`bug report notice failed: ${(e as Error).message}`));
+  }
   return { report_id: id };
 }
 

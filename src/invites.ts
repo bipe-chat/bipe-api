@@ -55,6 +55,7 @@ type InviteStatus = "pending" | "used" | "expired" | "revoked";
 
 interface InviteRow {
   id: string;
+  name: string | null;
   created_at: Date;
   expires_at: Date;
   revoked_at: Date | null;
@@ -106,7 +107,7 @@ async function slotsTaken(db: Db | pg.PoolClient, userId: string, respawnDays: n
 
 export async function myInvites(db: Db, userId: string, policy: InvitePolicy) {
   const { rows } = await db.query<InviteRow>(
-    `SELECT i.id, i.created_at, i.expires_at, i.revoked_at, s.user_id AS joined_user_id, s.created_at AS joined_at
+    `SELECT i.id, i.name, i.created_at, i.expires_at, i.revoked_at, s.user_id AS joined_user_id, s.created_at AS joined_at
      FROM invites i LEFT JOIN signups s ON s.invite_id = i.id
      WHERE i.created_by = $1 ORDER BY i.created_at DESC LIMIT 200`,
     [userId],
@@ -122,6 +123,7 @@ export async function myInvites(db: Db, userId: string, policy: InvitePolicy) {
       created_at: r.created_at.toISOString(),
       expires_at: r.expires_at.toISOString(),
       ...(status === "used" && r.joined_user_id ? { joined_user_id: r.joined_user_id } : {}),
+      ...(r.name ? { name: r.name } : {}),
     };
   });
   const available = Math.max(0, quota - releases.length);
@@ -170,6 +172,18 @@ export async function revokePersonalInvite(db: Db, userId: string, inviteId: str
        AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)`,
     [inviteId, userId],
   );
+  if (rowCount !== 1) throw new ApiError("not_found");
+}
+
+/** Names one of the caller's invites, any status. A blank name removes it. Foreign invites are not_found. */
+export async function nameInvite(db: Db, userId: string, inviteId: string, name: string): Promise<void> {
+  if (!/^[0-9]{1,18}$/.test(inviteId)) throw new ApiError("not_found");
+  const trimmed = name.trim();
+  const { rowCount } = await db.query("UPDATE invites SET name = $3 WHERE id = $1 AND created_by = $2", [
+    inviteId,
+    userId,
+    trimmed === "" ? null : trimmed,
+  ]);
   if (rowCount !== 1) throw new ApiError("not_found");
 }
 
@@ -227,6 +241,7 @@ export async function inviteConnections(db: Db, userId: string) {
 /**
  * Inviters ranked by joins, for growth strategy (docs/growth.md). sent: personal invites created.
  * joined: people who signed up with them. downstream: everyone in the invite tree below the user.
+ * Only inviters on `serverName`: the old proseio.com.br accounts stay out of the report.
  */
 export interface InviterStats {
   user_id: string;
@@ -239,7 +254,7 @@ export interface InviterStats {
   last_join: Date | null;
 }
 
-export async function inviterReport(db: Db, limit: number): Promise<InviterStats[]> {
+export async function inviterReport(db: Db, limit: number, serverName: string): Promise<InviterStats[]> {
   const { rows } = await db.query<InviterStats>(
     `WITH RECURSIVE edges AS (
        SELECT i.created_by AS inviter, s.user_id AS invitee
@@ -250,7 +265,7 @@ export async function inviterReport(db: Db, limit: number): Promise<InviterStats
        SELECT t.root, e.invitee, t.depth + 1 FROM tree t JOIN edges e ON e.inviter = t.invitee WHERE t.depth < 50
      ), sent AS (
        SELECT i.created_by AS user_id, count(*)::int AS sent, count(s.user_id)::int AS joined, max(s.created_at) AS last_join
-       FROM invites i LEFT JOIN signups s ON s.invite_id = i.id WHERE i.created_by IS NOT NULL GROUP BY 1
+       FROM invites i LEFT JOIN signups s ON s.invite_id = i.id WHERE i.created_by LIKE '%:' || $2 GROUP BY 1
      ), down AS (
        SELECT root AS user_id, count(DISTINCT invitee)::int AS downstream, max(depth)::int AS depth FROM tree GROUP BY 1
      )
@@ -259,7 +274,7 @@ export async function inviterReport(db: Db, limit: number): Promise<InviterStats
             coalesce(d.downstream, 0) AS downstream, coalesce(d.depth, 0) AS depth, s.last_join
      FROM sent s LEFT JOIN down d USING (user_id) LEFT JOIN handles h USING (user_id)
      ORDER BY s.joined DESC, downstream DESC, s.sent DESC LIMIT $1`,
-    [limit],
+    [limit, serverName],
   );
   return rows;
 }
