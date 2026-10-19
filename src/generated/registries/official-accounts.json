@@ -1,8 +1,9 @@
 {
-  "$comment": "Official Bipe accounts (ADR 0117, ADR 0119). Match the full Matrix user ID exactly for the Bipe badge. A display name, handle or lookalike ID is not proof. Handle ownership must match reserved-name-owners.json.",
+  "$comment": "Official Bipe accounts (ADR 0117, ADR 0119, ADR 0133). Match the full Matrix user ID exactly for the Bipe badge. A display name, handle or lookalike ID is not proof. Handle ownership must match reserved-name-owners.json.",
   "version": 1,
   "accounts": {
     "support": { "userId": "@suporte:bipe.net.br", "handle": "suporte" },
-    "news": { "userId": "@bipe:bipe.net.br", "handle": "bipe" }
+    "news": { "userId": "@bipe:bipe.net.br", "handle": "bipe" },
+    "company": { "userId": "@r2vrihsgkqd5:bipe.net.br", "handle": "bipechat" }
   }
 }
