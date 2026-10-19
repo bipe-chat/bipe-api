@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import http from "node:http";
 
 export async function masStub(t) {
-  const state = { mode: "ok", passwords: new Map(), passwordCalls: 0, deactivated: 0 };
+  // sessions: MAS browser sessions { id, user, created_at, finished }. ignoreCreatedAfter: act like a MAS that drops the filter.
+  const state = { mode: "ok", passwords: new Map(), passwordCalls: 0, deactivated: 0, sessions: [], options: { ignoreCreatedAfter: false } };
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://127.0.0.1");
@@ -33,6 +34,24 @@ export async function masStub(t) {
         state.passwords.set(decodeURIComponent(password[1]), input.password);
         if (mode === "after-apply-drop") { req.socket.destroy(); return; }
         res.writeHead(204); res.end(); return;
+      }
+      if (url.pathname === "/api/admin/v1/user-sessions" && req.method === "GET") {
+        const q = url.searchParams;
+        const after = q.get("filter[created-after]");
+        const data = state.sessions
+          .filter((s) => s.user === q.get("filter[user]"))
+          .filter((s) => q.get("filter[status]") !== "active" || !s.finished)
+          .filter((s) => state.options.ignoreCreatedAfter || !after || Date.parse(s.created_at) > Date.parse(after))
+          .map((s) => ({ type: "user-session", id: s.id, attributes: { created_at: s.created_at, finished_at: s.finished ? s.created_at : null, user_id: s.user } }));
+        return json({ data });
+      }
+      const finish = /^\/api\/admin\/v1\/user-sessions\/([^/]+)\/finish$/.exec(url.pathname);
+      if (finish && req.method === "POST") {
+        const session = state.sessions.find((s) => s.id === decodeURIComponent(finish[1]));
+        if (!session) return json({ errors: [] }, 404);
+        if (session.finished) return json({ errors: [] }, 400);
+        session.finished = true;
+        return json({ data: {} });
       }
       json({ errors: [] }, 404);
     } catch {

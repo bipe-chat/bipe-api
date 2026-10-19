@@ -66,8 +66,10 @@ export class Mas {
       const q = new URLSearchParams({ "filter[user]": userId, "filter[status]": "active", "filter[created-after]": after.toISOString(), "page[first]": "100" });
       if (cursor) q.set("page[after]", cursor);
       const body = await this.json(await this.call("GET", `/user-sessions?${q}`));
-      const data = body.data as { id: string }[];
-      ids.push(...data.map((s) => s.id));
+      const data = body.data as { id: string; attributes?: { created_at?: string } }[];
+      // Check created_at here too: if MAS ignores the filter, older sessions (staff browsers) must stay.
+      // A session without a readable created_at is not finished (fail closed).
+      ids.push(...data.filter((s) => Date.parse(s.attributes?.created_at ?? "") >= after.getTime()).map((s) => s.id));
       if (data.length < 100) break;
       cursor = data.at(-1)!.id;
     }
