@@ -16,11 +16,13 @@ export const BODY_MAX_BYTES = 50 * 1024 * 1024;
 const TEXT_MAX = 5000;
 // The Starlings intake line: a long report is cut, the full text stays in the staff view.
 const INTAKE_TEXT_MAX = 4000;
-const MAX_LOGS = 20;
+// Element X sends one gzip part per log file, and a phone can hold many rotated logs. Over the limit the report
+// keeps the first MAX_LOGS and is not refused: BODY_MAX_BYTES caps the size.
+const MAX_LOGS = 100;
 const MAX_SHOTS = 10;
 const MAX_LABELS = 10;
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-export const FILE_NAME_PATTERN = /^(log|shot)-[0-9]{2}\.[a-z0-9]{1,8}$/;
+export const FILE_NAME_PATTERN = /^(log|shot)-[0-9]{2,3}\.[a-z0-9]{1,8}$/;
 
 type FormValue = string | File | (string | File)[];
 type Form = Record<string, FormValue>;
@@ -52,9 +54,8 @@ export async function submitBugReport(deps: BugReportDeps, userId: string, form:
   const text = field(form, "text", TEXT_MAX + 1);
   if (!text) throw new ApiError("bad_request", "text");
   if (text.length > TEXT_MAX) throw new ApiError("bad_request", "text");
-  const logs = files(form, "compressed-log");
+  const logs = files(form, "compressed-log").slice(0, MAX_LOGS);
   const shots = files(form, "file");
-  if (logs.length > MAX_LOGS) throw new ApiError("bad_request", "compressed-log");
   if (shots.length > MAX_SHOTS) throw new ApiError("bad_request", "file");
 
   const platform = platformOf(field(form, "user_agent", 64));
