@@ -103,10 +103,10 @@
           ]
         },
         {
-          "key": "company",
-          "footer": "bipe_company_create_footer",
+          "key": "accounts",
+          "title": "bipe_account_on_device",
           "rows": [
-            { "key": "createCompany", "title": "bipe_company_create", "kind": "action", "gate": "flag:companyAccount", "adr": "0087" }
+            { "key": "add", "title": "bipe_account_add", "kind": "action", "adr": "0086" }
           ]
         },
         {
