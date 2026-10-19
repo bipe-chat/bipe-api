@@ -1,5 +1,6 @@
 // Data export (LGPD art. 18, ADR 0112): everything this API stores about the caller, as one JSON file.
 // Hashes, sealed secrets and other people's data stay out. Messages live on the devices, not here.
+import { bugReportsOf } from "./bug-reports.js";
 import type { Db } from "./db.js";
 import type { Growth } from "./growth.js";
 import { inviteConnections } from "./invites.js";
@@ -82,5 +83,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       userId,
     ),
     growth_events: await growth.rowsOf(userId),
+    // Problem reports (bipe#367): text and metadata. The log and screenshot files stay on the server.
+    problem_reports: await bugReportsOf(db, userId),
   };
 }

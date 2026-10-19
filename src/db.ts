@@ -239,6 +239,31 @@ const MIGRATIONS = [
      ADD COLUMN channels text[] NOT NULL DEFAULT '{}',
      ADD COLUMN spend_band text,
      ADD COLUMN spend_note text;`,
+  // Problem reports (bipe#367): files on disk under BUG_REPORTS_DIR/<id>/, 90 days. The outbox holds a Starlings
+  // intake line only until Starlings takes it.
+  `CREATE TABLE bug_reports (
+     id uuid PRIMARY KEY,
+     user_id text NOT NULL,
+     text text NOT NULL,
+     platform text NOT NULL CHECK (platform IN ('ios', 'android', 'other')),
+     app_version text,
+     build integer,
+     os text,
+     labels text[] NOT NULL DEFAULT '{}',
+     files text[] NOT NULL DEFAULT '{}',
+     intake_id text,
+     relayed_at timestamptz,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX bug_reports_user ON bug_reports (user_id);
+   CREATE INDEX bug_reports_created ON bug_reports (created_at);
+   CREATE TABLE intake_outbox (
+     message_id text PRIMARY KEY,
+     body jsonb NOT NULL,
+     tries integer NOT NULL DEFAULT 0,
+     next_at timestamptz NOT NULL DEFAULT now(),
+     created_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

@@ -69,6 +69,11 @@ const Env = z.object({
   BIPE_SMTP_PORT: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.coerce.number().int().min(1).max(65535).default(587)),
   BIPE_SMTP_USER: emptyAsUnset(z.string()),
   BIPE_SMTP_PASSWORD: emptyAsUnset(z.string()),
+  // Problem reports (bipe#367): files on disk, 90 days. Starlings app intake: text and metadata only.
+  // Without STARLINGS_APP_INTAKE_KEY reports are stored but not relayed.
+  BUG_REPORTS_DIR: z.string().default("/data/bug-reports"),
+  STARLINGS_INTAKE_URL: z.url().default("https://bipe.starlings.work/api/support/app-intake"),
+  STARLINGS_APP_INTAKE_KEY: emptyAsUnset(z.string().regex(/^[0-9a-fA-F]{64}$/, "64 hex characters")),
   BIPE_MAIL_FROM: z.string().regex(/^[^\r\n<>]*<[^\s<>@]+@[^\s<>@]+>$|^[^\s<>@]+@[^\s<>@]+$/, "an address, or a name and <address>").default("Bipe <nao-responda@bipe.chat>"),
 });
 

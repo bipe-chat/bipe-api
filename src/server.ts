@@ -34,6 +34,8 @@ import { staffGrowth } from "./staff-report.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
+import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugReportFile, submitBugReport, type BugReportDeps } from "./bug-reports.js";
+import { Intake } from "./intake.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -49,7 +51,10 @@ const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
 const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
+const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_INTAKE_KEY);
+const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL };
 console.log(`badges: ${badges.state}`);
+console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" : "off (no STARLINGS_APP_INTAKE_KEY)"}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
@@ -98,6 +103,9 @@ const limits = {
   // Web sign-in approval (ADR 0118).
   webLinkFinish: new RateLimiter(20, 3_600_000),
   webLinkPlace: new RateLimiter(60, 3_600_000),
+  // Problem reports (bipe#367).
+  bugReport: new RateLimiter(10, 3_600_000),
+  bugReportGlobal: new RateLimiter(500, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -131,6 +139,15 @@ const pruneWaitlistEntries = () =>
     .catch((e) => console.error(`waitlist prune failed: ${(e as Error).message}`));
 pruneWaitlistEntries();
 setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
+const pruneReports = () =>
+  void pruneBugReports(db, config.BUG_REPORTS_DIR)
+    .then((n) => n > 0 && console.log(`problem reports pruned: ${n}`))
+    .catch((e) => console.error(`problem report prune failed: ${(e as Error).message}`));
+pruneReports();
+setInterval(pruneReports, 24 * 3_600_000).unref();
+// Retries for Starlings intake lines that failed. A new line is sent at once.
+setInterval(() => void intake.flush(), 60_000).unref();
+void intake.flush();
 const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
@@ -181,6 +198,7 @@ const HandleChangesBody = z.object({ user_ids: z.array(z.string().max(255)).max(
 // Lengths are checked by problemWithProfile(); these caps only bound the request.
 const ProfileBody = z.object({ enabled: z.boolean(), name: z.string().max(400), bio: z.string().max(2000) });
 const PHOTO_PATH = "/v1/me/profile/photo";
+const BUG_REPORT_PATH = "/v1/bug-reports/submit";
 
 // Caddy appends the client address last; earlier X-Forwarded-For entries come from the client.
 function clientIp(c: Context): string {
@@ -198,10 +216,12 @@ const app = new Hono();
 // A CMS signature with its certificate chain can pass 16 KB, and a profile photo too; those routes get more room.
 const smallBody = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
 const signatureBody = bodyLimit({ maxSize: 160 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
+const reportBody = bodyLimit({ maxSize: BODY_MAX_BYTES, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
 const photoBody = bodyLimit({ maxSize: profileRules.photoMaxBytes, onError: (c) => c.json({ error: "photo_invalid", reason: "too_large" }, 413) });
 app.use("*", (c, next) => {
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
   if (c.req.path === PHOTO_PATH) return photoBody(c, next);
+  if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   return smallBody(c, next);
 });
 
@@ -452,6 +472,18 @@ app.get("/v1/me/export", async (c) => {
   return c.json(body);
 });
 
+// Problem reports (bipe#367): the rageshake form from both apps. Signed-in users only; the files stay in Brazil.
+app.post(BUG_REPORT_PATH, async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.bugReport.check(userId);
+  limits.bugReportGlobal.check("all");
+  if (!c.req.header("content-type")?.toLowerCase().startsWith("multipart/form-data")) throw new ApiError("bad_request", "content-type");
+  const form = await c.req.parseBody({ all: true }).catch(() => {
+    throw new ApiError("bad_request");
+  });
+  return c.json(await submitBugReport(bugReports, userId, form));
+});
+
 // Called by the Synapse module before every invite. Caddy does not route /internal/*.
 app.post("/internal/v1/may-invite", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
@@ -678,6 +710,19 @@ staffGet("/v1/admin/experiments", () => experimentsReport(db));
 staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));
 staffGet("/v1/admin/retention", () => staffReports.retention());
+// Problem reports (bipe#367). The Starlings intake line links to the single report.
+staffGet("/v1/admin/bug-reports", () => listBugReports(db));
+staffGet("/v1/admin/bug-reports/:id", (c) => getBugReport(db, c.req.param("id")!));
+app.get("/v1/admin/bug-reports/:id/files/:name", async (c) => {
+  await staff.userId(c.req.header("authorization"));
+  const name = c.req.param("name");
+  const body = await readBugReportFile(db, config.BUG_REPORTS_DIR, c.req.param("id"), name);
+  c.header("cache-control", "no-store");
+  c.header("content-type", "application/octet-stream");
+  c.header("x-content-type-options", "nosniff");
+  c.header("content-disposition", `attachment; filename="${name}"`);
+  return c.body(new Uint8Array(body));
+});
 staffGet("/v1/admin/reports", (c) => {
   const days = z.coerce.number().int().min(1).max(400).default(90).safeParse(c.req.query("days"));
   if (!days.success) throw new ApiError("bad_request");
