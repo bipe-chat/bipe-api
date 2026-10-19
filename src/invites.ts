@@ -227,6 +227,7 @@ export async function inviteConnections(db: Db, userId: string) {
 /**
  * Inviters ranked by joins, for growth strategy (docs/growth.md). sent: personal invites created.
  * joined: people who signed up with them. downstream: everyone in the invite tree below the user.
+ * Only inviters on `serverName`: the old proseio.com.br accounts stay out of the report.
  */
 export interface InviterStats {
   user_id: string;
@@ -239,7 +240,7 @@ export interface InviterStats {
   last_join: Date | null;
 }
 
-export async function inviterReport(db: Db, limit: number): Promise<InviterStats[]> {
+export async function inviterReport(db: Db, limit: number, serverName: string): Promise<InviterStats[]> {
   const { rows } = await db.query<InviterStats>(
     `WITH RECURSIVE edges AS (
        SELECT i.created_by AS inviter, s.user_id AS invitee
@@ -250,7 +251,7 @@ export async function inviterReport(db: Db, limit: number): Promise<InviterStats
        SELECT t.root, e.invitee, t.depth + 1 FROM tree t JOIN edges e ON e.inviter = t.invitee WHERE t.depth < 50
      ), sent AS (
        SELECT i.created_by AS user_id, count(*)::int AS sent, count(s.user_id)::int AS joined, max(s.created_at) AS last_join
-       FROM invites i LEFT JOIN signups s ON s.invite_id = i.id WHERE i.created_by IS NOT NULL GROUP BY 1
+       FROM invites i LEFT JOIN signups s ON s.invite_id = i.id WHERE i.created_by LIKE '%:' || $2 GROUP BY 1
      ), down AS (
        SELECT root AS user_id, count(DISTINCT invitee)::int AS downstream, max(depth)::int AS depth FROM tree GROUP BY 1
      )
@@ -259,7 +260,7 @@ export async function inviterReport(db: Db, limit: number): Promise<InviterStats
             coalesce(d.downstream, 0) AS downstream, coalesce(d.depth, 0) AS depth, s.last_join
      FROM sent s LEFT JOIN down d USING (user_id) LEFT JOIN handles h USING (user_id)
      ORDER BY s.joined DESC, downstream DESC, s.sent DESC LIMIT $1`,
-    [limit],
+    [limit, serverName],
   );
   return rows;
 }
