@@ -18,7 +18,7 @@ import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
-import { askAsOrganisation, OrganisationBody, pruneOrganisationRequests } from "./organisations.js";
+import { pruneOrganisationRequests } from "./organisations.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
@@ -81,8 +81,6 @@ const limits = {
   dataExport: new RateLimiter(3, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
-  organisations: new RateLimiter(3, 3_600_000),
-  organisationsGlobal: new RateLimiter(60, 3_600_000),
   events: new RateLimiter(30, 3_600_000),
   profile: new RateLimiter(60, 60_000),
   profilePhoto: new RateLimiter(120, 60_000),
@@ -419,18 +417,6 @@ app.post("/v1/waitlist", async (c) => {
   await joinWaitlist(db, await parse(c, WaitlistBody));
   return c.body(null, 202);
 });
-
-// The organisation form on the public site posts from the browser (ADR 0126, bipe#410).
-// /v1/partners is the old name; it stays until the form moves to Starlings (bipe#273).
-for (const path of ["/v1/organisations", "/v1/partners"]) {
-  app.use(path, cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
-  app.post(path, async (c) => {
-    limits.organisations.check(clientIp(c));
-    limits.organisationsGlobal.check("all");
-    await askAsOrganisation(db, await parse(c, OrganisationBody));
-    return c.body(null, 202);
-  });
-}
 
 // sendBeacon from the public site: text/plain JSON, no preflight, the browser reads no response.
 app.post("/v1/events", async (c) => {
