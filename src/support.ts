@@ -5,20 +5,16 @@
 // Starlings workspace through the intake outbox (src/intake.ts); member replies come back signed and go into the room.
 // Never log a message text, a Matrix ID next to a text, or a token.
 import { mkdirSync } from "node:fs";
-import {
-  DeviceId,
-  DeviceLists,
-  EncryptionSettings,
-  OlmMachine,
-  RequestType,
-  RoomId,
-  UserId,
-} from "@matrix-org/matrix-sdk-crypto-nodejs";
+// Types only at the top: the native library loads in boot(), so a broken binary turns the bot off, not the API.
+import type { OlmMachine, RequestType, UserId } from "@matrix-org/matrix-sdk-crypto-nodejs";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import type { Intake, IntakeBody } from "./intake.js";
 import { appString } from "./registry.js";
+
+type Crypto = typeof import("@matrix-org/matrix-sdk-crypto-nodejs");
+let sdk: Crypto;
 
 const SYNC_TIMEOUT_MS = 30_000;
 
@@ -70,9 +66,10 @@ export class SupportBot {
     if (who.user_id !== this.userId) throw new Error("SUPPORT_ACCESS_TOKEN belongs to another account");
     if (!who.device_id) throw new Error("the support token has no device");
     mkdirSync(this.config.SUPPORT_STORE_DIR, { recursive: true });
-    this.machine = await OlmMachine.initialize(
-      new UserId(this.userId),
-      new DeviceId(who.device_id),
+    sdk = await import("@matrix-org/matrix-sdk-crypto-nodejs");
+    this.machine = await sdk.OlmMachine.initialize(
+      new sdk.UserId(this.userId),
+      new sdk.DeviceId(who.device_id),
       this.config.SUPPORT_STORE_DIR,
       this.config.SUPPORT_STORE_PASSPHRASE,
     );
@@ -82,9 +79,9 @@ export class SupportBot {
     const status = await this.machine.crossSigningStatus();
     if (!status.hasMaster) {
       const boot = await this.machine.bootstrapCrossSigning(true);
-      if (boot.uploadKeysReq) await this.send(boot.uploadKeysReq.id, RequestType.KeysUpload, "POST", "/keys/upload", boot.uploadKeysReq.body);
+      if (boot.uploadKeysReq) await this.send(boot.uploadKeysReq.id, sdk.RequestType.KeysUpload, "POST", "/keys/upload", boot.uploadKeysReq.body);
       await this.matrix("POST", "/keys/device_signing/upload", JSON.parse(boot.uploadSigningKeysReq));
-      await this.send(boot.uploadSignaturesReq.id, RequestType.SignatureUpload, "POST", "/keys/signatures/upload", boot.uploadSignaturesReq.body);
+      await this.send(boot.uploadSignaturesReq.id, sdk.RequestType.SignatureUpload, "POST", "/keys/signatures/upload", boot.uploadSignaturesReq.body);
       console.log("support bot: cross-signing keys uploaded");
     }
   }
@@ -161,16 +158,16 @@ export class SupportBot {
   async sendText(roomId: string, body: string, msgtype: "m.text" | "m.notice" = "m.text", txnId = `bipe-${Date.now()}-${Math.random().toString(36).slice(2)}`): Promise<void> {
     await this.ready;
     const machine = this.machine!;
-    const room = new RoomId(roomId);
+    const room = new sdk.RoomId(roomId);
     const members = await this.joinedAndInvited(roomId);
     await machine.updateTrackedUsers(members);
     // Device keys of new members must be known before the room key goes out.
     await this.processOutgoing();
     const claim = await machine.getMissingSessions(members);
-    if (claim) await this.send(claim.id, RequestType.KeysClaim, "POST", "/keys/claim", claim.body);
-    const settings = new EncryptionSettings();
+    if (claim) await this.send(claim.id, sdk.RequestType.KeysClaim, "POST", "/keys/claim", claim.body);
+    const settings = new sdk.EncryptionSettings();
     for (const req of await machine.shareRoomKey(room, members, settings)) {
-      await this.send(req.id, RequestType.ToDevice, "PUT", `/sendToDevice/${enc(req.eventType)}/${enc(req.txnId)}`, req.body);
+      await this.send(req.id, sdk.RequestType.ToDevice, "PUT", `/sendToDevice/${enc(req.eventType)}/${enc(req.txnId)}`, req.body);
     }
     const encrypted = await machine.encryptRoomEvent(room, "m.room.message", JSON.stringify({ msgtype, body }));
     await this.matrix("PUT", `/rooms/${enc(roomId)}/send/m.room.encrypted/${enc(txnId)}`, JSON.parse(encrypted));
@@ -180,7 +177,7 @@ export class SupportBot {
     const res = await this.matrix<{ chunk: MatrixEvent[] }>("GET", `/rooms/${enc(roomId)}/members?not_membership=leave`);
     return res.chunk
       .filter((e) => e.content.membership === "join" || e.content.membership === "invite")
-      .map((e) => new UserId(e.state_key!));
+      .map((e) => new sdk.UserId(e.state_key!));
   }
 
   /** A member's reply from Starlings. A repeat message_id sends nothing. */
@@ -236,9 +233,9 @@ export class SupportBot {
     if (since) qs.set("since", since);
     const sync = await this.matrix<SyncResponse>("GET", `/sync?${qs}`, undefined, SYNC_TIMEOUT_MS + 15_000);
 
-    const lists = new DeviceLists(
-      (sync.device_lists?.changed ?? []).map((u) => new UserId(u)),
-      (sync.device_lists?.left ?? []).map((u) => new UserId(u)),
+    const lists = new sdk.DeviceLists(
+      (sync.device_lists?.changed ?? []).map((u) => new sdk.UserId(u)),
+      (sync.device_lists?.left ?? []).map((u) => new sdk.UserId(u)),
     );
     await machine.receiveSyncChanges(
       JSON.stringify(sync.to_device?.events ?? []),
@@ -274,7 +271,7 @@ export class SupportBot {
     let content = event.content;
     let type = event.type;
     if (type === "m.room.encrypted") {
-      const decrypted = await this.machine!.decryptRoomEvent(JSON.stringify({ ...event, room_id: roomId }), new RoomId(roomId)).catch(() => null);
+      const decrypted = await this.machine!.decryptRoomEvent(JSON.stringify({ ...event, room_id: roomId }), new sdk.RoomId(roomId)).catch(() => null);
       if (!decrypted) {
         console.error("support bot: could not decrypt a message");
         return;
@@ -304,24 +301,24 @@ export class SupportBot {
   private async processOutgoing(): Promise<void> {
     for (const req of await this.machine!.outgoingRequests()) {
       switch (req.type) {
-        case RequestType.KeysUpload:
+        case sdk.RequestType.KeysUpload:
           await this.send(req.id, req.type, "POST", "/keys/upload", req.body);
           break;
-        case RequestType.KeysQuery:
+        case sdk.RequestType.KeysQuery:
           await this.send(req.id, req.type, "POST", "/keys/query", req.body);
           break;
-        case RequestType.KeysClaim:
+        case sdk.RequestType.KeysClaim:
           await this.send(req.id, req.type, "POST", "/keys/claim", req.body);
           break;
-        case RequestType.SignatureUpload:
+        case sdk.RequestType.SignatureUpload:
           await this.send(req.id, req.type, "POST", "/keys/signatures/upload", req.body);
           break;
-        case RequestType.ToDevice: {
+        case sdk.RequestType.ToDevice: {
           const r = req as unknown as { eventType: string; txnId: string };
           await this.send(req.id, req.type, "PUT", `/sendToDevice/${enc(r.eventType)}/${enc(r.txnId)}`, req.body);
           break;
         }
-        case RequestType.RoomMessage: {
+        case sdk.RequestType.RoomMessage: {
           const r = req as unknown as { roomId: string; eventType: string; txnId: string };
           await this.send(req.id, req.type, "PUT", `/rooms/${enc(r.roomId)}/send/${enc(r.eventType)}/${enc(r.txnId)}`, req.body);
           break;
