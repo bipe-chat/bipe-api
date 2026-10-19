@@ -705,6 +705,8 @@
     "bipe_link_computer_error_title": "Não deu para conectar o computador",
     "bipe_link_computer_error_sign_in": "O Bipe não conseguiu abrir a página de aprovação. Tente de novo.",
     "bipe_link_computer_not_supported": "Este celular não pode conectar um computador agora.",
+    "bipe_link_computer_needs_pin": "Para conectar um computador, crie primeiro sua senha de %1$s números.",
+    "bipe_link_computer_create_pin": "Criar senha",
     "bipe_link_computer_done": "Computador conectado.",
     "bipe_account_sign_out": "Sair deste aparelho",
     "bipe_privacy_who_can_talk": "Quem pode falar com você",

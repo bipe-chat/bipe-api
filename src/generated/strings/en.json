@@ -705,6 +705,8 @@
     "bipe_link_computer_error_title": "Couldn't link the computer",
     "bipe_link_computer_error_sign_in": "Bipe couldn't open the approval page. Try again.",
     "bipe_link_computer_not_supported": "This phone can't link a computer right now.",
+    "bipe_link_computer_needs_pin": "To link a computer, create your %1$s-digit PIN first.",
+    "bipe_link_computer_create_pin": "Create PIN",
     "bipe_link_computer_done": "Computer linked.",
     "bipe_account_sign_out": "Sign out of this device",
     "bipe_privacy_who_can_talk": "Who can talk to you",
