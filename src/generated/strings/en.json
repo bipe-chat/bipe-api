@@ -142,7 +142,7 @@
     "bipe_invites_other_device": "Made on another device. Share it from there.",
     "bipe_invites_name_action": "Who is it for?",
     "bipe_invites_name_placeholder": "Name",
-    "bipe_invites_name_footer": "Only you see this name, and only on this phone.",
+    "bipe_invites_name_footer": "Only you see this name.",
     "bipe_invites_share_message": "Join me on Bipe: %1$s",
     "bipe_invites_none_left": "No invites available right now.",
     "bipe_invites_empty": "Invite someone to chat with you on Bipe.",
