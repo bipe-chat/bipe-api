@@ -725,7 +725,7 @@ app.get("/v1/admin/inviters", async (c) => {
   await staff.userId(c.req.header("authorization"));
   const limit = z.coerce.number().int().min(1).max(1000).default(200).safeParse(c.req.query("limit"));
   if (!limit.success) throw new ApiError("bad_request");
-  const rows = await inviterReport(db, limit.data);
+  const rows = await inviterReport(db, limit.data, config.SERVER_NAME);
   return c.json({ inviters: rows.map((r) => ({ ...r, last_join: r.last_join?.toISOString() ?? null })) });
 });
 

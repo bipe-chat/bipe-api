@@ -82,7 +82,7 @@ try {
   } else if (group === "invite" && command === "top") {
     const limit = Number(values.limit);
     if (!(Number.isInteger(limit) && limit > 0)) throw new Error("--limit must be a positive integer");
-    console.table(await inviterReport(db, limit));
+    console.table(await inviterReport(db, limit, process.env.SERVER_NAME ?? "bipe.net.br"));
   } else if (group === "waitlist" && command === "count") {
     const { rows } = await db.query("SELECT platform, lang, count(*)::int AS n FROM waitlist GROUP BY 1, 2 ORDER BY 1, 2");
     console.table(rows);
