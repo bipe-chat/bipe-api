@@ -289,6 +289,8 @@ const MIGRATIONS = [
   // Organisation requests moved to the Bipe workspace on Starlings (bipe#273). The table was empty
   // when this was written (19 October 2026, after the one test row was deleted).
   `DROP TABLE IF EXISTS organisation_requests;`,
+  // The name a user gives a personal invite, so it survives a new phone or a reinstall (bipe-shared openapi).
+  `ALTER TABLE invites ADD COLUMN name text;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

@@ -8,7 +8,7 @@ import { loadConfig } from "./config.js";
 import { migrate, openDb } from "./db.js";
 import { ApiError } from "./errors.js";
 import { availability, handleChanges, lookup, myHandle, pruneHandleChanges, removeHandle, resolve, setHandle } from "./handles.js";
-import { createPersonalInvite, inviteConnections, inviterReport, myInvites, previewInvite, revokePersonalInvite } from "./invites.js";
+import { createPersonalInvite, inviteConnections, inviterReport, myInvites, nameInvite, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
 import { SignupLimits } from "./signup-limits.js";
@@ -525,6 +525,13 @@ app.post("/v1/support/starlings", async (c) => {
 app.get("/v1/me/invite-connections", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   return c.json(await inviteConnections(db, userId));
+});
+
+const InviteNameBody = z.object({ name: z.string().max(80) });
+app.put("/v1/me/invites/:id", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await nameInvite(db, userId, c.req.param("id"), (await parse(c, InviteNameBody)).name);
+  return c.body(null, 204);
 });
 
 app.delete("/v1/me/invites/:id", async (c) => {
