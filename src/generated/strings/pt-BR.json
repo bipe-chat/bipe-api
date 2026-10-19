@@ -705,6 +705,8 @@
     "bipe_link_computer_error_title": "Não deu para conectar o computador",
     "bipe_link_computer_error_sign_in": "O Bipe não conseguiu abrir a página de aprovação. Tente de novo.",
     "bipe_link_computer_not_supported": "Este celular não pode conectar um computador agora.",
+    "bipe_link_computer_needs_pin": "Para conectar um computador, crie primeiro sua senha de %1$s números.",
+    "bipe_link_computer_create_pin": "Criar senha",
     "bipe_link_computer_done": "Computador conectado.",
     "bipe_account_sign_out": "Sair deste aparelho",
     "bipe_privacy_who_can_talk": "Quem pode falar com você",
@@ -812,6 +814,8 @@
     "bipe_notifications_prompt_title_generic": "Quer saber na hora quando responderem?",
     "bipe_notifications_prompt_body": "O Bipe avisa quando chega mensagem nova. Dá para mudar depois em Configurações.",
     "bipe_notifications_prompt_allow": "Ligar notificações",
+    "bipe_remote_banner_update": "Atualizar o Bipe",
+    "bipe_remote_banner_dismiss": "Fechar aviso",
     "bipe_handle_prompt_title": "Escolha seu @",
     "bipe_handle_prompt_body": "Com um @, as pessoas te acham no Bipe.",
     "bipe_handle_prompt_action": "Escolher @",
@@ -821,6 +825,11 @@
     "bipe_support_room_topic": "Conversa com a equipe do Bipe. A equipe lê o que você escreve aqui numa ferramenta de atendimento. Fotos e arquivos ficam no servidor do Bipe.",
     "bipe_support_welcome": "Oi! Aqui você fala com a equipe do Bipe. Conte o que aconteceu ou o que você quer ver no app. A gente responde nesta conversa.",
     "bipe_support_report_received": "Recebemos seu relato de problema. A equipe vai ler e responde nesta conversa.",
-    "bipe_support_already_open": "Você já tem uma conversa com o suporte. Continue por aqui."
+    "bipe_support_already_open": "Você já tem uma conversa com o suporte. Continue por aqui.",
+    "bipe_app_lock_title": "Bipe bloqueado",
+    "bipe_app_lock_biometric": "Use o %1$s para abrir",
+    "bipe_archive_action": "Arquivar",
+    "bipe_unarchive_action": "Desarquivar",
+    "bipe_archived_title": "Arquivadas"
   }
 }
