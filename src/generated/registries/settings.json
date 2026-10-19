@@ -99,7 +99,7 @@
           "title": "bipe_account_devices",
           "rows": [
             { "key": "thisDevice", "title": "bipe_account_this_device", "kind": "info" },
-            { "key": "linkDevice", "title": "bipe_account_link_device", "kind": "action", "gate": "flag:linkNewDevice" }
+            { "key": "linkedDevices", "title": "bipe_linked_devices_title", "kind": "link", "adr": "0116" }
           ]
         },
         {
@@ -147,9 +147,11 @@
           "key": "main",
           "footer": "bipe_about_steward",
           "rows": [
+            { "key": "support", "title": "bipe_settings_support", "kind": "action", "adr": "0114" },
             { "key": "docs", "title": "bipe_help_docs", "kind": "url", "url": "docs" },
             { "key": "terms", "title": "bipe_help_terms", "kind": "url", "url": "terms" },
             { "key": "privacy", "title": "bipe_help_privacy", "kind": "url", "url": "privacy" },
+            { "key": "reportProblem", "title": "bipe_help_report_problem", "kind": "action" },
             { "key": "licenses", "title": "bipe_help_licenses", "kind": "link" }
           ]
         }

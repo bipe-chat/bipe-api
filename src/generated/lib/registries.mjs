@@ -148,7 +148,7 @@ function validate(reg) {
   validateLinkedRecovery(ac);
   // DDMMYYYY and YYYYMMDD need exactly 8 digits.
   if (ac.pinLength !== 8) fail("accounts: pinLength must be 8 (the date check reads DDMMYYYY and YYYYMMDD)");
-  for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts"]) {
+  for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts", "webLinkCooldownSeconds"]) {
     if (!(Number.isInteger(ac[k]) && ac[k] > 0)) fail(`accounts: ${k}`);
   }
   if (!(ac.pinDateYearMin >= 1000 && ac.pinDateYearMax <= 9999 && ac.pinDateYearMin <= ac.pinDateYearMax)) fail("accounts: pin date years");
@@ -432,4 +432,66 @@ function isDate(year, month, day, a) {
 // Proof and lifecycle inputs come from authenticated adapters; a selected warning is preserved without re-gating it.
 export function trustFacts(input, reg) {
   return evaluateTrustFacts(input, reg.trust);
+}
+
+// --- Remote critical banner (ADR 0117, bipe#386) ------------------------------
+
+/**
+ * Compares dotted app versions ("26.10.2") part by part as numbers. Each part counts its leading digits only
+ * ("2-dev" is 2); a missing part or a part without leading digits counts as 0.
+ */
+export function compareAppVersions(a, b) {
+  const part = (p) => Number(/^[0-9]+/.exec(p ?? "")?.[0] ?? 0);
+  const pa = String(a).split("."), pb = String(b).split(".");
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = part(pa[i]);
+    const y = part(pb[i]);
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * What the app shows for the banner from GET /v1/banner: "hidden" (none, or past expires_at), "update" (the app
+ * version is below min_app_version: the banner opens the platform's update link and cannot be dismissed) or
+ * "notice" (opens link; the person can dismiss it by id). `now` is an ISO date-time.
+ */
+export function remoteBannerState(banner, appVersion, now) {
+  if (!banner) return "hidden";
+  if (Date.parse(banner.expires_at) <= Date.parse(now)) return "hidden";
+  if (banner.min_app_version && compareAppVersions(appVersion, banner.min_app_version) < 0) return "update";
+  return "notice";
+}
+
+const BANNER_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const APP_VERSION = /^\d{1,4}(\.\d{1,4}){0,3}$/;
+const httpsUrl = (v) => {
+  try {
+    return typeof v === "string" && v.length <= 500 && new URL(v).protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+/** The first problem with a banner a staff member sets (CLI `banner set`), or null. */
+export function remoteBannerProblem(banner, now) {
+  if (!banner || typeof banner !== "object" || Array.isArray(banner)) return "not_an_object";
+  const keys = ["id", "title", "text", "link", "min_app_version", "update_links", "expires_at"];
+  if (Object.keys(banner).some((k) => !keys.includes(k))) return "unknown_field";
+  if (typeof banner.id !== "string" || !BANNER_ID.test(banner.id)) return "id";
+  for (const [k, max] of [["title", 60], ["text", 240]]) {
+    const v = banner[k];
+    if (typeof v !== "string" || v.trim() !== v || v.length < 1 || v.length > max) return k;
+    // Rendered copy has no em dash (humanizer rule). Write the text through the humanizer before `banner set`.
+    if (v.includes("—")) return `${k}_em_dash`;
+  }
+  if (!httpsUrl(banner.link)) return "link";
+  if (banner.min_app_version !== undefined) {
+    if (typeof banner.min_app_version !== "string" || !APP_VERSION.test(banner.min_app_version)) return "min_app_version";
+    const u = banner.update_links;
+    if (!u || typeof u !== "object" || !httpsUrl(u.ios) || !httpsUrl(u.android) || Object.keys(u).length !== 2) return "update_links";
+  } else if (banner.update_links !== undefined) return "update_links";
+  if (typeof banner.expires_at !== "string" || Number.isNaN(Date.parse(banner.expires_at))) return "expires_at";
+  if (Date.parse(banner.expires_at) <= Date.parse(now)) return "expires_at";
+  return null;
 }
