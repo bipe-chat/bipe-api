@@ -780,6 +780,13 @@
     "bipe_notifications_prompt_allow": "Ligar notificações",
     "bipe_handle_prompt_title": "Escolha seu @",
     "bipe_handle_prompt_body": "Com um @, as pessoas te acham no Bipe.",
-    "bipe_handle_prompt_action": "Escolher @"
+    "bipe_handle_prompt_action": "Escolher @",
+    "bipe_settings_support": "Falar com o suporte",
+    "bipe_support_open_failed": "Não foi possível abrir o suporte agora. Tente de novo.",
+    "bipe_support_room_name": "Suporte Bipe",
+    "bipe_support_room_topic": "Conversa com a equipe do Bipe. A equipe lê o que você escreve aqui numa ferramenta de atendimento. Fotos e arquivos ficam no servidor do Bipe.",
+    "bipe_support_welcome": "Oi! Aqui você fala com a equipe do Bipe. Conte o que aconteceu ou o que você quer ver no app. A gente responde nesta conversa.",
+    "bipe_support_report_received": "Recebemos seu relato de problema. A equipe vai ler e responde nesta conversa.",
+    "bipe_support_already_open": "Você já tem uma conversa com o suporte. Continue por aqui."
   }
 }

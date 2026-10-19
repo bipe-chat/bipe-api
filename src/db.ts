@@ -264,6 +264,22 @@ const MIGRATIONS = [
      next_at timestamptz NOT NULL DEFAULT now(),
      created_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Support DM (ADR 0114, ADR 0115): one room per user, the bot's sync position, and member replies already sent.
+  // User texts go to Starlings through intake_outbox.
+  `CREATE TABLE support_rooms (
+     user_id text PRIMARY KEY,
+     room_id text NOT NULL UNIQUE,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE support_sync (
+     id integer PRIMARY KEY CHECK (id = 1),
+     since text NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE support_replies (
+     message_id text PRIMARY KEY,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

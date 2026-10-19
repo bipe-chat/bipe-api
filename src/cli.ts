@@ -14,6 +14,7 @@
 //   node dist/cli.js waitlist release <platform> --count N [--days 14]   (ADR 0089: oldest entries first, one invite email each)
 //   node dist/cli.js partners list                   (organisation requests from the site, newest first)
 //   node dist/cli.js partners forget <email>         (LGPD deletion request)
+//   node dist/cli.js support status                  (ADR 0114: support rooms, Starlings lines waiting, last sync)
 //   node dist/cli.js bugreports list                 (problem reports, newest first: id, platform, version, files; no text)
 //   node dist/cli.js bugreports show <id>            (one report with its text and file names)
 //   node dist/cli.js bugreports forget <user_id>     (LGPD deletion request: rows and files)
@@ -113,6 +114,14 @@ try {
   } else if (group === "partners" && command === "forget" && arg) {
     const { rowCount } = await db.query("DELETE FROM organisation_requests WHERE email = $1", [arg.trim().toLowerCase()]);
     console.log(`deleted ${rowCount} rows`);
+  } else if (group === "support" && command === "status") {
+    const { rows } = await db.query(
+      `SELECT (SELECT count(*)::int FROM support_rooms) AS rooms,
+              (SELECT count(*)::int FROM intake_outbox) AS waiting,
+              (SELECT max(tries) FROM intake_outbox) AS max_tries,
+              (SELECT updated_at FROM support_sync WHERE id = 1) AS last_sync`,
+    );
+    console.table(rows);
   } else if (group === "bugreports" && command === "list") {
     for (const r of (await listBugReports(db)).reports) {
       console.log(`${r.id}  ${r.created_at.slice(0, 16)}  ${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"})  logs ${r.log_count}  shots ${r.screenshot_count}  ${r.relayed ? "relayed" : "not relayed"}`);

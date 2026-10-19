@@ -780,6 +780,13 @@
     "bipe_notifications_prompt_allow": "Turn on notifications",
     "bipe_handle_prompt_title": "Pick your @",
     "bipe_handle_prompt_body": "With an @, people can find you on Bipe.",
-    "bipe_handle_prompt_action": "Pick an @"
+    "bipe_handle_prompt_action": "Pick an @",
+    "bipe_settings_support": "Talk to support",
+    "bipe_support_open_failed": "Couldn't open support right now. Try again.",
+    "bipe_support_room_name": "Bipe Support",
+    "bipe_support_room_topic": "A chat with the Bipe team. The team reads what you write here in a support tool. Photos and files stay on the Bipe server.",
+    "bipe_support_welcome": "Hi! This is where you talk to the Bipe team. Tell us what happened or what you want to see in the app. We answer in this chat.",
+    "bipe_support_report_received": "We got your problem report. The team will read it and answer in this chat.",
+    "bipe_support_already_open": "You already have a chat with support. Continue here."
   }
 }
