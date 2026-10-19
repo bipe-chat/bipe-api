@@ -99,7 +99,7 @@
           "title": "bipe_account_devices",
           "rows": [
             { "key": "thisDevice", "title": "bipe_account_this_device", "kind": "info" },
-            { "key": "linkDevice", "title": "bipe_account_link_device", "kind": "action", "gate": "flag:linkNewDevice" }
+            { "key": "linkedDevices", "title": "bipe_linked_devices_title", "kind": "link", "adr": "0116" }
           ]
         },
         {
