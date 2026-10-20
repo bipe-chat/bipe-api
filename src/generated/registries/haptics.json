@@ -1,0 +1,174 @@
+{
+  "$comment": "Bipe haptics language (ADR 0134 in bipe/docs/adr; design: bipe/docs/design/haptics.md). Eight haptics, named by what they mean, not by how they feel. App code plays a haptic by id (iOS BipeHaptics.play(.tick), Android view.bipeHaptic(BipeHaptic.Tick)) and never calls a platform feedback API directly. ios: the UIKit generator and its argument. android: HapticFeedbackConstants names in order of preference; the app plays the first one whose minSdk is at or below the device API level. uses: where the apps play the haptic today; the parity ledger checks the same list. A new use needs a line here, not a new ADR. A new haptic needs a new ADR.",
+  "version": 1,
+  "haptics": [
+    {
+      "id": "tick",
+      "meaning": "A choice changed: a tab, a segment, a picker value, a reaction or poll answer toggled, an emoji picked.",
+      "ios": {
+        "generator": "selection"
+      },
+      "android": [
+        {
+          "constant": "SEGMENT_TICK",
+          "minSdk": 34
+        },
+        {
+          "constant": "CLOCK_TICK",
+          "minSdk": 1
+        }
+      ],
+      "uses": [
+        "tab_switch",
+        "reaction_toggle",
+        "emoji_pick",
+        "poll_answer"
+      ]
+    },
+    {
+      "id": "tap",
+      "meaning": "A press did a real thing at once: a message sent, text copied, the timeline jumped to the newest message.",
+      "ios": {
+        "generator": "impact",
+        "style": "light"
+      },
+      "android": [
+        {
+          "constant": "VIRTUAL_KEY",
+          "minSdk": 1
+        }
+      ],
+      "uses": [
+        "message_send",
+        "copy",
+        "jump_to_latest"
+      ]
+    },
+    {
+      "id": "threshold",
+      "meaning": "A drag crossed the point where letting go acts: swipe to reply, swipe to archive.",
+      "ios": {
+        "generator": "impact",
+        "style": "medium"
+      },
+      "android": [
+        {
+          "constant": "GESTURE_THRESHOLD_ACTIVATE",
+          "minSdk": 34
+        },
+        {
+          "constant": "CONTEXT_CLICK",
+          "minSdk": 1
+        }
+      ],
+      "uses": [
+        "swipe_reply",
+        "swipe_row_action"
+      ]
+    },
+    {
+      "id": "release",
+      "meaning": "The same drag went back under the point: letting go now does nothing.",
+      "ios": {
+        "generator": "impact",
+        "style": "soft",
+        "intensity": 0.6
+      },
+      "android": [
+        {
+          "constant": "GESTURE_THRESHOLD_DEACTIVATE",
+          "minSdk": 34
+        },
+        {
+          "constant": "CLOCK_TICK",
+          "minSdk": 1
+        }
+      ],
+      "uses": [
+        "swipe_reply",
+        "swipe_row_action"
+      ]
+    },
+    {
+      "id": "hold",
+      "meaning": "A long press took hold: a message menu opened, a voice recording started. A system context menu plays its own haptic; Bipe adds none.",
+      "ios": {
+        "generator": "impact",
+        "style": "heavy"
+      },
+      "android": [
+        {
+          "constant": "LONG_PRESS",
+          "minSdk": 1
+        }
+      ],
+      "uses": [
+        "message_menu",
+        "voice_record_start"
+      ]
+    },
+    {
+      "id": "success",
+      "meaning": "Something the user set up or waited for finished well: a PIN set, the app unlocked, a verification done, an invite made.",
+      "ios": {
+        "generator": "notification",
+        "type": "success"
+      },
+      "android": [
+        {
+          "constant": "CONFIRM",
+          "minSdk": 30
+        },
+        {
+          "constant": "CONTEXT_CLICK",
+          "minSdk": 1
+        }
+      ],
+      "uses": [
+        "pin_set",
+        "app_unlock",
+        "verification_done",
+        "invite_created"
+      ]
+    },
+    {
+      "id": "warning",
+      "meaning": "Bipe asks the user to stop and look before going on, in a flow the user started: a Pix check found a risk, the full-access warning before a web sign-in.",
+      "ios": {
+        "generator": "notification",
+        "type": "warning"
+      },
+      "android": [
+        {
+          "constant": "LONG_PRESS",
+          "minSdk": 1
+        }
+      ],
+      "uses": [
+        "pix_check_risk",
+        "web_link_warning"
+      ]
+    },
+    {
+      "id": "error",
+      "meaning": "An action the user took failed at once: a wrong PIN.",
+      "ios": {
+        "generator": "notification",
+        "type": "error"
+      },
+      "android": [
+        {
+          "constant": "REJECT",
+          "minSdk": 30
+        },
+        {
+          "constant": "LONG_PRESS",
+          "minSdk": 1
+        }
+      ],
+      "uses": [
+        "pin_wrong"
+      ]
+    }
+  ]
+}
