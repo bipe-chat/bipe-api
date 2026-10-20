@@ -38,6 +38,7 @@ import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugR
 import { Intake, verifyIntakeSignature } from "./intake.js";
 import { SupportBot } from "./support.js";
 import { currentBanner } from "./banner.js";
+import { invitePreviewHtml } from "./invite-preview.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -73,6 +74,7 @@ const limits = {
   handleChanges: new RateLimiter(60, 60_000),
   setHandle: new RateLimiter(10, 3_600_000),
   invitePreview: new RateLimiter(30, 60_000),
+  invitePreviewHead: new RateLimiter(60, 60_000),
   inviteCreate: new RateLimiter(20, 3_600_000),
   contactsLookup: new RateLimiter(30, 3_600_000),
   attestChallenge: new RateLimiter(20, 3_600_000),
@@ -423,6 +425,15 @@ app.post("/v1/events", async (c) => {
 app.get("/v1/invites/:code", async (c) => {
   limits.invitePreview.check(clientIp(c));
   return c.json(await previewInvite(db, c.req.param("code")));
+});
+
+// Link-preview crawlers only: the site edge routes them here for bipe.chat/convite/<code> (bipe#459).
+app.get("/v1/web/convite/:code", async (c) => {
+  limits.invitePreviewHead.check(clientIp(c));
+  c.header("Cache-Control", "no-store");
+  c.header("Referrer-Policy", "no-referrer");
+  c.header("X-Robots-Tag", "noindex");
+  return c.html(await invitePreviewHtml(db, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("code")));
 });
 
 app.get("/v1/me/invites", async (c) => {
