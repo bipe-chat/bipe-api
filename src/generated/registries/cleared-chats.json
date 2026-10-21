@@ -1,0 +1,5 @@
+{
+  "$comment": "Cleared DMs (bipe-chat/bipe#464). \"Apagar conversa\" in a DM keeps the user in the room and writes a marker in the global account data event below: { \"rooms\": { \"<room_id>\": { \"ts\": <ms> } } }. ts is the origin_server_ts of the latest event in the room when the user cleared it. The chat list hides the DM while its latest event ts is at or below the marker. The timeline and search drop every event at or below the marker. A malformed entry counts as not cleared. A write merges into the event and keeps every other entry. Reference implementation: clearedChat* in tools/lib/registries.mjs; cases: test-vectors/cleared-chats.json.",
+  "version": 1,
+  "eventType": "chat.bipe.cleared_chats"
+}
