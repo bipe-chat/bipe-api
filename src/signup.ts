@@ -78,8 +78,12 @@ export async function replaySignup(db: Db, key: string) {
     return null;
   }
   const handle = await db.query<{ handle: string }>("SELECT handle FROM handles WHERE user_id = $1", [row.user_id]);
-  const invite = await db.query<{ invite_id: string | null }>("SELECT invite_id FROM signups WHERE user_id = $1", [row.user_id]);
-  const inviteId = invite.rows[0]?.invite_id;
+  const invite = await db.query<{ invite_id: string | null; account_type: string }>(
+    "SELECT invite_id, account_type FROM signups WHERE user_id = $1",
+    [row.user_id],
+  );
+  // ADR 0138 rule 2: a company account never names its owner's personal account, also for accounts made before bipe#513.
+  const inviteId = invite.rows[0]?.account_type === "company" ? null : invite.rows[0]?.invite_id;
   const inviter = inviteId != null ? await inviterOf(db, Number(inviteId)) : null;
   return {
     user_id: row.user_id,
@@ -155,6 +159,9 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
   const inviteId = code ? await takeInviteUse(db, code) : null;
   if (code && inviteId === null) throw new ApiError("invite_invalid");
   if (!code && config.SIGNUP_INVITE_REQUIRED) throw new ApiError("invite_invalid");
+  // ADR 0138 rule 2 (bipe#513): the invite of a company sign-up comes from its owner's personal account on the phone.
+  // The use counts against that quota, but the company account keeps no link to it: no invite_id, no inviter, no invite pair.
+  const linkedInviteId = accountType === "company" ? null : inviteId;
 
   let masUserId: string | null = null;
   let giveBack: (() => void) | null = null;
@@ -178,7 +185,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, inviteId, accountType]);
+        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, linkedInviteId, accountType]);
         if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
         await client.query("COMMIT");
       } catch (e) {
@@ -198,7 +205,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, inviteId, accountType]);
+        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, linkedInviteId, accountType]);
         if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
         await client.query(
           `INSERT INTO account_secrets (user_id, device_first, pin_hash, pin_set_at, token_hash, token_set_at)
@@ -232,7 +239,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       );
       if (res.rowCount === 1) handle = wanted.handle;
     }
-    const inviter = inviteId !== null ? await inviterOf(db, inviteId) : null;
+    const inviter = linkedInviteId !== null ? await inviterOf(db, linkedInviteId) : null;
     sendVerification?.();
     // A replayed sign-up (ADR 0094) does not come here, so it does not count again.
     deps.growth?.record(userId, "signup_done");
