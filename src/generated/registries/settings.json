@@ -82,6 +82,7 @@
           "footer": "bipe_account_pin_footer",
           "rows": [
             { "key": "changePin", "title": "bipe_pin_change_title", "kind": "link", "adr": "0057" },
+            { "key": "appLock", "title": "bipe_account_app_lock", "kind": "switch", "adr": "0137" },
             { "key": "biometricUnlock", "title": "bipe_account_biometric_unlock", "kind": "switch", "adr": "0057" }
           ]
         },
