@@ -862,6 +862,8 @@
     "bipe_report_message_body": "Your server's team receives the reason you write and the message ID.",
     "bipe_help_report_problem": "Report a problem",
     "bipe_help_problem_description": "Tell us what happened, what you tried to do and what you expected to happen.",
+    "bipe_help_report_sent_title": "Report sent",
+    "bipe_help_report_sent_body": "The Bipe team will read it and reply in the Bipe Support chat.",
     "bipe_device_confirm_action": "Confirm device",
     "bipe_keys_confirm_action": "Confirm encryption keys",
     "bipe_a11y_chat_photo": "Chat photo",

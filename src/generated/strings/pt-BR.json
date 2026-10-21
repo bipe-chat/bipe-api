@@ -862,6 +862,8 @@
     "bipe_report_message_body": "A equipe que cuida do seu servidor recebe o motivo que você escrever e a identificação da mensagem.",
     "bipe_help_report_problem": "Avisar sobre um problema",
     "bipe_help_problem_description": "Conte o que aconteceu, o que você tentou fazer e o que esperava que acontecesse.",
+    "bipe_help_report_sent_title": "Relato enviado",
+    "bipe_help_report_sent_body": "A equipe do Bipe vai ler e responder na conversa Suporte Bipe.",
     "bipe_device_confirm_action": "Confirmar aparelho",
     "bipe_keys_confirm_action": "Confirmar as chaves de proteção",
     "bipe_a11y_chat_photo": "Foto da conversa",
