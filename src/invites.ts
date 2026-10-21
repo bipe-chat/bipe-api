@@ -227,11 +227,12 @@ export async function revokeAllOf(db: Db, userId: string): Promise<number> {
 
 /** The caller's invite pairs (ADR 0034): people the caller invited who joined, and the caller's own inviter. */
 export async function inviteConnections(db: Db, userId: string) {
+  // ADR 0138 rule 2: a company account is never an invite pair with the personal account that made it (bipe#513).
   const { rows } = await db.query<{ user_id: string }>(
-    `SELECT s.user_id FROM invites i JOIN signups s ON s.invite_id = i.id WHERE i.created_by = $1
+    `SELECT s.user_id FROM invites i JOIN signups s ON s.invite_id = i.id WHERE i.created_by = $1 AND s.account_type <> 'company'
      UNION
      SELECT i.created_by AS user_id FROM signups s JOIN invites i ON i.id = s.invite_id
-     WHERE s.user_id = $1 AND i.created_by IS NOT NULL
+     WHERE s.user_id = $1 AND i.created_by IS NOT NULL AND s.account_type <> 'company'
      LIMIT 1000`,
     [userId],
   );
@@ -258,14 +259,14 @@ export async function inviterReport(db: Db, limit: number, serverName: string): 
   const { rows } = await db.query<InviterStats>(
     `WITH RECURSIVE edges AS (
        SELECT i.created_by AS inviter, s.user_id AS invitee
-       FROM invites i JOIN signups s ON s.invite_id = i.id WHERE i.created_by IS NOT NULL
+       FROM invites i JOIN signups s ON s.invite_id = i.id WHERE i.created_by IS NOT NULL AND s.account_type <> 'company'
      ), tree AS (
        SELECT inviter AS root, invitee, 1 AS depth FROM edges
        UNION ALL
        SELECT t.root, e.invitee, t.depth + 1 FROM tree t JOIN edges e ON e.inviter = t.invitee WHERE t.depth < 50
      ), sent AS (
        SELECT i.created_by AS user_id, count(*)::int AS sent, count(s.user_id)::int AS joined, max(s.created_at) AS last_join
-       FROM invites i LEFT JOIN signups s ON s.invite_id = i.id WHERE i.created_by LIKE '%:' || $2 GROUP BY 1
+       FROM invites i LEFT JOIN signups s ON s.invite_id = i.id AND s.account_type <> 'company' WHERE i.created_by LIKE '%:' || $2 GROUP BY 1
      ), down AS (
        SELECT root AS user_id, count(DISTINCT invitee)::int AS downstream, max(depth)::int AS depth FROM tree GROUP BY 1
      )
