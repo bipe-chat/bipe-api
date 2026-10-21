@@ -1,0 +1,57 @@
+name: Real stack tests
+
+# bipe#231: the account flows against real MAS, Synapse and Postgres at the production versions
+# (test/real/compose.yml). Runs when the code that talks to MAS changes, every Monday, and by hand.
+# Not a required check: a red run means MAS behaves other than the code assumes.
+
+on:
+  pull_request:
+    paths:
+      - "src/accounts.ts"
+      - "src/signup.ts"
+      - "src/mas.ts"
+      - "src/weblink.ts"
+      - "src/secrets.ts"
+      - "test/real/**"
+      - ".github/workflows/real-stack-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/accounts.ts"
+      - "src/signup.ts"
+      - "src/mas.ts"
+      - "src/weblink.ts"
+      - "src/secrets.ts"
+      - "test/real/**"
+      - ".github/workflows/real-stack-tests.yml"
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: test/real/up.sh
+      - run: pnpm test:real
+      - name: Stack status on failure
+        if: failure()
+        # Service status and the last lines of the MAS and Synapse logs. They hold synthetic accounts only.
+        run: |
+          docker compose -f test/real/compose.yml --env-file test/real/.stack/compose.env ps || true
+          docker compose -f test/real/compose.yml --env-file test/real/.stack/compose.env logs --no-color --tail 80 mas synapse || true
+      - if: always()
+        run: test/real/up.sh down

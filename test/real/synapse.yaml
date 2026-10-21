@@ -1,0 +1,32 @@
+# Bipe overrides for the test homeserver, merged after the generated homeserver.yaml.
+# Same rules as bipe-infra ess/bipe-security.yaml and compose/templates/synapse-bipe.yaml,
+# without the bipe_messaging module (it calls a running Bipe API).
+server_name: bipe.test
+public_baseurl: http://127.0.0.1:58008/
+listeners:
+  - port: 8008
+    type: http
+    tls: false
+    x_forwarded: false
+    bind_addresses: ["0.0.0.0"]
+    resources:
+      - names: [client]
+        compress: false
+database:
+  name: psycopg2
+  args:
+    user: bipe
+    password: "__POSTGRES_PASSWORD__"
+    database: synapse
+    host: postgres
+    cp_min: 1
+    cp_max: 5
+matrix_authentication_service:
+  enabled: true
+  endpoint: http://mas:8080/
+  secret: "__MAS_SYNAPSE_SECRET__"
+federation_domain_whitelist: []
+enable_registration: false
+encryption_enabled_by_default_for_room_type: all
+require_auth_for_profile_requests: true
+report_stats: false
