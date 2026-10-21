@@ -7,7 +7,12 @@ set -eu
 cd "$(dirname "$0")"
 compose() { docker compose -f compose.yml --env-file .stack/compose.env "$@"; }
 
-if [ -f .stack/compose.env ]; then compose down -v --remove-orphans >/dev/null 2>&1 || true; fi
+if [ -f .stack/compose.env ]; then
+  compose down -v --remove-orphans >/dev/null 2>&1 || true
+  # Synapse owns its data as uid 991: only a container can delete it.
+  compose run --rm --no-deps -T --entrypoint sh synapse -c 'rm -rf /data/* /data/.[!.]*' >/dev/null 2>&1 || true
+  compose down --remove-orphans >/dev/null 2>&1 || true
+fi
 rm -rf .stack
 [ "${1:-}" = down ] && exit 0
 
