@@ -1,0 +1,48 @@
+# Bipe overrides for the test MAS, merged after the generated config.
+# The account, password and rate-limit rules are the same as bipe-infra ess/bipe-security.yaml
+# (matrixAuthenticationService) and compose/templates/mas-bipe.yaml. Change them together.
+http:
+  public_base: http://127.0.0.1:58080/
+  issuer: http://127.0.0.1:58080/
+  # MAS appends lists when it merges files: this adds the admin API listener to the generated ones.
+  listeners:
+    - name: adminapi
+      resources:
+        - name: adminapi
+      binds:
+        - address: "[::]:8082"
+clients:
+  - client_id: __MAS_API_CLIENT_ID__
+    client_auth_method: client_secret_post
+    client_secret: "__MAS_API_CLIENT_SECRET__"
+policy:
+  data:
+    admin_clients:
+      - __MAS_API_CLIENT_ID__
+database:
+  uri: postgresql://bipe:__POSTGRES_PASSWORD__@postgres/mas
+matrix:
+  kind: synapse
+  homeserver: bipe.test
+  endpoint: http://synapse:8008/
+  secret: "__MAS_SYNAPSE_SECRET__"
+passwords:
+  enabled: true
+email:
+  transport: blackhole
+account:
+  password_registration_enabled: false
+  password_registration_token_required: true
+  password_registration_email_required: false
+  password_change_allowed: true
+  password_recovery_enabled: false
+  account_deactivation_allowed: false
+  login_with_email_allowed: true
+rate_limiting:
+  login:
+    per_ip:
+      burst: 60
+      per_second: 1
+    per_account:
+      burst: 10
+      per_second: 0.0167

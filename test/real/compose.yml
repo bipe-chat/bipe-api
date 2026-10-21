@@ -1,0 +1,51 @@
+# Disposable real stack for bipe#231: Postgres, Synapse and MAS at the production versions.
+# Production: ESS chart 26.10.0 (bipe-infra scripts/install-prod.sh) runs MAS 1.26.0 and Synapse v1.162.0;
+# bipe-infra k8s/bipe/postgres.yaml runs postgres:17.6-alpine. Change these pins together with bipe-infra.
+# Every port binds to 127.0.0.1 only. synapse.yaml and mas.yaml name the same host ports. Secrets are made new on each run by up.sh and live in .stack/ only.
+name: bipe-real
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: bipe
+      POSTGRES_PASSWORD: ${REAL_POSTGRES_PASSWORD:?run test/real/up.sh}
+      POSTGRES_DB: bipe
+      BIPE_TEST_PASSWORD: ${REAL_BIPE_TEST_PASSWORD:?run test/real/up.sh}
+    volumes:
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bipe -d bipe"]
+      interval: 2s
+      retries: 30
+
+  synapse:
+    image: ghcr.io/element-hq/synapse:v1.162.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "synapse.app.homeserver"]
+    command: ["--config-path", "/data/homeserver.yaml", "--config-path", "/bipe/synapse.yaml"]
+    volumes:
+      - ./.stack/synapse:/data
+      - ./.stack/synapse-bipe.yaml:/bipe/synapse.yaml:ro
+    ports:
+      - "127.0.0.1:58008:8008"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8008/health || exit 1"]
+      interval: 2s
+      retries: 60
+
+  mas:
+    image: ghcr.io/element-hq/matrix-authentication-service:1.26.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["server", "--config", "/data/generated.yaml", "--config", "/data/bipe.yaml"]
+    volumes:
+      - ./.stack/mas:/data:ro
+    ports:
+      - "127.0.0.1:58080:8080"
+      - "127.0.0.1:58082:8082"
