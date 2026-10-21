@@ -30,6 +30,7 @@ export function loadRegistries(root) {
     onboarding: read("registries/onboarding.json"),
     haptics: read("registries/haptics.json"),
     badgeKeys: read("registries/badge-keys.json"),
+    clearedChats: read("registries/cleared-chats.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -82,6 +83,7 @@ function validate(reg) {
   validateSettings(reg);
   validateOnboarding(reg);
   validateHaptics(reg.haptics);
+  if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
@@ -497,4 +499,33 @@ export function remoteBannerProblem(banner, now) {
   if (typeof banner.expires_at !== "string" || Number.isNaN(Date.parse(banner.expires_at))) return "expires_at";
   if (Date.parse(banner.expires_at) <= Date.parse(now)) return "expires_at";
   return null;
+}
+
+// --- Cleared DMs (bipe-chat/bipe#464; registries/cleared-chats.json) ---------
+
+const clearedTs = (entry) => (entry && typeof entry === "object" && !Array.isArray(entry) && Number.isSafeInteger(entry.ts) && entry.ts >= 0 ? entry.ts : null);
+const clearedRooms = (content) => (content && typeof content === "object" && !Array.isArray(content) && content.rooms && typeof content.rooms === "object" && !Array.isArray(content.rooms) ? content.rooms : null);
+
+/** The marker (ms) of a room in the chat.bipe.cleared_chats content, or null. A malformed event or entry counts as not cleared. */
+export function clearedChatMarker(content, roomId) {
+  const rooms = clearedRooms(content);
+  return rooms && Object.hasOwn(rooms, roomId) ? clearedTs(rooms[roomId]) : null;
+}
+
+/** True when the chat list hides the room: it has a marker and no event after it. latestTs is null when the room has no latest event. */
+export function clearedChatHidden(marker, latestTs) {
+  return marker !== null && (latestTs === null || latestTs <= marker);
+}
+
+/** True when the timeline and search keep an event with this origin_server_ts. */
+export function clearedChatKeepsEvent(marker, eventTs) {
+  return marker === null || eventTs > marker;
+}
+
+/** The content to write when the user clears roomId at ts. Keeps every other key and entry as it is. The marker never moves back. */
+export function clearedChatsWithClear(content, roomId, ts) {
+  const base = content && typeof content === "object" && !Array.isArray(content) ? content : {};
+  const rooms = clearedRooms(base) ?? {};
+  const old = Object.hasOwn(rooms, roomId) ? clearedTs(rooms[roomId]) : null;
+  return { ...base, rooms: { ...rooms, [roomId]: { ts: old !== null && old > ts ? old : ts } } };
 }
