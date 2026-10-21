@@ -655,6 +655,8 @@
     "bipe_dm_leave_body": "A conversa some da sua lista.",
     "bipe_dm_details_title": "Informações da conversa",
     "bipe_dm_left": "%1$s saiu da conversa",
+    "bipe_dm_joined": "%1$s entrou na conversa",
+    "bipe_dm_joined_by_you": "Você entrou na conversa",
     "bipe_dm_left_by_you": "Você saiu da conversa",
     "bipe_dm_leaving": "Saindo da conversa",
     "bipe_dm_delete_action": "Apagar conversa",

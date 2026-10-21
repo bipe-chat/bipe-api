@@ -655,6 +655,8 @@
     "bipe_dm_leave_body": "The chat disappears from your list.",
     "bipe_dm_details_title": "Chat info",
     "bipe_dm_left": "%1$s left the chat",
+    "bipe_dm_joined": "%1$s joined the chat",
+    "bipe_dm_joined_by_you": "You joined the chat",
     "bipe_dm_left_by_you": "You left the chat",
     "bipe_dm_leaving": "Leaving the chat",
     "bipe_dm_delete_action": "Delete chat",
