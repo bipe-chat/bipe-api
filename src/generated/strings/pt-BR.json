@@ -1170,6 +1170,11 @@
     "bipe_app_utd_history": "Esta mensagem é de antes deste celular. Aprove este celular para ler.",
     "bipe_app_utd_not_shared": "O aparelho de quem enviou não liberou esta mensagem para este celular.",
     "bipe_app_utd_unapproved_device": "Esta mensagem veio de um aparelho que %1$s não aprovou.",
-    "bipe_app_utd_help": "Como ver"
+    "bipe_app_utd_help": "Como ver",
+    "bipe_app_tab_search": "Buscar",
+    "bipe_app_account_current_a11y": "Conta atual: %1$s",
+    "bipe_app_tab_you_switch_hint": "Toque duas vezes para trocar de conta",
+    "bipe_app_account_switcher_title": "Contas neste celular",
+    "bipe_app_account_new": "Nova conta"
   }
 }

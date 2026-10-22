@@ -1170,6 +1170,11 @@
     "bipe_app_utd_history": "This message is from before this phone. Approve this phone to read it.",
     "bipe_app_utd_not_shared": "The sender's device didn't share this message with this phone.",
     "bipe_app_utd_unapproved_device": "This message came from a device that %1$s hasn't approved.",
-    "bipe_app_utd_help": "How to see it"
+    "bipe_app_utd_help": "How to see it",
+    "bipe_app_tab_search": "Search",
+    "bipe_app_account_current_a11y": "Current account: %1$s",
+    "bipe_app_tab_you_switch_hint": "Double-tap to switch account",
+    "bipe_app_account_switcher_title": "Accounts on this phone",
+    "bipe_app_account_new": "New account"
   }
 }
