@@ -1312,6 +1312,11 @@
     "bipe_app_upload_send": "Enviar",
     "bipe_app_upload_preparing": "Preparando…",
     "bipe_app_upload_too_large": "Este arquivo é grande demais. O limite é %1$s.",
-    "bipe_app_upload_failed": "Não deu para enviar o arquivo. Toque para tentar de novo."
+    "bipe_app_upload_failed": "Não deu para enviar o arquivo. Toque para tentar de novo.",
+    "bipe_app_tab_search": "Buscar",
+    "bipe_app_account_current_a11y": "Conta atual: %1$s",
+    "bipe_app_tab_you_switch_hint": "Toque duas vezes para trocar de conta",
+    "bipe_app_account_switcher_title": "Contas neste celular",
+    "bipe_app_account_new": "Nova conta"
   }
 }
