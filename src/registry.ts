@@ -105,6 +105,7 @@ export const accountRules = reg.accounts as {
   emailVerifyLinkHours: number;
   recoveryClaimDays: number;
   maxPersonalAccounts: number;
+  deletionCooldownHours: number;
 };
 
 /** Terms and privacy accepted at sign-up (ADR 0113, registries/legal.json). */

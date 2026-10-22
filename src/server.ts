@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { z } from "zod";
 import { MatrixAuth, StaffGate } from "./auth.js";
 import { loadConfig } from "./config.js";
+import { cancelDeletion, deletionJson, requestDeletion } from "./deletion.js";
 import { migrate, openDb } from "./db.js";
 import { ApiError } from "./errors.js";
 import { availability, handleChanges, lookup, myHandle, pruneHandleChanges, removeHandle, resolve, setHandle } from "./handles.js";
@@ -353,6 +354,22 @@ app.put("/v1/me/email", async (c) => {
 app.delete("/v1/me/email", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   await removeEmail(accounts, userId);
+  return c.body(null, 204);
+});
+
+// ADR 0140: in-app account deletion. The app runs the device owner check before it sends the PIN.
+const DeletionBody = z.object({ pin: z.string().max(64), redact_messages: z.boolean() });
+
+app.post("/v1/me/deletion", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.pinCheck.check(userId);
+  const body = await parse(c, DeletionBody);
+  return c.json(deletionJson(await requestDeletion(accounts, userId, body.pin, body.redact_messages)), 202);
+});
+
+app.post("/v1/me/deletion/cancel", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await cancelDeletion(db, userId);
   return c.body(null, 204);
 });
 

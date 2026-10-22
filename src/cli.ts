@@ -12,6 +12,7 @@
 //   node dist/cli.js waitlist clear <platform>       (after the launch email: deletes those rows)
 //   node dist/cli.js waitlist forget <email>         (LGPD deletion request)
 //   node dist/cli.js waitlist release <platform> --count N [--days 14]   (ADR 0089: oldest entries first, one invite email each)
+//   node dist/cli.js deletion run                    (ADR 0140: the deletion CronJob; needs SYNAPSE_ADMIN_CLIENT_ID and _SECRET)
 //   node dist/cli.js support status                  (ADR 0114: support rooms, Starlings lines waiting, last sync)
 //   node dist/cli.js bugreports list                 (problem reports, newest first: id, platform, version, files; no text)
 //   node dist/cli.js bugreports show <id>            (one report with its text and file names)
@@ -101,6 +102,17 @@ try {
     const mail = loadMailConfig();
     const r = await releaseWaitlist(db, new Mailer(mail), mail.PUBLIC_SITE_URL, platform, count, days);
     console.log(`${r.note}: sent ${r.sent}, failed ${r.failed} (failed entries stay on the list)`);
+  } else if (group === "deletion" && command === "run") {
+    const { loadConfig } = await import("./config.js");
+    const { Mas } = await import("./mas.js");
+    const { PinHasher } = await import("./secrets.js");
+    const { SynapseAdmin } = await import("./synapse-admin.js");
+    const { runDueDeletions } = await import("./deletion.js");
+    const config = loadConfig();
+    const deps = { db, mas: new Mas(config), config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config) };
+    const r = await runDueDeletions(deps, new SynapseAdmin(config));
+    console.log(`deletion run: ${r.done} done, ${r.failed} failed`);
+    if (r.failed > 0) process.exitCode = 1;
   } else if (group === "support" && command === "status") {
     const { rows } = await db.query(
       `SELECT (SELECT count(*)::int FROM support_rooms) AS rooms,

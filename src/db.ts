@@ -291,6 +291,16 @@ const MIGRATIONS = [
   `DROP TABLE IF EXISTS organisation_requests;`,
   // The name a user gives a personal invite, so it survives a new phone or a reinstall (bipe-shared openapi).
   `ALTER TABLE invites ADD COLUMN name text;`,
+  // ADR 0140: one row per account. A cancelled or finished request is replaced by a new one.
+  `CREATE TABLE account_deletions (
+     user_id text PRIMARY KEY,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     due_at timestamptz NOT NULL,
+     redact_messages boolean NOT NULL,
+     state text NOT NULL DEFAULT 'waiting' CHECK (state IN ('waiting', 'running', 'done', 'cancelled', 'failed')),
+     ended_at timestamptz
+   );
+   CREATE INDEX account_deletions_due ON account_deletions (due_at) WHERE state = 'waiting';`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

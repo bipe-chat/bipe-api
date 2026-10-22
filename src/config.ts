@@ -75,6 +75,10 @@ const Env = z.object({
   STARLINGS_INTAKE_URL: z.url().default("https://bipe.starlings.work/api/support/app-intake"),
   STARLINGS_APP_INTAKE_KEY: emptyAsUnset(z.string().regex(/^[0-9a-fA-F]{64}$/, "64 hex characters")),
   // Support DM (ADR 0114, ADR 0115). The bot is off without the token and the store passphrase.
+  // ADR 0140: a second MAS client with only the Synapse admin scope (urn:synapse:admin:*). Only the
+  // deletion CronJob gets it (node dist/cli.js deletion run); the API server never has it.
+  SYNAPSE_ADMIN_CLIENT_ID: emptyAsUnset(z.string().min(1)),
+  SYNAPSE_ADMIN_CLIENT_SECRET: emptyAsUnset(z.string().min(16)),
   SUPPORT_USER_ID: z.string().regex(/^@[a-z0-9._=\/-]+:[a-z0-9.-]+$/).optional(),
   SUPPORT_ACCESS_TOKEN: emptyAsUnset(z.string().min(16)),
   SUPPORT_STORE_DIR: z.string().default("/data/support-crypto"),
