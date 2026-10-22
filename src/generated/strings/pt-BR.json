@@ -1092,6 +1092,8 @@
     "bipe_app_timeline_failed": "Não deu para enviar. Toque para tentar de novo.",
     "bipe_app_timeline_undecryptable": "Ainda não dá para ler esta mensagem neste celular.",
     "bipe_app_timeline_loading_history": "Carregando mensagens anteriores…",
-    "bipe_app_timeline_start": "Aqui começa a conversa."
+    "bipe_app_timeline_start": "Aqui começa a conversa.",
+    "bipe_app_name": "Bipe",
+    "bipe_app_sdk_version": "matrix-rust-sdk %1$s"
   }
 }
