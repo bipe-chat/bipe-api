@@ -72,6 +72,17 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       "SELECT cnpj, status, reason, method, created_at, verified_at, ended_at FROM business_claims WHERE user_id = $1",
       userId,
     ),
+    // The CPF hash stays out (a hash); the CPF, the signed PDF and the certificate are never stored.
+    person_verification: await one(
+      db,
+      "SELECT level, verified_name, verified_at FROM person_verifications WHERE user_id = $1",
+      userId,
+    ),
+    govbr_challenges: await all(
+      db,
+      "SELECT id, created_at, expires_at, used_at FROM govbr_challenges WHERE user_id = $1 ORDER BY created_at",
+      userId,
+    ),
     business_domains: await all(
       db,
       "SELECT domain, verified_at, last_checked_at FROM business_domains WHERE user_id = $1 ORDER BY domain",

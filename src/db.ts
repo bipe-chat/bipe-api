@@ -291,6 +291,26 @@ const MIGRATIONS = [
   `DROP TABLE IF EXISTS organisation_requests;`,
   // The name a user gives a personal invite, so it survives a new phone or a reinstall (bipe-shared openapi).
   `ALTER TABLE invites ADD COLUMN name text;`,
+  // Person verification, trust step 5 (bipe#543). A challenge is single use and bound to one device key.
+  // The result keeps the verified name and a keyed CPF hash, never the CPF, the PDF or the certificate.
+  `CREATE TABLE govbr_challenges (
+     id uuid PRIMARY KEY,
+     user_id text NOT NULL,
+     device_key text NOT NULL,
+     code text NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     expires_at timestamptz NOT NULL,
+     used_at timestamptz
+   );
+   CREATE INDEX govbr_challenges_user ON govbr_challenges (user_id);
+   CREATE TABLE person_verifications (
+     user_id text PRIMARY KEY,
+     level text NOT NULL CHECK (level IN ('pix', 'govbr')),
+     verified_name text NOT NULL,
+     cpf_hash text NOT NULL UNIQUE,
+     device_key text NOT NULL,
+     verified_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

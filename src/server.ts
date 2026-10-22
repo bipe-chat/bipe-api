@@ -20,7 +20,9 @@ import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHas
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
+import { loadPinnedCertificates } from "./cms.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
+import { createGovbrChallenge, GOVBR_PDF_MAX_BYTES, pruneGovbrChallenges, submitGovbrDocument } from "./govbr.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
 import { legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
@@ -115,11 +117,23 @@ const limits = {
   supportRoom: new RateLimiter(30, 3_600_000),
   starlingsReply: new RateLimiter(600, 3_600_000),
   banner: new RateLimiter(120, 60_000),
+  // gov.br signed challenge (bipe#543).
+  govbrChallenge: new RateLimiter(10, 3_600_000),
+  govbrDocument: new RateLimiter(20, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
 const icpBrasilRoots = loadIcpBrasilRoots(config.ICP_BRASIL_ROOTS_DIR);
 console.log(`icp-brasil roots: ${icpBrasilRoots.length}`);
+// gov.br signed challenge (bipe#543): pinned gov.br roots, not ICP-Brasil.
+const govbrRoots = loadPinnedCertificates(config.GOVBR_ROOTS_DIR);
+console.log(`govbr roots: ${govbrRoots.length}`);
+const pruneGovbr = () =>
+  void pruneGovbrChallenges(db)
+    .then((n) => n > 0 && console.log(`govbr challenges pruned: ${n}`))
+    .catch((e) => console.error(`govbr prune failed: ${(e as Error).message}`));
+pruneGovbr();
+setInterval(pruneGovbr, 24 * 3_600_000).unref();
 const kickScan = () => void runScan(db, config, "pending").catch((e) => console.error(`cnpj scan failed: ${(e as Error).message}`));
 setInterval(kickScan, 15 * 60_000).unref();
 
@@ -203,6 +217,7 @@ const HandleChangesBody = z.object({ user_ids: z.array(z.string().max(255)).max(
 const ProfileBody = z.object({ enabled: z.boolean(), name: z.string().max(400), bio: z.string().max(2000) });
 const PHOTO_PATH = "/v1/me/profile/photo";
 const BUG_REPORT_PATH = "/v1/bug-reports/submit";
+const GOVBR_DOCUMENT_PATH = /^\/v1\/verifications\/govbr\/[^/]+\/document$/;
 
 // Caddy appends the client address last; earlier X-Forwarded-For entries come from the client.
 function clientIp(c: Context): string {
@@ -221,11 +236,13 @@ const app = new Hono();
 const smallBody = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
 const signatureBody = bodyLimit({ maxSize: 160 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
 const reportBody = bodyLimit({ maxSize: BODY_MAX_BYTES, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
+const govbrBody = bodyLimit({ maxSize: GOVBR_PDF_MAX_BYTES, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
 const photoBody = bodyLimit({ maxSize: profileRules.photoMaxBytes, onError: (c) => c.json({ error: "photo_invalid", reason: "too_large" }, 413) });
 app.use("*", (c, next) => {
   if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
   if (c.req.path === PHOTO_PATH) return photoBody(c, next);
+  if (GOVBR_DOCUMENT_PATH.test(c.req.path)) return govbrBody(c, next);
   return smallBody(c, next);
 });
 
@@ -727,6 +744,38 @@ app.post("/v1/me/business/domains/:domain/check", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.businessDomain.check(userId);
   return c.json(await checkDomain(db, userId, c.req.param("domain")));
+});
+
+// gov.br signed challenge, trust step 5 (bipe#543). The badge binds to the device that starts the challenge.
+app.post("/v1/verifications/govbr", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  limits.govbrChallenge.check(userId);
+  if (govbrRoots.length === 0) throw new ApiError("internal", "govbr_roots_missing");
+  if (!deviceId) throw new ApiError("bad_request", "no_device");
+  const deviceKey = await badges.deviceKey(userId, deviceId);
+  if (!deviceKey) throw new ApiError("internal", "device_key_unavailable");
+  return c.json(await createGovbrChallenge(db, userId, deviceKey), 201);
+});
+
+app.put("/v1/verifications/govbr/:id/document", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.govbrDocument.check(userId);
+  const pdf = Buffer.from(await c.req.arrayBuffer());
+  const status = await submitGovbrDocument(
+    db,
+    {
+      roots: govbrRoots,
+      cpfSecret: config.BIPE_CPF_HMAC_SECRET,
+      badgeOf: async (id) => {
+        const r = await badges.forUser(id);
+        return r.status === 200 ? r.envelope : null;
+      },
+    },
+    userId,
+    c.req.param("id"),
+    pdf,
+  );
+  return c.json(status);
 });
 
 // Staff reports (ADR 0056): bipe.chat/admin/convites/ and /admin/visitas/.
