@@ -1094,6 +1094,8 @@
     "bipe_app_timeline_loading_history": "Carregando mensagens anteriores…",
     "bipe_app_timeline_start": "Aqui começa a conversa.",
     "bipe_app_name": "Bipe",
-    "bipe_app_sdk_version": "matrix-rust-sdk %1$s"
+    "bipe_app_sdk_version": "matrix-rust-sdk %1$s",
+    "bipe_app_signup_creating": "Criando sua conta…",
+    "bipe_app_invite_checking": "Conferindo o convite…"
   }
 }
