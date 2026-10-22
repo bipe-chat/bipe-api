@@ -5,18 +5,23 @@ import type { Mas } from "./mas.js";
 
 const TTL_MS = 60_000;
 
-// Resolves a Matrix access token to its user ID through Synapse whoami (Synapse asks MAS).
+// Resolves a Matrix access token to its user ID (and device ID) through Synapse whoami (Synapse asks MAS).
 export class MatrixAuth {
-  private cache = new Map<string, { userId: string; until: number }>();
+  private cache = new Map<string, { userId: string; deviceId: string | null; until: number }>();
 
   constructor(private readonly config: Config) {}
 
   async userId(authorization: string | undefined): Promise<string> {
+    return (await this.session(authorization)).userId;
+  }
+
+  /** The user and the device of the token. deviceId is null for a token without a device. */
+  async session(authorization: string | undefined): Promise<{ userId: string; deviceId: string | null }> {
     const token = authorization?.match(/^Bearer ([\x21-\x7e]{8,4096})$/)?.[1];
     if (!token) throw new ApiError("unauthorized");
     const key = createHash("sha256").update(token).digest("hex");
     const hit = this.cache.get(key);
-    if (hit && hit.until > Date.now()) return hit.userId;
+    if (hit && hit.until > Date.now()) return { userId: hit.userId, deviceId: hit.deviceId };
 
     const res = await fetch(`${this.config.SYNAPSE_URL.replace(/\/$/, "")}/_matrix/client/v3/account/whoami`, {
       headers: { authorization: `Bearer ${token}` },
@@ -27,10 +32,11 @@ export class MatrixAuth {
       console.error(`synapse whoami: HTTP ${res.status}`);
       throw new ApiError("internal");
     }
-    const { user_id: userId } = (await res.json()) as { user_id: string };
+    const { user_id: userId, device_id } = (await res.json()) as { user_id: string; device_id?: string };
+    const deviceId = typeof device_id === "string" && device_id.length > 0 ? device_id : null;
     if (this.cache.size > 10_000) this.cache.clear();
-    this.cache.set(key, { userId, until: Date.now() + TTL_MS });
-    return userId;
+    this.cache.set(key, { userId, deviceId, until: Date.now() + TTL_MS });
+    return { userId, deviceId };
   }
 }
 

@@ -42,6 +42,12 @@ const Env = z.object({
   RECEITA_WEBDAV_URL: z.url().default("https://arquivos.receitafederal.gov.br/public.php/webdav"),
   RECEITA_SHARE_TOKEN: z.string().min(1).default("YggdBLfdninEJX9"),
   ICP_BRASIL_ROOTS_DIR: z.string().default("certs/icp-brasil"),
+  // gov.br signed challenge (bipe#543): AC Raiz do Governo Federal do Brasil v1 and its intermediates. Not ICP-Brasil.
+  // Without them the gov.br routes answer "internal" with reason govbr_roots_missing.
+  GOVBR_ROOTS_DIR: z.string().default("certs/govbr"),
+  // HMAC key for the CPF hash of a verified person (one CPF, one account). Without it the gov.br routes answer "internal".
+  // Never rotate it: every stored hash stops matching.
+  BIPE_CPF_HMAC_SECRET: emptyAsUnset(z.string().min(32)),
   // GeoIP city database for the web sign-in place (ADR 0118): DB-IP "IP to City Lite" in MMDB format.
   // Unset or missing file: GET /v1/web-link/place answers {}.
   GEOIP_CITY_DB: emptyAsUnset(z.string()),

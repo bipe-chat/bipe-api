@@ -1,5 +1,6 @@
-// Signed CNPJ badges (bipe#399, ADR 0123; format: bipe-shared/docs/badge-attestation.md). The server signs on
-// read: a verified claim plus the account's cross-signing master key from Synapse give a lvl "cnpj" badge.
+// Signed badges (bipe#399, ADR 0123; format: bipe-shared/docs/badge-attestation.md). The server signs on
+// read: a verified claim plus the account's cross-signing master key from Synapse give a lvl "cnpj" badge;
+// a verified person (person_verifications, bipe#543) gives a lvl "pix" or "govbr" badge bound to a device key.
 // Fail closed: no signing key, no master key or no registry record means no badge (404).
 import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -9,7 +10,7 @@ import type { Db } from "./db.js";
 import { badgeRules } from "./registry.js";
 
 const KID = /^prod-\d{4}-(0[1-9]|1[0-2])$/;
-// Matrix unpadded base64 of a 32-byte Ed25519 key.
+// Matrix unpadded base64 of a 32-byte Ed25519 key (master key and device key).
 const MASTER_KEY = /^[A-Za-z0-9+/]{43}$/;
 const DAY = 86_400;
 
@@ -60,7 +61,9 @@ export class Badges {
     );
     const claim = rows[0];
     if (claim?.status === "revoked") return { status: 410, reason: goneReason(claim.reason) };
-    if (claim?.status !== "verified" || !claim.method || !claim.verified_at) return { status: 404 };
+    // No verified company: a verified person (trust step 4 or 5, bipe#543) can still have a badge.
+    if (claim?.status !== "verified") return this.personBadge(userId, now);
+    if (!claim.method || !claim.verified_at) return { status: 404 };
     if (!claim.active || !claim.legal_name || !claim.release_month || !this.key || !this.synapse) return { status: 404 };
     const msk = await this.masterKey(userId);
     if (!msk) return { status: 404 };
@@ -87,15 +90,61 @@ export class Badges {
       iat,
       exp,
     };
-    const bytes = Buffer.from(JSON.stringify(payload), "utf8");
-    const envelope: BadgeEnvelope = {
-      v: 1,
-      kid: this.key.kid,
-      payload: bytes.toString("base64url"),
-      sig: sign(null, bytes, this.key.privateKey).toString("base64url"),
-    };
+    const envelope = this.signPayload(payload);
     this.cache.set(userId, { key: cacheKey, exp, envelope });
     return { status: 200, envelope };
+  }
+
+  /** A person badge (lvl pix or govbr), bound to the device key the user verified from. */
+  private async personBadge(userId: string, now: number): Promise<BadgeResult> {
+    if (!this.key) return { status: 404 };
+    const { rows } = await this.db.query<{ level: string; verified_name: string; device_key: string; verified_at: Date }>(
+      "SELECT level, verified_name, device_key, verified_at FROM person_verifications WHERE user_id = $1",
+      [userId],
+    );
+    const person = rows[0];
+    if (!person) return { status: 404 };
+    const cacheKey = JSON.stringify([person.level, person.verified_name, person.device_key, person.verified_at.toISOString(), this.key.kid]);
+    const cached = this.cache.get(userId);
+    if (cached && cached.key === cacheKey && now < cached.exp - badgeRules.renewDaysBeforeExpiry * DAY) {
+      return { status: 200, envelope: cached.envelope };
+    }
+    const exp = now + badgeRules.lifeDays * DAY;
+    const payload = { sub: userId, lvl: person.level, name: person.verified_name, dev: person.device_key, iat: now, exp };
+    const envelope = this.signPayload(payload);
+    this.cache.set(userId, { key: cacheKey, exp, envelope });
+    return { status: 200, envelope };
+  }
+
+  private signPayload(payload: Record<string, unknown>): BadgeEnvelope {
+    const bytes = Buffer.from(JSON.stringify(payload), "utf8");
+    return {
+      v: 1,
+      kid: this.key!.kid,
+      payload: bytes.toString("base64url"),
+      sig: sign(null, bytes, this.key!.privateKey).toString("base64url"),
+    };
+  }
+
+  /**
+   * The Ed25519 key of one Matrix device (unpadded base64), from Synapse e2e_device_keys_json, or null.
+   * Needs the column grant in bipe-infra scripts/setup-growth.sh.
+   */
+  async deviceKey(userId: string, deviceId: string): Promise<string | null> {
+    if (!this.synapse) return null;
+    const { rows } = await this.synapse.query<{ key_json: string }>(
+      "SELECT key_json FROM e2e_device_keys_json WHERE user_id = $1 AND device_id = $2",
+      [userId, deviceId],
+    );
+    if (!rows[0]) return null;
+    try {
+      const data = JSON.parse(rows[0].key_json) as { user_id?: unknown; device_id?: unknown; keys?: Record<string, unknown> };
+      if (data.user_id !== userId || data.device_id !== deviceId) return null;
+      const key = data.keys?.[`ed25519:${deviceId}`];
+      return typeof key === "string" && MASTER_KEY.test(key) ? key : null;
+    } catch {
+      return null;
+    }
   }
 
   /** The newest master key Synapse holds for the user, or null. Public key JSON; anything unexpected is null. */
