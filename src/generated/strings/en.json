@@ -1077,6 +1077,21 @@
     "bipe_group_state_event_room_topic_changed": "%1$s changed the group description to: %2$s",
     "bipe_group_state_event_room_topic_changed_by_you": "You changed the group description to: %1$s",
     "bipe_group_state_event_room_topic_removed": "%1$s removed the group description",
-    "bipe_group_state_event_room_topic_removed_by_you": "You removed the group description"
+    "bipe_group_state_event_room_topic_removed_by_you": "You removed the group description",
+    "bipe_app_start_loading": "Opening your account…",
+    "bipe_app_start_no_account_title": "No account on this phone",
+    "bipe_app_start_no_account_body": "This test version opens an account that is already on this phone.",
+    "bipe_app_start_error": "Bipe couldn't open your account. Check the internet and try again.",
+    "bipe_app_retry": "Try again",
+    "bipe_app_chat_list_title": "Chats",
+    "bipe_app_chat_list_empty": "No chats yet.",
+    "bipe_app_chat_list_unread": "Unread messages: %1$s",
+    "bipe_app_timeline_composer_placeholder": "Message",
+    "bipe_app_timeline_send": "Send",
+    "bipe_app_timeline_sending": "Sending…",
+    "bipe_app_timeline_failed": "Couldn't send. Tap to try again.",
+    "bipe_app_timeline_undecryptable": "This message can't be read on this phone yet.",
+    "bipe_app_timeline_loading_history": "Loading earlier messages…",
+    "bipe_app_timeline_start": "This is the start of the chat."
   }
 }
