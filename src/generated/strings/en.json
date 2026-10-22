@@ -1092,6 +1092,8 @@
     "bipe_app_timeline_failed": "Couldn't send. Tap to try again.",
     "bipe_app_timeline_undecryptable": "This message can't be read on this phone yet.",
     "bipe_app_timeline_loading_history": "Loading earlier messages…",
-    "bipe_app_timeline_start": "This is the start of the chat."
+    "bipe_app_timeline_start": "This is the start of the chat.",
+    "bipe_app_name": "Bipe",
+    "bipe_app_sdk_version": "matrix-rust-sdk %1$s"
   }
 }
