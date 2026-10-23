@@ -1370,6 +1370,7 @@
     "bipe_archived_empty": "No archived chats.",
     "bipe_archive_error": "Could not save archived chats. Try again.",
     "bipe_chat_list_more": "Load more chats",
-    "bipe_chat_actions": "Chat actions"
+    "bipe_chat_actions": "Chat actions",
+    "bipe_message_actions": "Message actions"
   }
 }
