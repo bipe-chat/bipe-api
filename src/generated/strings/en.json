@@ -1371,6 +1371,10 @@
     "bipe_archive_error": "Could not save archived chats. Try again.",
     "bipe_chat_list_more": "Load more chats",
     "bipe_chat_actions": "Chat actions",
-    "bipe_message_actions": "Message actions"
+    "bipe_message_actions": "Message actions",
+    "bipe_chat_mark_unread": "Mark as unread",
+    "bipe_chat_unread_state": "Unread",
+    "bipe_chat_details": "View details",
+    "bipe_chat_read_error": "Could not mark the chat. Try again."
   }
 }
