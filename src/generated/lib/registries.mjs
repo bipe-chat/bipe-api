@@ -31,6 +31,7 @@ export function loadRegistries(root) {
     haptics: read("registries/haptics.json"),
     badgeKeys: read("registries/badge-keys.json"),
     clearedChats: read("registries/cleared-chats.json"),
+    chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     relationshipNames: read("registries/relationship-names.json"),
     strings: read("strings/pt-BR.json"),
@@ -85,6 +86,8 @@ function validate(reg) {
   validateSettings(reg);
   validateOnboarding(reg);
   validateHaptics(reg.haptics);
+  const archive = reg.chatArchive;
+  if (archive.storage !== "device-per-account" || archive.restore !== "newer-incoming-message" || archive.timestamp !== "latest-known-event-ms" || archive.missingActivity !== 0 || archive.history !== "preserve" || archive.membership !== "preserve" || archive.badges !== "unchanged") fail("chat-archive: unsupported archive policy");
   const rn = reg.relationshipNames;
   if (rn.comparison !== "normalised-exact" || rn.fullNameMinimumWords !== 2 || rn.familyTerms !== "whole-words" || rn.confirmation !== "saved-label-and-verified-name") fail("relationship-names: unsupported ADR 0018 policy");
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
@@ -562,4 +565,9 @@ export function relationshipNameWarning(savedName, verifiedName, nicknameConfirm
   const family = reg.family.terms.some(term => padded.includes(` ${term} `));
   if (words.length >= reg.relationshipNames.fullNameMinimumWords && !family) return 'mismatch';
   return nicknameConfirmed === true ? null : 'confirm';
+}
+
+/** Archive is separate from cleared history. Only a strictly newer incoming message restores it. */
+export function chatArchived(marker, incoming) {
+  return Number.isSafeInteger(marker) && marker >= 0 && !(Number.isSafeInteger(incoming) && incoming > marker);
 }
