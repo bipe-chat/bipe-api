@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "storage": "device-per-account",
+  "restore": "newer-incoming-message",
+  "timestamp": "latest-known-event-ms",
+  "missingActivity": 0,
+  "history": "preserve",
+  "membership": "preserve",
+  "badges": "unchanged"
+}

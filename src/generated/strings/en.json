@@ -1366,6 +1366,10 @@
     "bipe_app_voice_failed": "Couldn't send the voice message. Try again.",
     "bipe_app_sticker_send_failed": "Couldn't send the sticker. Try again.",
     "bipe_app_sticker_making": "Making the sticker…",
-    "bipe_app_sticker_make_failed": "Couldn't make a sticker from this photo. Try another one."
+    "bipe_app_sticker_make_failed": "Couldn't make a sticker from this photo. Try another one.",
+    "bipe_archived_empty": "No archived chats.",
+    "bipe_archive_error": "Could not save archived chats. Try again.",
+    "bipe_chat_list_more": "Load more chats",
+    "bipe_chat_actions": "Chat actions"
   }
 }
