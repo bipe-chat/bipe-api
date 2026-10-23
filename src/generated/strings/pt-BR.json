@@ -1344,6 +1344,25 @@
     "bipe_app_profile_link": "Link do perfil",
     "bipe_app_profile_link_opening": "Abrindo o perfil…",
     "bipe_app_contacts_loading": "Conferindo seus contatos…",
-    "bipe_app_seal_title": "Selo de empresa"
+    "bipe_app_seal_title": "Selo de empresa",
+    "bipe_app_composer_attach": "Anexar",
+    "bipe_app_composer_record": "Gravar áudio",
+    "bipe_app_composer_mention_everyone": "Todo mundo do grupo",
+    "bipe_app_chat_list_draft": "Rascunho: %1$s",
+    "bipe_app_attach_photos": "Fotos e vídeos",
+    "bipe_app_attach_camera": "Câmera",
+    "bipe_app_attach_file": "Arquivo",
+    "bipe_app_attach_poll": "Enquete",
+    "bipe_app_attach_photos_permission": "Para enviar fotos, permita o acesso às fotos nas configurações do Bipe neste celular.",
+    "bipe_app_voice_recording": "Gravando",
+    "bipe_app_voice_resume": "Continuar gravando",
+    "bipe_app_voice_stop": "Parar",
+    "bipe_app_voice_delete": "Apagar áudio",
+    "bipe_app_voice_duration": "Duração: %1$s",
+    "bipe_app_voice_too_short": "O áudio ficou curto demais. Grave de novo.",
+    "bipe_app_voice_failed": "Não deu para enviar o áudio. Tente de novo.",
+    "bipe_app_sticker_send_failed": "Não deu para enviar o sticker. Tente de novo.",
+    "bipe_app_sticker_making": "Criando o sticker…",
+    "bipe_app_sticker_make_failed": "Não deu para criar um sticker com essa foto. Tente outra."
   }
 }
