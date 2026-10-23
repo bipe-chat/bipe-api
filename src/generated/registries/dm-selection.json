@@ -1,9 +1,11 @@
 {
-  "$comment": "ADR 0141: one joined, uncleared DM per person in the list, search and Start chat. SDK adapters mark only joined isDm rooms with a known peer and no active clear marker eligible. Choose the greatest latest-event timestamp; missing timestamps rank last. Equal timestamps use ascending room ID so SDK iteration order cannot change the selected room. Never delete rooms or combine histories. Apply unread/name filters after selection from all eligible local DMs for the person.",
+  "$comment": "ADR 0141: choose one eligible joined DM per person before unread/name filtering. Exclude cleared rooms for lists/search and ordinary Start chat. When all existing DMs are cleared, Start chat reuses the newest existing room so it never creates a duplicate; timelines retain their clear markers. Greatest latest-event timestamp wins, missing timestamps last, ascending room ID on ties. Never delete rooms or merge histories.",
   "version": 1,
   "order": "latest-event-descending",
   "missingActivity": "last",
   "tieBreak": "room-id-ascending",
-  "eligibility": "joined-uncleared-dm-with-peer",
-  "filterOrder": "select-before-unread-or-name"
+  "eligibility": "joined-dm-with-peer",
+  "filterOrder": "select-before-unread-or-name",
+  "clearedRooms": "hide-before-selection",
+  "allClearedStartChat": "reuse-newest-existing"
 }

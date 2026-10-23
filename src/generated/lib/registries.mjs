@@ -87,7 +87,7 @@ function validate(reg) {
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
   const dm = reg.dmSelection;
   if (dm.order !== "latest-event-descending" || dm.missingActivity !== "last" || dm.tieBreak !== "room-id-ascending"
-      || dm.eligibility !== "joined-uncleared-dm-with-peer" || dm.filterOrder !== "select-before-unread-or-name") fail("dm-selection: unsupported ADR 0141 policy");
+      || dm.eligibility !== "joined-dm-with-peer" || dm.clearedRooms !== "hide-before-selection" || dm.allClearedStartChat !== "reuse-newest-existing" || dm.filterOrder !== "select-before-unread-or-name") fail("dm-selection: unsupported ADR 0141 policy");
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
@@ -512,10 +512,10 @@ const clearedRooms = (content) => (content && typeof content === "object" && !Ar
 
 /** The marker (ms) of a room in the chat.bipe.cleared_chats content, or null. A malformed event or entry counts as not cleared. */
 /** One eligible DM per peer, independent of SDK iteration order. Adapters apply filters afterward. */
-export function newestDmRooms(candidates) {
+export function newestDmRooms(candidates, { includingCleared = false } = {}) {
   const chosen = new Map();
   for (const candidate of candidates) {
-    if (!candidate.eligible || !candidate.roomId || !candidate.peerUserId) continue;
+    if (!candidate.eligible || (!includingCleared && candidate.cleared) || !candidate.roomId || !candidate.peerUserId) continue;
     const previous = chosen.get(candidate.peerUserId);
     const time = candidate.latestActivityMs ?? -Infinity;
     const oldTime = previous?.latestActivityMs ?? -Infinity;
