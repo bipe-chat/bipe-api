@@ -1,0 +1,11 @@
+{
+  "$comment": "ADR 0141: choose one eligible joined DM per person before unread/name filtering. Exclude cleared rooms for lists/search and ordinary Start chat. When all existing DMs are cleared, Start chat reuses the newest existing room so it never creates a duplicate; timelines retain their clear markers. Greatest latest-event timestamp wins, missing timestamps last, ascending room ID on ties. Never delete rooms or merge histories.",
+  "version": 1,
+  "order": "latest-event-descending",
+  "missingActivity": "last",
+  "tieBreak": "room-id-ascending",
+  "eligibility": "joined-dm-with-peer",
+  "filterOrder": "select-before-unread-or-name",
+  "clearedRooms": "hide-before-selection",
+  "allClearedStartChat": "reuse-newest-existing"
+}
