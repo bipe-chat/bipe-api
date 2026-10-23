@@ -1,0 +1,8 @@
+{
+  "$comment": "ADR 0018: compare only a known saved contact name with an authenticated verified name. Normalise both with the shared normaliser. A differing full name warns; a family label or one-word nickname asks once per saved-label/verified-identity pair. A confirmation never clears a full-name mismatch. No name is proof of identity and this rule makes no safety claim.",
+  "version": 1,
+  "comparison": "normalised-exact",
+  "fullNameMinimumWords": 2,
+  "familyTerms": "whole-words",
+  "confirmation": "saved-label-and-verified-name"
+}

@@ -32,6 +32,7 @@ export function loadRegistries(root) {
     badgeKeys: read("registries/badge-keys.json"),
     clearedChats: read("registries/cleared-chats.json"),
     dmSelection: read("registries/dm-selection.json"),
+    relationshipNames: read("registries/relationship-names.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -84,6 +85,8 @@ function validate(reg) {
   validateSettings(reg);
   validateOnboarding(reg);
   validateHaptics(reg.haptics);
+  const rn = reg.relationshipNames;
+  if (rn.comparison !== "normalised-exact" || rn.fullNameMinimumWords !== 2 || rn.familyTerms !== "whole-words" || rn.confirmation !== "saved-label-and-verified-name") fail("relationship-names: unsupported ADR 0018 policy");
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
   const dm = reg.dmSelection;
   if (dm.order !== "latest-event-descending" || dm.missingActivity !== "last" || dm.tieBreak !== "room-id-ascending"
@@ -546,4 +549,17 @@ export function clearedChatsWithClear(content, roomId, ts) {
   const rooms = clearedRooms(base) ?? {};
   const old = Object.hasOwn(rooms, roomId) ? clearedTs(rooms[roomId]) : null;
   return { ...base, rooms: { ...rooms, [roomId]: { ts: old !== null && old > ts ? old : ts } } };
+}
+
+// ADR 0018. Adapters supply an authenticated verified name and an already-known, permitted contact match.
+export function relationshipNameWarning(savedName, verifiedName, nicknameConfirmed, reg) {
+  if (typeof savedName !== 'string' || typeof verifiedName !== 'string') return null;
+  const saved = normalize(savedName, reg.homoglyphs.map);
+  const verified = normalize(verifiedName, reg.homoglyphs.map);
+  if (!saved || !verified || saved === verified) return null;
+  const words = saved.split(' ').filter(word => /\p{L}/u.test(word));
+  const padded = ` ${saved.replace(/[^0-9a-z]+/g, " ")} `;
+  const family = reg.family.terms.some(term => padded.includes(` ${term} `));
+  if (words.length >= reg.relationshipNames.fullNameMinimumWords && !family) return 'mismatch';
+  return nicknameConfirmed === true ? null : 'confirm';
 }
