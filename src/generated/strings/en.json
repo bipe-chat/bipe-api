@@ -1344,6 +1344,25 @@
     "bipe_app_profile_link": "Profile link",
     "bipe_app_profile_link_opening": "Opening the profile…",
     "bipe_app_contacts_loading": "Checking your contacts…",
-    "bipe_app_seal_title": "Business seal"
+    "bipe_app_seal_title": "Business seal",
+    "bipe_app_composer_attach": "Attach",
+    "bipe_app_composer_record": "Record a voice message",
+    "bipe_app_composer_mention_everyone": "Everyone in the group",
+    "bipe_app_chat_list_draft": "Draft: %1$s",
+    "bipe_app_attach_photos": "Photos and videos",
+    "bipe_app_attach_camera": "Camera",
+    "bipe_app_attach_file": "File",
+    "bipe_app_attach_poll": "Poll",
+    "bipe_app_attach_photos_permission": "To send photos, allow photo access in Bipe's settings on this phone.",
+    "bipe_app_voice_recording": "Recording",
+    "bipe_app_voice_resume": "Resume recording",
+    "bipe_app_voice_stop": "Stop",
+    "bipe_app_voice_delete": "Delete voice message",
+    "bipe_app_voice_duration": "Length: %1$s",
+    "bipe_app_voice_too_short": "The voice message is too short. Record again.",
+    "bipe_app_voice_failed": "Couldn't send the voice message. Try again.",
+    "bipe_app_sticker_send_failed": "Couldn't send the sticker. Try again.",
+    "bipe_app_sticker_making": "Making the sticker…",
+    "bipe_app_sticker_make_failed": "Couldn't make a sticker from this photo. Try another one."
   }
 }
