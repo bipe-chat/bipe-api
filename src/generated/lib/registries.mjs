@@ -31,6 +31,7 @@ export function loadRegistries(root) {
     haptics: read("registries/haptics.json"),
     badgeKeys: read("registries/badge-keys.json"),
     clearedChats: read("registries/cleared-chats.json"),
+    dmSelection: read("registries/dm-selection.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -84,6 +85,9 @@ function validate(reg) {
   validateOnboarding(reg);
   validateHaptics(reg.haptics);
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
+  const dm = reg.dmSelection;
+  if (dm.order !== "latest-event-descending" || dm.missingActivity !== "last" || dm.tieBreak !== "room-id-ascending"
+      || dm.eligibility !== "joined-uncleared-dm-with-peer" || dm.filterOrder !== "select-before-unread-or-name") fail("dm-selection: unsupported ADR 0141 policy");
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
@@ -507,6 +511,20 @@ const clearedTs = (entry) => (entry && typeof entry === "object" && !Array.isArr
 const clearedRooms = (content) => (content && typeof content === "object" && !Array.isArray(content) && content.rooms && typeof content.rooms === "object" && !Array.isArray(content.rooms) ? content.rooms : null);
 
 /** The marker (ms) of a room in the chat.bipe.cleared_chats content, or null. A malformed event or entry counts as not cleared. */
+/** One eligible DM per peer, independent of SDK iteration order. Adapters apply filters afterward. */
+export function newestDmRooms(candidates) {
+  const chosen = new Map();
+  for (const candidate of candidates) {
+    if (!candidate.eligible || !candidate.roomId || !candidate.peerUserId) continue;
+    const previous = chosen.get(candidate.peerUserId);
+    const time = candidate.latestActivityMs ?? -Infinity;
+    const oldTime = previous?.latestActivityMs ?? -Infinity;
+    if (previous && (time < oldTime || (time === oldTime && candidate.roomId >= previous.roomId))) continue;
+    chosen.set(candidate.peerUserId, candidate);
+  }
+  return Object.fromEntries([...chosen].map(([peer, room]) => [peer, room.roomId]));
+}
+
 export function clearedChatMarker(content, roomId) {
   const rooms = clearedRooms(content);
   return rooms && Object.hasOwn(rooms, roomId) ? clearedTs(rooms[roomId]) : null;
