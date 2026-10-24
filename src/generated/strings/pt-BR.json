@@ -16,6 +16,7 @@
     "bipe_warning_receipt_image": "Isso é uma imagem, não um comprovante de pagamento.",
     "bipe_warning_reserved_name": "Este nome é reservado para instituições verificadas.",
     "bipe_warning_not_your_contact": "Não é o seu contato %1$s.",
+    "bipe_warning_photo_match": "Esta conta usa a mesma foto de %1$s, que está nas suas conversas.",
     "bipe_device_approval_never_for_others": "O Bipe nunca pede para você aprovar o celular de outra pessoa.",
     "bipe_badge_verified_contact": "Contato confirmado pessoalmente",
     "bipe_badge_suspended_body": "Esta conta entrou num aparelho novo. O selo volta quando a pessoa verificar de novo nesse aparelho.",

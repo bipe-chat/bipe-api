@@ -1,0 +1,8 @@
+{
+  "$comment": "ADR 0049, security rule 15: on-device photo match. Each app keeps a perceptual hash of each contact's avatar and warns when a non-contact's avatar matches one. No image or hash leaves the phone. Method dhash: draw the avatar into a width x height grayscale grid (luma 0.299 R + 0.587 G + 0.114 B, rounded, 0..255; area-average scaling, no aspect-ratio crop beyond the centre square the avatar already is), then bit (y * (width - 1) + x) is 1 when gray[y][x] < gray[y][x + 1]. The 64 bits are written as 16 lowercase hex digits, bit 0 first (most significant). Two avatars match when the Hamming distance of their hashes is at most maxDistance. Reference: photoHash, photoDistance, photoMatches in tools/lib/registries.mjs; cases in test-vectors/photo-match.json. The threshold is a working default (ADR 0049 leaves it open until there is real data).",
+  "version": 1,
+  "method": "dhash",
+  "width": 9,
+  "height": 8,
+  "maxDistance": 6
+}
