@@ -368,7 +368,5 @@
     "receipt",
     "newNumber",
     "urgency"
-  ],
-  "moneyPauseSeconds": 5,
-  "moneyPauseKinds": ["extortion", "pixCode", "boleto", "remoteApp", "pixKey", "deliveryFee", "lookalikeLink", "bankAlert"]
+  ]
 }
