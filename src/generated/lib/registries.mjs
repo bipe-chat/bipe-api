@@ -149,6 +149,9 @@ function validate(reg) {
   for (const k of ["nameMaxLength", "bioMaxLength", "bioMaxLines", "photoMaxBytes", "photoMaxPixels"]) {
     if (!(Number.isInteger(pr[k]) && pr[k] > 0)) fail(`profiles: ${k}`);
   }
+  if (!Array.isArray(pr.sealLookalikeEmoji) || pr.sealLookalikeEmoji.length === 0
+    || pr.sealLookalikeEmoji.some((e) => typeof e !== "string" || e.replace(/[\uFE0E\uFE0F]/g, "").length === 0)
+    || new Set(pr.sealLookalikeEmoji).size !== pr.sealLookalikeEmoji.length) fail("profiles: sealLookalikeEmoji must be distinct, non-empty strings");
   const ic = reg.inviteCodes;
   try { new RegExp(ic.pattern); } catch (e) { fail(`invite code pattern: ${e.message}`); }
   if (!(Number.isInteger(ic.maxInputLength) && ic.maxInputLength > 0)) fail("invite codes: maxInputLength");
@@ -413,6 +416,22 @@ export function formatCnpj(cnpj) {
 
 // Public profile checks (bipe/docs/adr ADR 0041). Lengths count code points, like the API.
 // Returns null when valid, else a reason id shared by every platform.
+// Security rule 8: a mark that looks like the verified seal may not sit in a display name. Returns the first
+// registries/profiles.json sealLookalikeEmoji entry found in the name, or null. Variation selectors do not count.
+export function sealLookalike(name, reg) {
+  const strip = (s) => s.replace(/[\uFE0E\uFE0F]/g, "");
+  const plain = strip(name);
+  return reg.profiles.sealLookalikeEmoji.find((e) => plain.includes(strip(e))) ?? null;
+}
+
+// Security rule 8: a non-contact whose display name equals a contact's name after normalize() with the homoglyph
+// map. Returns that contact name as the user saved or sees it, or null. An empty name never collides.
+export function contactCollision(name, contactNames, reg) {
+  const n = normalize(name, reg.homoglyphs.map);
+  if (n.length === 0) return null;
+  return contactNames.find((c) => normalize(c, reg.homoglyphs.map) === n) ?? null;
+}
+
 export function profileProblem({ name, bio }, reg) {
   const p = reg.profiles;
   const trimmed = name.trim();
