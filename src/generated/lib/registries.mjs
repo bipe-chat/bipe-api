@@ -127,6 +127,9 @@ function validate(reg) {
   for (const d of s.appStoreDomains) if (!/^[0-9a-z-]+(\.[0-9a-z-]+)+$/.test(d)) fail(`appStoreDomains entry "${d}"`);
   for (const d of s.officialDomains) if (!/^[0-9a-z-]+(\.[0-9a-z-]+)+$/.test(d)) fail(`officialDomains entry "${d}"`);
   if ([...s.warningKindPriority].sort().join() !== [...SCAM_WARNING_KINDS].sort().join()) fail(`warningKindPriority must list each of ${SCAM_WARNING_KINDS.join(", ")} once`);
+  if (!Number.isInteger(s.moneyPauseSeconds) || s.moneyPauseSeconds < 1 || s.moneyPauseSeconds > 10) fail("moneyPauseSeconds must be an integer from 1 to 10");
+  if (!Array.isArray(s.moneyPauseKinds) || s.moneyPauseKinds.length === 0 || new Set(s.moneyPauseKinds).size !== s.moneyPauseKinds.length
+    || s.moneyPauseKinds.some((k) => !SCAM_WARNING_KINDS.includes(k))) fail("moneyPauseKinds must list distinct warning kinds");
   const reservedAll = new Set(Object.values(reg.reserved.categories).flat());
   for (const [name, roots] of Object.entries(reg.owners.owners)) {
     if (!reservedAll.has(name)) fail(`reserved-name-owners: "${name}" is not a reserved name`);
