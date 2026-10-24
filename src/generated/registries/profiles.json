@@ -1,9 +1,19 @@
 {
-  "$comment": "Public profile rules, ADR 0041 (bipe/docs/adr). The server is the authority; clients check early for feedback. The name is also checked against reserved-names.json (exact match after normalize()).",
+  "$comment": "Public profile rules, ADR 0041 (bipe/docs/adr). The server is the authority; clients check early for feedback. The name is also checked against reserved-names.json (exact match after normalize()). sealLookalikeEmoji (security.md rule 8): marks that look like the verified seal and may not appear in a display name. Compare after removing the variation selectors U+FE0E and U+FE0F from the name and the entry; an entry is found when it is a substring of the name.",
   "version": 1,
   "nameMaxLength": 50,
   "bioMaxLength": 160,
   "bioMaxLines": 4,
   "photoMaxBytes": 262144,
-  "photoMaxPixels": 512
+  "photoMaxPixels": 512,
+  "sealLookalikeEmoji": [
+    "💜",
+    "🟣",
+    "🟪",
+    "✅",
+    "☑",
+    "✔",
+    "✓",
+    "🔰"
+  ]
 }
