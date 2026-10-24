@@ -34,6 +34,7 @@ export function loadRegistries(root) {
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     relationshipNames: read("registries/relationship-names.json"),
+    photoMatch: read("registries/photo-match.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -135,6 +136,9 @@ function validate(reg) {
     if (!reservedAll.has(name)) fail(`reserved-name-owners: "${name}" is not a reserved name`);
     for (const r of roots) if (!/^[0-9A-Z]{8}$/.test(r)) fail(`reserved-name-owners: "${name}" root "${r}" is not 8 characters [0-9A-Z]`);
   }
+  const pm = reg.photoMatch;
+  if (pm.method !== "dhash" || pm.width !== 9 || pm.height !== 8) fail("photo-match: only dhash on a 9 x 8 grid (64 bits) is supported");
+  if (!(Number.isInteger(pm.maxDistance) && pm.maxDistance >= 0 && pm.maxDistance < 32)) fail("photo-match: maxDistance must be an integer from 0 to 31");
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   if (!(Number.isInteger(h.ownerMinLength) && h.ownerMinLength >= 1 && h.ownerMinLength <= h.minLength)) fail("handles: ownerMinLength");
@@ -442,6 +446,32 @@ export function profileProblem({ name, bio }, reg) {
   if ([...b].length > p.bioMaxLength) return "bio_too_long";
   if (b.split("\n").length > p.bioMaxLines) return "bio_too_many_lines";
   return null;
+}
+
+// ADR 0049 photo match. gray: height rows of width values 0..255 (registries/photo-match.json). Returns the dHash
+// as 16 lowercase hex digits, bit 0 (the first comparison) first.
+export function photoHash(gray, reg) {
+  const { width, height } = reg.photoMatch;
+  if (gray.length !== height || gray.some((row) => row.length !== width)) throw new Error("photoHash: wrong grid size");
+  let bits = "";
+  for (let y = 0; y < height; y++) for (let x = 0; x < width - 1; x++) bits += gray[y][x] < gray[y][x + 1] ? "1" : "0";
+  let hex = "";
+  for (let i = 0; i < bits.length; i += 4) hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+  return hex;
+}
+
+// Hamming distance of two photoHash values.
+export function photoDistance(a, b) {
+  let d = 0;
+  for (let i = 0; i < a.length; i++) {
+    let x = parseInt(a[i], 16) ^ parseInt(b[i], 16);
+    while (x) { d += x & 1; x >>= 1; }
+  }
+  return d;
+}
+
+export function photoMatches(a, b, reg) {
+  return photoDistance(a, b) <= reg.photoMatch.maxDistance;
 }
 
 // PIN check (ADR 0057, registries/accounts.json). Input is what the user typed. Returns null when the PIN is
