@@ -214,6 +214,7 @@
     "bipe_govbr_reason_cpf_in_use": "This CPF already verified another Bipe account.",
     "bipe_govbr_reason_changed_after_signing": "The file changed after it was signed. Sign the original document again.",
     "bipe_trust_coming_soon": "Coming soon",
+    "bipe_trust_step_done": "Done",
     "bipe_trust_step_company_profile_body": "Company name, username and logo.",
     "bipe_trust_step_profile_add_company_name": "Add the company name",
     "bipe_trust_step_profile_add_logo": "Add a logo",

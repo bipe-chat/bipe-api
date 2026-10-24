@@ -214,6 +214,7 @@
     "bipe_govbr_reason_cpf_in_use": "Esse CPF já verificou outra conta no Bipe.",
     "bipe_govbr_reason_changed_after_signing": "O arquivo mudou depois da assinatura. Assine de novo o documento original.",
     "bipe_trust_coming_soon": "Em breve",
+    "bipe_trust_step_done": "Concluída",
     "bipe_trust_step_company_profile_body": "Nome da empresa, nome de usuário e logo.",
     "bipe_trust_step_profile_add_company_name": "Adicionar nome da empresa",
     "bipe_trust_step_profile_add_logo": "Adicionar logo",
