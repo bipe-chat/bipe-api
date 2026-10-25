@@ -33,11 +33,13 @@ export function loadRegistries(root) {
     clearedChats: read("registries/cleared-chats.json"),
     imageDescriptions: read("registries/image-descriptions.json"),
     pixMarks: read("registries/pix-marks.json"),
+    dataUse: read("registries/data-use.json"),
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
     relationshipNames: read("registries/relationship-names.json"),
     photoMatch: read("registries/photo-match.json"),
+    workHours: read("registries/work-hours.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -66,6 +68,43 @@ export function validateDmPowerLevels(pl) {
   for (const type of ["m.room.message", "m.reaction", "m.room.redaction", "org.matrix.msc3401.call.member"]) {
     if (pl.events?.[type] !== undefined && pl.events[type] > pl.usersDefault) fail(`dm-power-levels: ${type} must stay open`);
   }
+}
+
+/** Throws unless `hours` is a valid WorkHours value (api/openapi.yaml, registries/work-hours.json). */
+export function workHoursProblem(hours, maxRangesPerDay) {
+  const time = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$/;
+  if (!hours || !Array.isArray(hours.days)) return "days";
+  const seen = new Set();
+  for (const d of hours.days) {
+    if (!Number.isInteger(d?.day) || d.day < 1 || d.day > 7 || seen.has(d.day)) return "day";
+    seen.add(d.day);
+    if (!Array.isArray(d.ranges) || d.ranges.length > maxRangesPerDay) return "ranges";
+    let last = -1;
+    for (const r of d.ranges) {
+      if (!time.test(r?.start ?? "") || !time.test(r?.end ?? "") || r.start === "24:00") return "time";
+      const start = minutesOf(r.start);
+      const end = minutesOf(r.end);
+      if (end <= start || start <= last) return "order";
+      last = end;
+    }
+  }
+  return null;
+}
+
+const minutesOf = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
+/**
+ * Work side opening hours (ADR 0138 rule 4, bipe-chat/bipe#511): true when `instant` (ms since the epoch) falls inside
+ * a range of its local weekday in `timeZone`. Ranges are half-open [start, end). Reference for the apps.
+ */
+export function isWithinWorkHours(days, timeZone, instant) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(instant)).map((p) => [p.type, p.value]));
+  const weekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(parts.weekday) + 1;
+  const minute = Number(parts.hour) * 60 + Number(parts.minute);
+  const day = days.find((d) => d.day === weekday);
+  return Boolean(day?.ranges.some((r) => minute >= minutesOf(r.start) && minute < minutesOf(r.end)));
 }
 
 export function validateLinkedRecovery(accounts) {
@@ -115,6 +154,8 @@ function validate(reg) {
   const rn = reg.relationshipNames;
   if (rn.comparison !== "normalised-exact" || rn.fullNameMinimumWords !== 2 || rn.familyTerms !== "whole-words" || rn.confirmation !== "saved-label-and-verified-name") fail("relationship-names: unsupported ADR 0018 policy");
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
+  const du = reg.dataUse;
+  if (!Number.isInteger(du.budgetMegabytesPerDay) || du.budgetMegabytesPerDay < 1 || typeof du.dataSaverDefault !== "boolean") fail("data-use: budgetMegabytesPerDay must be a positive integer and dataSaverDefault a boolean");
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }
@@ -197,9 +238,16 @@ function validate(reg) {
   if (!/^[0-9]$/.test(ph.mobilePrefix)) fail("phones: mobilePrefix");
   if (!(Number.isInteger(ph.maxInputLength) && ph.maxInputLength > 0)) fail("phones: maxInputLength");
   if (!(Number.isInteger(ph.internationalMinDigits) && ph.internationalMinDigits > 0 && ph.internationalMaxDigits >= ph.internationalMinDigits)) fail("phones: international digit range");
+  if (!(Number.isInteger(ph.linkConfirmMonths) && ph.linkConfirmMonths >= 1 && ph.linkConfirmMonths <= 24)) fail("phones: linkConfirmMonths");
+  if (!(Number.isInteger(ph.linkConfirmWarnDays) && ph.linkConfirmWarnDays >= 1 && ph.linkConfirmWarnDays < ph.linkConfirmMonths * 28)) fail("phones: linkConfirmWarnDays");
   validateBadgeKeys(reg.badgeKeys);
   const ac = reg.accounts;
   validateLinkedRecovery(ac);
+  const wh = reg.workHours;
+  if (!Number.isInteger(wh.maxRangesPerDay) || wh.maxRangesPerDay < 1) fail("work hours: maxRangesPerDay");
+  try { new Intl.DateTimeFormat("en-US", { timeZone: wh.defaultTimeZone }); } catch { fail("work hours: defaultTimeZone"); }
+  const whProblem = workHoursProblem({ days: wh.defaultDays }, wh.maxRangesPerDay);
+  if (whProblem) fail(`work hours: defaultDays ${whProblem}`);
   // DDMMYYYY and YYYYMMDD need exactly 8 digits.
   if (ac.pinLength !== 8) fail("accounts: pinLength must be 8 (the date check reads DDMMYYYY and YYYYMMDD)");
   for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts", "webLinkCooldownSeconds", "deletionCooldownHours", "deletionVerificationKeepDays"]) {
@@ -216,6 +264,7 @@ function validate(reg) {
   const lg = reg.legal;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(lg.legalVersion) || Number.isNaN(Date.parse(`${lg.legalVersion}T00:00:00Z`))) fail("legal: legalVersion must be YYYY-MM-DD");
   for (const k of ["termsPath", "privacyPath", "enTermsPath", "enPrivacyPath"]) if (!/^\/[a-z/-]+\/$/.test(lg[k] ?? "")) fail(`legal: ${k}`);
+  for (const k of ["homePath", "enHomePath"]) if (!/^\/([a-z/-]+\/)?$/.test(lg[k] ?? "")) fail(`legal: ${k}`);
   // Growth events (ADR 0098): a fixed list, no content.
   const gr = reg.growth;
   const growthIds = new Set();
