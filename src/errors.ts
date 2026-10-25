@@ -27,6 +27,8 @@ export type ErrorId =
   | "email_unavailable"
   | "terms_required"
   | "support_unavailable"
+  | "link_taken"
+  | "link_unavailable"
   // Business tools (bipe-shared api/business-schemas.json AgendaError, BusinessToolError).
   | "slot_taken"
   | "hold_expired"
@@ -77,6 +79,8 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   email_unavailable: 503,
   terms_required: 403,
   support_unavailable: 503,
+  link_taken: 409,
+  link_unavailable: 503,
   slot_taken: 409,
   hold_expired: 409,
   too_many_open_bookings: 422,

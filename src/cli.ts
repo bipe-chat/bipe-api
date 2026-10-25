@@ -21,6 +21,9 @@
 //   node dist/cli.js bugreports forget <user_id>     (LGPD deletion request: rows and files)
 //   node dist/cli.js registry fetch [YYYY-MM]          (download a Receita CNPJ release; newest when no month)
 //   node dist/cli.js registry scan [--all]             (scan the newest release for claims; --all re-checks verified ones)
+//   node dist/cli.js cvm refresh                     (ADR 0077: download CVM's provider register and stop orders now)
+//   node dist/cli.js cvm status                      (last refresh, last error, row counts)
+//   node dist/cli.js cvm show <cnpj>                 (the badge's CVM line for one CNPJ)
 //   node dist/cli.js business list
 //   node dist/cli.js business claim <user_id> <cnpj>  (staff: starts the claim as POST /v1/me/business does; then business verify)
 //   node dist/cli.js business verify <user_id>         (staff path, ADR 0042; registry must show the CNPJ active)
@@ -32,6 +35,9 @@
 //   node dist/cli.js banner clear
 //   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
 //   node dist/cli.js transfer report [--days 30]     (bipe#531: active iOS accounts with a way back that survives the App Store transfer)
+//   node dist/cli.js proposta password [--password-stdin]   (ADR 0158: the one shared password; prints a new one once, or reads yours; ends every session)
+//   node dist/cli.js proposta visits [--days 30]       (per visitor email, then the visits, newest first)
+//   node dist/cli.js proposta forget <email>          (LGPD deletion request: visitor, sessions and visits)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
@@ -48,9 +54,13 @@ import { type Config, loadMailConfig } from "./config.js";
 import { forgetBugReports, getBugReport, listBugReports } from "./bug-reports.js";
 import { clearBanner, currentBanner, setBanner } from "./banner.js";
 import { newsList, queueNewsItem, requestNewsBackfill } from "./news.js";
+import { cvmField, refreshCvm } from "./cvm.js";
+import { validCnpj } from "./registry.js";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { transferReadiness } from "./transfer.js";
+import { forgetVisitor, propostaReport, setSharedPassword } from "./proposta.js";
+import { newSecret } from "./secrets.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -59,7 +69,7 @@ await migrate(db);
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" }, since: { type: "string", default: "2026-01-01" } },
+  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" }, since: { type: "string", default: "2026-01-01" }, "password-stdin": { type: "boolean", default: false } },
 });
 const [group, command, arg, arg2] = positionals;
 
@@ -69,6 +79,20 @@ try {
     if (!(Number.isInteger(uses) && uses > 0 && Number.isInteger(days) && days > 0)) throw new Error("--uses and --days must be positive integers");
     // The code is printed once and stored only as a hash.
     console.log((await createInvite(db, uses, days, values.note)).code);
+  } else if (group === "proposta" && command === "password") {
+    // A generated password is printed once and stored only as a hash. 16 characters without l, 1, 0 and o.
+    const generated = Array.from(Buffer.from(newSecret(), "base64url").subarray(0, 16), (b) => "abcdefghijkmnpqrstuvwxyz23456789"[b % 32]).join("");
+    const password = values["password-stdin"] ? readFileSync(0, "utf8").trim() : generated;
+    await setSharedPassword(db, password);
+    console.log(values["password-stdin"] ? "password set; every session ended" : password);
+  } else if (group === "proposta" && command === "visits") {
+    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    if (!(Number.isInteger(days) && days > 0 && days <= 365)) throw new Error("--days must be 1 to 365");
+    const report = await propostaReport(db, days);
+    console.table(report.visitors.map((r) => ({ id: r.id, email: r.email, last_seen: r.last_seen_at, page_views: r.page_views, max_slide: r.max_slide })));
+    console.table(report.visits.map((v) => ({ at: v.at.slice(0, 16), visitor: v.visitor_id, kind: v.kind, path: v.path, slide: v.slide, referrer: v.referrer, utm: Object.values(v.utm).join(" ") || null, place: [v.city, v.region, v.country].filter(Boolean).join(", ") || null })));
+  } else if (group === "proposta" && command === "forget" && arg) {
+    console.log((await forgetVisitor(db, arg)) ? "deleted visitor, sessions and visits" : "no visitor with that email");
   } else if (group === "invite" && command === "list") {
     const { rows } = await db.query(
       "SELECT id, created_by, uses_left, expires_at, revoked_at, note, (SELECT count(*) FROM signups s WHERE s.invite_id = i.id) AS signups FROM invites i ORDER BY id",
@@ -126,6 +150,21 @@ try {
   } else if (group === "news" && command === "backfill") {
     await requestNewsBackfill(db);
     console.log("news backfill requested; the server makes the rooms, rate-limited (news list shows the count)");
+  } else if (group === "cvm" && command === "refresh") {
+    await refreshCvm(db);
+  } else if (group === "cvm" && command === "status") {
+    const { rows } = await db.query(
+      `SELECT s.refreshed_at, s.last_error, s.last_error_at,
+              (SELECT count(*)::int FROM cvm_registrations) AS registrations,
+              (SELECT count(*)::int FROM cvm_stop_orders) AS stop_orders
+       FROM cvm_state s WHERE s.id = 1`,
+    );
+    console.table(rows);
+  } else if (group === "cvm" && command === "show" && arg) {
+    const cnpj = validCnpj(arg);
+    if (!cnpj) throw new Error("not a CNPJ");
+    const { rows } = await db.query<{ cnae_main: string | null; cnae_secondary: string[] | null }>("SELECT cnae_main, cnae_secondary FROM cnpj_registry WHERE cnpj = $1", [cnpj]);
+    console.log(JSON.stringify((await cvmField(db, cnpj, [rows[0]?.cnae_main, ...(rows[0]?.cnae_secondary ?? [])])) ?? null));
   } else if (group === "bugreports" && command === "list") {
     for (const r of (await listBugReports(db)).reports) {
       console.log(`${r.id}  ${r.created_at.slice(0, 16)}  ${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"})  logs ${r.log_count}  shots ${r.screenshot_count}  ${r.relayed ? "relayed" : "not relayed"}`);

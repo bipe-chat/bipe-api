@@ -183,11 +183,13 @@ export function runScan(db: Db, config: Config, mode: "pending" | "all", log: (s
       for (const cnpj of new Set(claims.map((c) => c.cnpj))) {
         const e = found.establishments.get(cnpj);
         await client.query(
-          `INSERT INTO cnpj_registry (cnpj, active, status_code, legal_name, trade_name, release_month, checked_at)
-           VALUES ($1, $2, $3, $4, $5, $6, now())
+          `INSERT INTO cnpj_registry (cnpj, active, status_code, legal_name, trade_name, release_month, checked_at, cnae_main, cnae_secondary)
+           VALUES ($1, $2, $3, $4, $5, $6, now(), $7, $8)
            ON CONFLICT (cnpj) DO UPDATE SET active = EXCLUDED.active, status_code = EXCLUDED.status_code, legal_name = EXCLUDED.legal_name,
-             trade_name = EXCLUDED.trade_name, release_month = EXCLUDED.release_month, checked_at = now()`,
-          [cnpj, e?.active ?? false, e?.statusCode ?? null, found.legalNames.get(cnpjRoot(cnpj)) ?? null, e?.tradeName ?? null, release.month],
+             trade_name = EXCLUDED.trade_name, release_month = EXCLUDED.release_month, checked_at = now(),
+             cnae_main = EXCLUDED.cnae_main, cnae_secondary = EXCLUDED.cnae_secondary`,
+          [cnpj, e?.active ?? false, e?.statusCode ?? null, found.legalNames.get(cnpjRoot(cnpj)) ?? null, e?.tradeName ?? null, release.month,
+            e?.cnaeMain ?? null, e?.cnaeSecondary ?? []],
         );
       }
       for (const [root, partners] of found.partners) {
