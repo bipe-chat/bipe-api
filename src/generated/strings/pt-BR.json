@@ -1436,6 +1436,8 @@
     "bipe_app_verify_mismatch": "Os símbolos eram diferentes, então nada foi aprovado.",
     "bipe_app_verify_done": "Pronto. Aparelho aprovado.",
     "bipe_app_verify_cancelled": "A aprovação foi cancelada.",
+    "bipe_app_verify_nudge_body": "Um aparelho que entrou na sua conta pediu para ler suas mensagens. Abra o Bipe para aprovar ou recusar.",
+    "bipe_app_verify_notify_again": "Avisar de novo",
     "bipe_app_history_banner": "As mensagens antigas ainda não estão neste celular.",
     "bipe_app_history_title": "Mensagens antigas",
     "bipe_app_history_approve": "Aprovar com outro aparelho",
