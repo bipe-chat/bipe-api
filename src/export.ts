@@ -42,6 +42,8 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
        FROM recoveries WHERE user_id = $1 ORDER BY created_at`,
       userId,
     ),
+    // bipe#531: the iPhones that moved their keychain items before the App Store transfer.
+    keychain_moves: await all(db, "SELECT device_id, moved_at FROM keychain_moves WHERE user_id = $1 ORDER BY moved_at", userId),
     handle: await one(db, "SELECT handle, set_at FROM handles WHERE user_id = $1", userId),
     handle_holds: await all(db, "SELECT hold_until FROM handle_holds WHERE user_id = $1 ORDER BY hold_until", userId),
     handle_changes: await all(

@@ -311,6 +311,14 @@ const MIGRATIONS = [
      device_key text NOT NULL,
      verified_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Recovery that survives the App Store transfer (bipe#531): an iPhone moved its keychain items into the
+  // app-group keychain group. One row per device; the device comes from the access token.
+  `CREATE TABLE keychain_moves (
+     user_id text NOT NULL,
+     device_id text NOT NULL,
+     moved_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, device_id)
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

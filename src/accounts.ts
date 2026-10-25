@@ -10,6 +10,7 @@ import type { Mas } from "./mas.js";
 import { accountRules, appString, type Lang, problemWithPin } from "./registry.js";
 import { newSecret, PinHasher, sameSecret, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { acceptedTermsVersion } from "./terms.js";
+import { hasIndependentRecovery } from "./transfer.js";
 
 // Device-first accounts: ADR 0057 and ADR 0059 (bipe/docs/adr), security.md rules 5 and 6.
 // - The hidden MAS password is made here, set through the MAS admin API and returned once. Never stored, never logged.
@@ -224,7 +225,7 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
 
 /** `maxAccounts`: the live cap of personal accounts per phone (ADR 0086). Company accounts do not count. */
 export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts) {
-  const [secrets, emails, recoveries, termsVersion, signupRow] = await Promise.all([
+  const [secrets, emails, recoveries, termsVersion, signupRow, independent] = await Promise.all([
     db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
       "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
       [userId],
@@ -241,6 +242,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     ),
     acceptedTermsVersion(db, userId),
     db.query<{ account_type: string }>("SELECT account_type FROM signups WHERE user_id = $1", [userId]),
+    hasIndependentRecovery(db, userId),
   ]);
   const s = secrets.rows[0];
   const e = emails.rows[0];
@@ -268,6 +270,8 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     max_accounts: maxAccounts,
     // ADR 0087. Accounts made before the column, and beta accounts without a signups row, are personal.
     account_type: signupRow.rows[0]?.account_type === "company" ? "company" : "personal",
+    // bipe#531: a way back that does not depend on the Apple Team ID. The app shows recovery-reminder when false.
+    independent_recovery: independent,
   };
 }
 
