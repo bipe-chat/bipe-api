@@ -645,6 +645,21 @@ export async function hold(db: Db, businessId: string, customerId: string, body:
   });
 }
 
+/**
+ * A booking made inside another record's transaction (an accepted quote, ADR 0106): the same checks as a hold, then
+ * confirmed or requested at once. The caller holds lockBusiness.
+ */
+export async function bookInTransaction(client: pg.PoolClient, businessId: string, customerId: string, body: z.infer<typeof HoldBody>): Promise<Booking> {
+  const settings = await publishedSettings(client, businessId);
+  await expireHolds(client, businessId);
+  const { agenda, service } = await freeAgenda(client, settings, body.service_id, body.agenda_id, body.start);
+  const row = await insertBooking(client, {
+    businessId, serviceId: service.id, agendaId: agenda, start: Date.parse(body.start), service,
+    status: settings.confirm_mode === "request" ? "requested" : "confirmed", customer: { user_id: customerId }, source: "customer", holdExpiresAt: null,
+  });
+  return bookingJson(row);
+}
+
 async function customerBooking(client: Queryable, businessId: string, customerId: string, bookingId: string): Promise<BookingRow> {
   const { rows } = await client.query<BookingRow>(
     `SELECT ${BOOKING_COLUMNS} FROM bookings WHERE id = $1 AND business_id = $2 AND customer_id = $3 FOR UPDATE`,
