@@ -73,6 +73,7 @@ export function validateLinkedRecovery(accounts) {
   if (linked.delayHours !== 24 || linked.requiresPin !== true || linked.allowsPinReset !== false || linked.maxAccountsPerProvider !== 1) {
     fail("accounts: linked recovery must preserve ADR 0096 (24 hours, existing PIN, no PIN reset, one account per provider)");
   }
+  if (!Number.isInteger(linked.flowMinutes) || linked.flowMinutes < 1 || linked.flowMinutes > 15) fail("accounts: linked recovery flowMinutes must be 1 to 15");
 }
 
 export function validateOfficialAccounts(reg) {
