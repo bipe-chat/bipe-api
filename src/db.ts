@@ -593,6 +593,48 @@ const MIGRATIONS = [
    );
    CREATE INDEX proposta_visits_at ON proposta_visits (at);
    CREATE INDEX proposta_visits_visitor ON proposta_visits (visitor_id, at);`,
+  // Linked Apple or Google account for recovery (ADR 0096, bipe#305). subject_hash: HMAC-SHA256(pepper, issuer + sub);
+  // no email, name or provider token. Nonces, states and handoffs are kept as SHA-256 hashes. link_events: 7 days.
+  `CREATE TABLE account_links (
+     user_id text NOT NULL,
+     provider text NOT NULL CHECK (provider IN ('apple', 'google')),
+     subject_hash text NOT NULL,
+     linked_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, provider),
+     UNIQUE (provider, subject_hash)
+   );
+   CREATE TABLE link_events (
+     id text PRIMARY KEY,
+     user_id text NOT NULL,
+     provider text NOT NULL CHECK (provider IN ('apple', 'google')),
+     change text NOT NULL CHECK (change IN ('linked', 'unlinked')),
+     at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX link_events_user ON link_events (user_id, at DESC);
+   CREATE TABLE link_nonces (
+     nonce_hash text PRIMARY KEY,
+     purpose text NOT NULL CHECK (purpose IN ('link', 'recovery')),
+     user_id text,
+     expires_at timestamptz NOT NULL
+   );
+   CREATE TABLE link_flows (
+     id text PRIMARY KEY,
+     provider text NOT NULL CHECK (provider IN ('apple', 'google')),
+     purpose text NOT NULL CHECK (purpose IN ('link', 'recovery')),
+     user_id text,
+     app_id text NOT NULL,
+     state_hash text UNIQUE,
+     nonce_hash text NOT NULL,
+     verifier text,
+     subject_hash text,
+     handoff_hash text UNIQUE,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     expires_at timestamptz NOT NULL,
+     done_at timestamptz,
+     used_at timestamptz
+   );
+   ALTER TABLE recoveries DROP CONSTRAINT recoveries_method_check;
+   ALTER TABLE recoveries ADD CONSTRAINT recoveries_method_check CHECK (method IN ('token', 'email', 'guardian', 'cpf', 'apple', 'google'));`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

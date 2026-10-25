@@ -107,6 +107,9 @@ export const accountRules = reg.accounts as {
   maxPersonalAccounts: number;
 };
 
+/** Linked Apple or Google account for recovery (ADR 0096, registries/accounts.json linkedRecovery). */
+export const linkedRecoveryRules = (reg.accounts as { linkedRecovery: { delayHours: number; flowMinutes: number } }).linkedRecovery;
+
 /** Terms and privacy accepted at sign-up (ADR 0113, registries/legal.json). */
 export const legalRules = reg.legal as {
   legalVersion: string;

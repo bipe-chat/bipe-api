@@ -6,14 +6,16 @@ import { cell, MIN_CELL } from "./staff-report.js";
 
 // Recovery that survives the App Store transfer (bipe#531, bipe/docs/team-transfer-recovery.md).
 // - An iPhone copies its keychain items into the app-group keychain group, then records the move here, per device.
-// - A server factor that does not depend on the Apple Team ID: a verified recovery email. The linked-account work
-//   (bipe#305) adds a linked Google account to INDEPENDENT_RECOVERY_USERS; a linked Apple account never counts,
-//   because its `sub` changes with the team.
+// - A server factor that does not depend on the Apple Team ID: a verified recovery email or a linked Google account
+//   (bipe#305). A linked Apple account never counts, because its `sub` changes with the team.
 // - The staff report counts how many active iOS accounts are covered. Counts only, through cell(); never a user ID,
 //   a device ID or an email.
 
 /** User IDs with a Team-ID-independent factor the server can check. One source for the account state and the report. */
-export const INDEPENDENT_RECOVERY_USERS = "SELECT user_id FROM recovery_emails WHERE email IS NOT NULL AND verified_at IS NOT NULL";
+export const INDEPENDENT_RECOVERY_USERS =
+  "SELECT user_id FROM recovery_emails WHERE email IS NOT NULL AND verified_at IS NOT NULL" +
+  // ADR 0096: a linked Google account counts; a linked Apple account never does (its sub changes with the team).
+  " UNION SELECT user_id FROM account_links WHERE provider = 'google'";
 
 export async function hasIndependentRecovery(db: Db | pg.PoolClient, userId: string): Promise<boolean> {
   const { rows } = await db.query<{ yes: boolean }>(
