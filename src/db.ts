@@ -557,29 +557,30 @@ const MIGRATIONS = [
    );
    INSERT INTO cvm_state (id) VALUES (1);
    ALTER TABLE cnpj_registry ADD COLUMN cnae_main text, ADD COLUMN cnae_secondary text[];`,
-  // Strategic pages at bipe.chat/proposta/ (ADR 0157): invitees that staff make, their sessions and the visit log.
-  // Passwords as scrypt hashes, session secrets as SHA-256. Visits keep no IP and no user agent; they go after
-  // 365 days, and with the invitee (proposta forget).
-  `CREATE TABLE proposta_invitees (
+  // Strategic pages at bipe.chat/proposta/ (ADR 0157, ADR 0158): one shared password (scrypt hash, one row), the
+  // visitors by the email they typed, their sessions (SHA-256 of the secret) and the visit log. Visits keep no IP
+  // and no user agent; they go after 365 days, and with the visitor (proposta forget).
+  `CREATE TABLE proposta_password (
+     id integer PRIMARY KEY CHECK (id = 1),
+     password_hash text NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE proposta_visitors (
      id serial PRIMARY KEY,
      email text NOT NULL UNIQUE,
-     label text,
-     password_hash text NOT NULL,
-     expires_at timestamptz,
-     revoked_at timestamptz,
      created_at timestamptz NOT NULL DEFAULT now(),
      last_seen_at timestamptz
    );
    CREATE TABLE proposta_sessions (
      token_hash text PRIMARY KEY,
-     invitee_id integer NOT NULL REFERENCES proposta_invitees (id) ON DELETE CASCADE,
+     visitor_id integer NOT NULL REFERENCES proposta_visitors (id) ON DELETE CASCADE,
      created_at timestamptz NOT NULL DEFAULT now(),
      expires_at timestamptz NOT NULL
    );
-   CREATE INDEX proposta_sessions_invitee ON proposta_sessions (invitee_id);
+   CREATE INDEX proposta_sessions_visitor ON proposta_sessions (visitor_id);
    CREATE TABLE proposta_visits (
      id bigserial PRIMARY KEY,
-     invitee_id integer NOT NULL REFERENCES proposta_invitees (id) ON DELETE CASCADE,
+     visitor_id integer NOT NULL REFERENCES proposta_visitors (id) ON DELETE CASCADE,
      at timestamptz NOT NULL DEFAULT now(),
      kind text NOT NULL CHECK (kind IN ('page', 'slide')),
      path text NOT NULL,
@@ -591,7 +592,7 @@ const MIGRATIONS = [
      country text
    );
    CREATE INDEX proposta_visits_at ON proposta_visits (at);
-   CREATE INDEX proposta_visits_invitee ON proposta_visits (invitee_id, at);`,
+   CREATE INDEX proposta_visits_visitor ON proposta_visits (visitor_id, at);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

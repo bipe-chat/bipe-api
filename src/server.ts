@@ -51,7 +51,7 @@ import { queueHousekeeping } from "./queue.js";
 import { quoteHousekeeping } from "./quotes.js";
 import { businessRoutes, CATALOG_PHOTO_PATH } from "./business-routes.js";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { login, logout, normaliseEmail, pageOf, PROPOSTA_COOKIE, PROPOSTA_COOKIE_PATH, PropostaBeaconBody, PropostaLoginBody, propostaReport, prunePropostaLog, recordVisit, referrerOrigin, sessionInvitee, SESSION_DAYS } from "./proposta.js";
+import { login, logout, pageOf, PROPOSTA_COOKIE, PROPOSTA_COOKIE_PATH, PropostaBeaconBody, PropostaLoginBody, propostaReport, prunePropostaLog, recordVisit, referrerOrigin, sessionVisitor, SESSION_DAYS } from "./proposta.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -137,7 +137,6 @@ const limits = {
   govbrChallenge: new RateLimiter(10, 3_600_000),
   govbrDocument: new RateLimiter(20, 3_600_000),
   propostaLogin: new RateLimiter(10, 15 * 60_000),
-  propostaLoginEmail: new RateLimiter(5, 15 * 60_000),
   propostaBeacon: new RateLimiter(600, 3_600_000),
 };
 
@@ -205,7 +204,7 @@ const toolsJob = () =>
     .catch((e) => console.error(`business housekeeping failed: ${(e as Error).message}`));
 toolsJob();
 setInterval(toolsJob, 60 * 60_000).unref();
-// Strategic pages (ADR 0157): visits go after 365 days, ended sessions go.
+// Strategic pages (ADR 0157, ADR 0158): visits go after 365 days, ended sessions go.
 const prunePropostaJob = () =>
   void prunePropostaLog(db)
     .then((n) => n > 0 && console.log(`strategic page visits pruned: ${n}`))
@@ -889,7 +888,7 @@ app.get("/v1/admin/growth", async (c) => {
   return c.json(staffGrowth(await growthNumbers(db, from), from));
 });
 
-// Strategic pages at bipe.chat/proposta/ (ADR 0157). The edge sends /proposta/_auth/* here, so the cookie belongs
+// Strategic pages at bipe.chat/proposta/ (ADR 0157, ADR 0158): any email with one shared password. The edge sends /proposta/_auth/* here, so the cookie belongs
 // to bipe.chat, and asks /v1/proposta/check before each request (Caddy forward_auth).
 const placeOf = (ip: string) => {
   try {
@@ -901,7 +900,6 @@ const placeOf = (ip: string) => {
 app.post("/v1/proposta/login", async (c) => {
   limits.propostaLogin.check(clientIp(c));
   const body = await parse(c, PropostaLoginBody);
-  limits.propostaLoginEmail.check(normaliseEmail(body.email));
   const secret = await login(db, body.email, body.password);
   setCookie(c, PROPOSTA_COOKIE, secret, { path: PROPOSTA_COOKIE_PATH, httpOnly: true, secure: true, sameSite: "Lax", maxAge: SESSION_DAYS * 86_400 });
   c.header("cache-control", "no-store");
@@ -913,12 +911,12 @@ app.post("/v1/proposta/logout", async (c) => {
   return c.body(null, 204);
 });
 app.get("/v1/proposta/check", async (c) => {
-  const invitee = await sessionInvitee(db, getCookie(c, PROPOSTA_COOKIE));
-  if (invitee === null) throw new ApiError("unauthorized");
+  const visitor = await sessionVisitor(db, getCookie(c, PROPOSTA_COOKIE));
+  if (visitor === null) throw new ApiError("unauthorized");
   const page = (c.req.header("x-forwarded-method") ?? "GET") === "GET" ? pageOf(c.req.header("x-forwarded-uri")) : null;
   if (page) {
-    // A failed log write must not lock the invitee out.
-    await recordVisit(db, invitee, { kind: "page", path: page.path, utm: page.utm, referrer: referrerOrigin(c.req.header("referer"), config.PUBLIC_SITE_URL), place: placeOf(clientIp(c)) })
+    // A failed log write must not lock the visitor out.
+    await recordVisit(db, visitor, { kind: "page", path: page.path, utm: page.utm, referrer: referrerOrigin(c.req.header("referer"), config.PUBLIC_SITE_URL), place: placeOf(clientIp(c)) })
       .catch((e) => console.error(`strategic page visit not logged: ${(e as Error).message}`));
   }
   return c.body(null, 204);
@@ -926,8 +924,8 @@ app.get("/v1/proposta/check", async (c) => {
 // The deck sends the slide on screen with sendBeacon (text/plain JSON).
 app.post("/v1/proposta/beacon", async (c) => {
   limits.propostaBeacon.check(clientIp(c));
-  const invitee = await sessionInvitee(db, getCookie(c, PROPOSTA_COOKIE));
-  if (invitee === null) throw new ApiError("unauthorized");
+  const visitor = await sessionVisitor(db, getCookie(c, PROPOSTA_COOKIE));
+  if (visitor === null) throw new ApiError("unauthorized");
   let json: unknown;
   try {
     json = JSON.parse(await c.req.text());
@@ -936,7 +934,7 @@ app.post("/v1/proposta/beacon", async (c) => {
   }
   const body = PropostaBeaconBody.safeParse(json);
   if (!body.success) throw new ApiError("bad_request", body.error.issues[0]?.path.join("."));
-  await recordVisit(db, invitee, { kind: "slide", path: body.data.path, slide: body.data.slide, place: placeOf(clientIp(c)) });
+  await recordVisit(db, visitor, { kind: "slide", path: body.data.path, slide: body.data.slide, place: placeOf(clientIp(c)) });
   return c.body(null, 204);
 });
 
@@ -975,7 +973,7 @@ app.get("/v1/admin/bug-reports/:id/files/:name", async (c) => {
   c.header("content-disposition", `attachment; filename="${name}"`);
   return c.body(new Uint8Array(body));
 });
-// Strategic pages (ADR 0157): named invitees and their visits.
+// Strategic pages (ADR 0158): visitors by the email they typed, and their visits.
 staffGet("/v1/admin/proposta", (c) => {
   const days = z.coerce.number().int().min(1).max(365).default(30).safeParse(c.req.query("days"));
   if (!days.success) throw new ApiError("bad_request");
