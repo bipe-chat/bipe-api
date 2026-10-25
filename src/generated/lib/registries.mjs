@@ -41,6 +41,7 @@ export function loadRegistries(root) {
     relationshipNames: read("registries/relationship-names.json"),
     photoMatch: read("registries/photo-match.json"),
     profileFacts: read("registries/profile-facts.json"),
+    theft: read("registries/theft-protection.json"),
     workHours: read("registries/work-hours.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -222,6 +223,11 @@ function validate(reg) {
     if (!(Number.isInteger(pf[k]) && pf[k] > 0)) fail(`profile-facts: ${k} must be a positive integer`);
   }
   if (pf.noticeDays > pf.windowDays) fail("profile-facts: noticeDays must not exceed windowDays");
+  const tp = reg.theft;
+  for (const k of ["maxGuardians", "markedMessageMinutes", "statementLifeHours", "checkMinutes"]) {
+    if (!(Number.isInteger(tp[k]) && tp[k] > 0)) fail(`theft-protection: ${k} must be a positive integer`);
+  }
+  if (tp.maxGuardians > 3) fail("theft-protection: ADR 0044 allows 1 to 3 guardians");
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   if (!(Number.isInteger(h.ownerMinLength) && h.ownerMinLength >= 1 && h.ownerMinLength <= h.minLength)) fail("handles: ownerMinLength");
@@ -741,6 +747,18 @@ export function relationshipNameWarning(savedName, verifiedName, nicknameConfirm
 /** Archive is separate from cleared history. Only a strictly newer incoming message restores it. */
 export function chatArchived(marker, incoming) {
   return Number.isSafeInteger(marker) && marker >= 0 && !(Number.isSafeInteger(incoming) && incoming > marker);
+}
+
+// Onboarding schedules (bipe-chat/bipe#202).
+
+// The PIN reminder after a check. result: "right", "wrong" or "later". Returns the next step and the days until
+// the next reminder.
+export function pinReminderNext(step, result, reg) {
+  const pr = reg.onboarding.pinReminder;
+  const gap = (n) => (n < pr.days.length ? pr.days[n] : pr.thenEveryDays);
+  if (result === "later") return { step, gapDays: 1 };
+  const next = result === "right" ? step + 1 : 0;
+  return { step: next, gapDays: gap(next) };
 }
 
 // ADR 0049 profile change facts (registries/profile-facts.json). facts: { created_at?, name_changes: [iso], photo_changes:
