@@ -119,6 +119,9 @@ export function workHoursProblemOf(hours: { days: unknown }): string | null {
   return workHoursProblem(hours, workHoursRules.maxRangesPerDay) as string | null;
 }
 
+/** Phone link rules (registries/phone-numbers.json): the yearly confirmation of a linked number (bipe#470). */
+export const phoneRules = reg.phones as { linkConfirmMonths: number; linkConfirmWarnDays: number };
+
 /** Linked Apple or Google account for recovery (ADR 0096, registries/accounts.json linkedRecovery). */
 export const linkedRecoveryRules = (reg.accounts as { linkedRecovery: { delayHours: number; flowMinutes: number } }).linkedRecovery;
 
