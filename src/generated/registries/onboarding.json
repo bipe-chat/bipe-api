@@ -85,5 +85,33 @@
       "primary": { "title": "bipe_handle_prompt_action", "to": "handleScreen" },
       "text": [{ "title": "bipe_fallback_skip", "to": "dismiss" }]
     }
-  ]
+  ],
+  "firstList": {
+    "$comment": "Cards at the top of Conversas while it lists at most maxChats chats (bipe-chat/bipe#198, spec chat-list-cards). A card goes away for good once used or dismissed.",
+    "maxChats": 3,
+    "cards": [
+      {
+        "key": "invite",
+        "title": "bipe_first_card_invite_title",
+        "body": "bipe_first_card_invite_body",
+        "primary": { "title": "bipe_first_card_invite_action", "to": "shareInvite" },
+        "text": [{ "title": "bipe_fallback_skip", "to": "dismiss" }]
+      },
+      {
+        "key": "profile",
+        "when": "hasHandle",
+        "title": "bipe_first_card_profile_title",
+        "body": "bipe_first_card_profile_body",
+        "primary": { "title": "bipe_app_share", "to": "shareProfile" },
+        "text": [{ "title": "bipe_profile_qr_action", "to": "profileQr" }, { "title": "bipe_fallback_skip", "to": "dismiss" }]
+      },
+      {
+        "key": "notes",
+        "title": "bipe_self_chat_title",
+        "body": "bipe_first_card_notes_body",
+        "primary": { "title": "bipe_first_card_notes_action", "to": "notes" },
+        "text": [{ "title": "bipe_fallback_skip", "to": "dismiss" }]
+      }
+    ]
+  }
 }
