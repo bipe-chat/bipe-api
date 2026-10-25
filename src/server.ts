@@ -25,6 +25,7 @@ import { loadPinnedCertificates } from "./cms.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
 import { createGovbrChallenge, GOVBR_PDF_MAX_BYTES, pruneGovbrChallenges, submitGovbrDocument } from "./govbr.js";
 import { ProfileFacts } from "./profile-facts.js";
+import { Theft } from "./theft.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
 import { legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
@@ -73,6 +74,7 @@ const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
 const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
+const theft = new Theft(db, mas, badges, config.SERVER_NAME);
 const profileFacts = new ProfileFacts(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_INTAKE_KEY);
 const support = new SupportBot(db, config, intake);
@@ -97,6 +99,8 @@ const limits = {
   resolve: new RateLimiter(120, 60_000),
   handleChanges: new RateLimiter(60, 60_000),
   profileFacts: new RateLimiter(60, 60_000),
+  theftMarks: new RateLimiter(120, 60_000),
+  theftAction: new RateLimiter(10, 60_000),
   setHandle: new RateLimiter(10, 3_600_000),
   invitePreview: new RateLimiter(30, 60_000),
   invitePreviewHead: new RateLimiter(60, 60_000),
@@ -316,6 +320,9 @@ const LinkWebBody = z.object({ app_id: z.enum(APP_IDS) });
 const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
 const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
+const GuardiansBody = z.object({ user_ids: z.array(z.string().max(255)).max(10) });
+const PhoneBody = z.object({ phone_id: z.string().min(16).max(64) });
+const TheftMarksBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
 const ProfileFactsBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
 const HandleChangesBody = z.object({ user_ids: z.array(z.string().max(255)).max(100), since: z.iso.datetime({ offset: true }).optional() });
 // Lengths are checked by problemWithProfile(); these caps only bound the request.
@@ -838,6 +845,46 @@ app.post("/v1/handle-changes", async (c) => {
   limits.handleChanges.check(userId);
   const body = await parse(c, HandleChangesBody);
   return c.json(await handleChanges(db, body.user_ids, body.since ? new Date(body.since) : undefined));
+});
+
+// Theft protection (ADR 0044, ADR 0051, bipe#600, bipe#268).
+app.get("/v1/me/guardians", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await theft.state(userId));
+});
+
+app.put("/v1/me/guardians", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.theftAction.check(userId);
+  const body = await parse(c, GuardiansBody);
+  return c.json(await theft.setGuardians(userId, body.user_ids));
+});
+
+app.put("/v1/me/phone", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  const body = await parse(c, PhoneBody);
+  await theft.recordPhone(userId, deviceId, body.phone_id);
+  return c.body(null, 204);
+});
+
+app.post("/v1/theft/:userId/mark", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.theftAction.check(userId);
+  return c.json(await theft.mark(userId, c.req.param("userId")));
+});
+
+app.post("/v1/theft/:userId/clear", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.theftAction.check(userId);
+  await theft.clear(userId, c.req.param("userId"));
+  return c.body(null, 204);
+});
+
+app.post("/v1/theft-marks", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.theftMarks.check(userId);
+  const body = await parse(c, TheftMarksBody);
+  return c.json(await theft.statements(body.user_ids));
 });
 
 // Account age and profile change dates (ADR 0049, bipe#598).

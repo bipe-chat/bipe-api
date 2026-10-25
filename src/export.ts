@@ -55,6 +55,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       "SELECT old_handle, new_handle, source, changed_at FROM handle_changes WHERE user_id = $1 ORDER BY changed_at",
       userId,
     ),
+    theft: await theftExport(db, userId),
     profile_changes: await all(db, "SELECT kind, source, changed_at FROM profile_changes WHERE user_id = $1 ORDER BY changed_at", userId),
     public_profile: profile && {
       enabled: profile.enabled,
@@ -147,3 +148,13 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     ),
   };
 }
+
+/** Guardians the caller chose, the caller's marks and phone records (bipe#600). */
+async function theftExport(db: Db, userId: string) {
+  return {
+    guardians: await all(db, "SELECT guardian_id, added_at FROM guardians WHERE owner_id = $1 ORDER BY added_at", userId),
+    marks: await all(db, "SELECT stolen_at, cleared_at FROM theft_marks WHERE user_id = $1 ORDER BY stolen_at", userId),
+    phones: await all(db, "SELECT device_id, seen_at FROM account_phones WHERE user_id = $1 ORDER BY seen_at", userId),
+  };
+}
+
