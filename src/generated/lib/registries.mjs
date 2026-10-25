@@ -263,7 +263,7 @@ function validate(reg) {
   if (whProblem) fail(`work hours: defaultDays ${whProblem}`);
   // DDMMYYYY and YYYYMMDD need exactly 8 digits.
   if (ac.pinLength !== 8) fail("accounts: pinLength must be 8 (the date check reads DDMMYYYY and YYYYMMDD)");
-  for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts", "webLinkCooldownSeconds"]) {
+  for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts", "webLinkCooldownSeconds", "deletionCooldownHours", "deletionVerificationKeepDays"]) {
     if (!(Number.isInteger(ac[k]) && ac[k] > 0)) fail(`accounts: ${k}`);
   }
   const rr = ac.recoveryReminder;
@@ -741,6 +741,18 @@ export function relationshipNameWarning(savedName, verifiedName, nicknameConfirm
 /** Archive is separate from cleared history. Only a strictly newer incoming message restores it. */
 export function chatArchived(marker, incoming) {
   return Number.isSafeInteger(marker) && marker >= 0 && !(Number.isSafeInteger(incoming) && incoming > marker);
+}
+
+// Onboarding schedules (bipe-chat/bipe#202).
+
+// The PIN reminder after a check. result: "right", "wrong" or "later". Returns the next step and the days until
+// the next reminder.
+export function pinReminderNext(step, result, reg) {
+  const pr = reg.onboarding.pinReminder;
+  const gap = (n) => (n < pr.days.length ? pr.days[n] : pr.thenEveryDays);
+  if (result === "later") return { step, gapDays: 1 };
+  const next = result === "right" ? step + 1 : 0;
+  return { step: next, gapDays: gap(next) };
 }
 
 // ADR 0049 profile change facts (registries/profile-facts.json). facts: { created_at?, name_changes: [iso], photo_changes:
