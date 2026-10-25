@@ -111,6 +111,8 @@ export const accountRules = reg.accounts as {
   emailVerifyLinkHours: number;
   recoveryClaimDays: number;
   maxPersonalAccounts: number;
+  deletionCooldownHours: number;
+  deletionVerificationKeepDays: number;
 };
 
 /** Work side opening hours (registries/work-hours.json, bipe#511). */

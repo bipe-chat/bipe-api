@@ -64,6 +64,20 @@ wait_for() {
 wait_for synapse http://127.0.0.1:58008/health
 wait_for mas http://127.0.0.1:58080/.well-known/openid-configuration
 
+# Account deletion (ADR 0140): a dedicated admin account and a compatibility token with Synapse admin rights, as
+# SYNAPSE_ADMIN_TOKEN is made in production. The token stays in .stack/env.
+mascli() { compose run --rm -T mas "$@" --config /data/generated.yaml --config /data/bipe.yaml; }
+mascli manage register-user --yes --admin bipeadmin >/dev/null 2>&1
+SYNAPSE_ADMIN_TOKEN=$(mascli manage issue-compatibility-token bipeadmin --yes-i-want-to-grant-synapse-admin-privileges 2>&1 | grep -o 'mct_[A-Za-z0-9_]*' | head -n 1)
+if [ -z "$SYNAPSE_ADMIN_TOKEN" ]; then echo "real stack: no Synapse admin token"; exit 1; fi
+# MAS provisions the account on Synapse in the background: wait until the token works.
+i=0
+until curl -fsS -o /dev/null -H "Authorization: Bearer ${SYNAPSE_ADMIN_TOKEN}" http://127.0.0.1:58008/_matrix/client/v3/account/whoami; do
+  i=$((i + 1))
+  if [ "$i" -ge 30 ]; then echo "real stack: the Synapse admin token does not work"; exit 1; fi
+  sleep 2
+done
+
 umask 077
 cat > .stack/env <<ENV
 BIPE_TEST_DATABASE_URL=postgres://bipe_test:${BIPE_TEST_PASSWORD}@127.0.0.1:55432/bipe_test
@@ -73,6 +87,7 @@ BIPE_REAL_MAS_ADMIN_URL=http://127.0.0.1:58082
 BIPE_REAL_SYNAPSE_URL=http://127.0.0.1:58008
 BIPE_REAL_MAS_CLIENT_ID=${MAS_API_CLIENT_ID}
 BIPE_REAL_MAS_CLIENT_SECRET=${MAS_API_CLIENT_SECRET}
+BIPE_REAL_SYNAPSE_ADMIN_TOKEN=${SYNAPSE_ADMIN_TOKEN}
 BIPE_REAL_COMPOSE=$(pwd)/compose.yml
 BIPE_REAL_COMPOSE_ENV=$(pwd)/.stack/compose.env
 ENV

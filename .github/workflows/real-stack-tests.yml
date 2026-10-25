@@ -12,6 +12,8 @@ on:
       - "src/mas.ts"
       - "src/weblink.ts"
       - "src/secrets.ts"
+      - "src/deletion.ts"
+      - "src/synapse-admin.ts"
       - "test/real/**"
       - ".github/workflows/real-stack-tests.yml"
   push:
@@ -22,6 +24,8 @@ on:
       - "src/mas.ts"
       - "src/weblink.ts"
       - "src/secrets.ts"
+      - "src/deletion.ts"
+      - "src/synapse-admin.ts"
       - "test/real/**"
       - ".github/workflows/real-stack-tests.yml"
   schedule:

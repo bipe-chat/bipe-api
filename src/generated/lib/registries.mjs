@@ -263,7 +263,7 @@ function validate(reg) {
   if (whProblem) fail(`work hours: defaultDays ${whProblem}`);
   // DDMMYYYY and YYYYMMDD need exactly 8 digits.
   if (ac.pinLength !== 8) fail("accounts: pinLength must be 8 (the date check reads DDMMYYYY and YYYYMMDD)");
-  for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts", "webLinkCooldownSeconds"]) {
+  for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts", "webLinkCooldownSeconds", "deletionCooldownHours", "deletionVerificationKeepDays"]) {
     if (!(Number.isInteger(ac[k]) && ac[k] > 0)) fail(`accounts: ${k}`);
   }
   const rr = ac.recoveryReminder;
