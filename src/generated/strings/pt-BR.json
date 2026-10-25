@@ -356,7 +356,6 @@
     "bipe_voice_transcribe_unavailable": "Este celular não transcreve este idioma sem internet.",
     "bipe_voice_transcribe_failed": "Não deu para transcrever. Tente de novo.",
     "bipe_voice_transcribe_denied": "Para transcrever, permita o reconhecimento de fala para o Bipe nos ajustes do celular.",
-    "bipe_voice_transcribing": "Transcrevendo…",
     "bipe_voice_transcript_placeholder": "Confira a transcrição antes de enviar",
     "bipe_voice_transcript_unavailable": "Não deu para transcrever. Você pode enviar o áudio sem texto.",
     "bipe_action_show_more": "Ver mais",
@@ -1749,6 +1748,7 @@
     "bipe_deletion_done": "Esta conta foi apagada.",
     "bipe_deletion_customer_name": "Conta apagada",
     "bipe_mail_notice_deletion_started": "Alguém pediu para apagar sua conta do Bipe. Se ninguém cancelar, a conta é apagada em %1$s.\n\nSe não foi você, abra o Bipe num dos seus aparelhos e cancele.",
-    "bipe_mail_notice_deletion_cancelled": "O pedido para apagar sua conta do Bipe foi cancelado. A conta continua como estava.\n\nSe não foi você, abra o Bipe num dos seus aparelhos e confira."
+    "bipe_mail_notice_deletion_cancelled": "O pedido para apagar sua conta do Bipe foi cancelado. A conta continua como estava.\n\nSe não foi você, abra o Bipe num dos seus aparelhos e confira.",
+    "bipe_a11y_switch_account": "Trocar de conta"
   }
 }
