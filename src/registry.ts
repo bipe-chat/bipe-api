@@ -105,6 +105,8 @@ export const accountRules = reg.accounts as {
   emailVerifyLinkHours: number;
   recoveryClaimDays: number;
   maxPersonalAccounts: number;
+  deletionCooldownHours: number;
+  deletionVerificationKeepDays: number;
 };
 
 /** Linked Apple or Google account for recovery (ADR 0096, registries/accounts.json linkedRecovery). */

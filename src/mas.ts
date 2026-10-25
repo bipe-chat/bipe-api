@@ -1,9 +1,12 @@
 import type { Config } from "./config.js";
 import { ApiError } from "./errors.js";
 
+const MAS_ADMIN_SCOPE = "urn:mas:admin";
+const SYNAPSE_ADMIN_SCOPE = "urn:synapse:admin:*";
+
 // Client for the MAS admin API (client_credentials, scope urn:mas:admin).
 export class Mas {
-  private token?: { value: string; expiresAt: number };
+  private tokens = new Map<string, { value: string; expiresAt: number }>();
 
   constructor(private readonly config: Config) {}
 
@@ -11,6 +14,14 @@ export class Mas {
     const res = await this.call("GET", `/users/by-username/${encodeURIComponent(username)}`);
     if (res.status === 404) return null;
     return { id: (await this.json(res)).data.id };
+  }
+
+  /** The MAS user and whether MAS already deactivated it (account deletion, ADR 0140). Null when unknown. */
+  async userState(username: string): Promise<{ id: string; deactivated: boolean } | null> {
+    const res = await this.call("GET", `/users/by-username/${encodeURIComponent(username)}`);
+    if (res.status === 404) return null;
+    const { id, attributes: a } = (await this.json(res)).data;
+    return { id, deactivated: Boolean(a?.deactivated_at) };
   }
 
   /** True only when MAS marks the user admin (mas-cli manage promote-admin) and the user is active. */
@@ -91,13 +102,13 @@ export class Mas {
     const res = await fetch(`${this.config.MAS_ADMIN_URL.replace(/\/$/, "")}/api/admin/v1${path}`, {
       method,
       headers: {
-        authorization: `Bearer ${await this.accessToken()}`,
+        authorization: `Bearer ${await this.accessToken(MAS_ADMIN_SCOPE)}`,
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(10_000),
     });
-    if (res.status === 401) this.token = undefined;
+    if (res.status === 401) this.tokens.delete(MAS_ADMIN_SCOPE);
     return res;
   }
 
@@ -110,14 +121,28 @@ export class Mas {
     return res.json();
   }
 
-  private async accessToken(): Promise<string> {
-    if (this.token && this.token.expiresAt > Date.now() + 30_000) return this.token.value;
+  /**
+   * A client_credentials token for the Synapse admin API (ADR 0140: room handover, redaction, deactivation).
+   * MAS issues it because the client is in policy.data.admin_clients. Never log it.
+   */
+  synapseAdminToken(): Promise<string> {
+    return this.accessToken(SYNAPSE_ADMIN_SCOPE);
+  }
+
+  /** Forget a token that Synapse refused, so the next call asks MAS again. */
+  dropSynapseAdminToken(): void {
+    this.tokens.delete(SYNAPSE_ADMIN_SCOPE);
+  }
+
+  private async accessToken(scope = MAS_ADMIN_SCOPE): Promise<string> {
+    const cached = this.tokens.get(scope);
+    if (cached && cached.expiresAt > Date.now() + 30_000) return cached.value;
     const res = await fetch(`${this.config.MAS_URL.replace(/\/$/, "")}/oauth2/token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "client_credentials",
-        scope: "urn:mas:admin",
+        scope,
         client_id: this.config.MAS_CLIENT_ID,
         client_secret: this.config.MAS_CLIENT_SECRET,
       }),
@@ -128,7 +153,8 @@ export class Mas {
       throw new ApiError("internal");
     }
     const body = (await res.json()) as { access_token: string; expires_in?: number };
-    this.token = { value: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 300) * 1000 };
-    return this.token.value;
+    const token = { value: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 300) * 1000 };
+    this.tokens.set(scope, token);
+    return token.value;
   }
 }

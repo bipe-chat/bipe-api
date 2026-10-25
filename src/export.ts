@@ -42,6 +42,12 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
        FROM recoveries WHERE user_id = $1 ORDER BY created_at`,
       userId,
     ),
+    // ADR 0140: a waiting account deletion request.
+    account_deletion: await one(
+      db,
+      "SELECT id, device_id, redact_messages, state, created_at, due_at FROM account_deletions WHERE user_id = $1 AND state IN ('waiting', 'running')",
+      userId,
+    ),
     // bipe#531: the iPhones that moved their keychain items before the App Store transfer.
     keychain_moves: await all(db, "SELECT device_id, moved_at FROM keychain_moves WHERE user_id = $1 ORDER BY moved_at", userId),
     // ADR 0096: the provider and the dates only. The subject hash is keyed and stays out.
