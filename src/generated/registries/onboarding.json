@@ -66,7 +66,7 @@
     { "key": "token", "title": "bipe_pin_enter_title", "body": "bipe_recovery_token_found", "when": "syncedToken" },
     { "key": "oldPhone", "title": "bipe_recovery_qr", "body": "bipe_recovery_qr_body", "gate": "planned:203" },
     { "key": "email", "title": "bipe_recovery_email", "body": "bipe_recovery_email_body" },
-    { "key": "beta", "title": "bipe_recovery_beta", "body": "bipe_recovery_beta_body" }
+    { "key": "beta", "title": "bipe_recovery_beta", "body": "bipe_recovery_beta_body", "gate": "flag:developer" }
   ],
   "prompts": [
     {
