@@ -739,6 +739,18 @@ const MIGRATIONS = [
      PRIMARY KEY (user_id, device_id)
    );
    CREATE INDEX account_phones_phone ON account_phones (phone_id);`,
+  // Strategic pages (ADR 0160): slide titles, leave events (end the time on the last slide), and one summary email
+  // per sitting. A proposta_summaries row is written before the send, so a sitting gets at most one email.
+  `ALTER TABLE proposta_visits ADD COLUMN title text;
+   ALTER TABLE proposta_visits DROP CONSTRAINT proposta_visits_kind_check;
+   ALTER TABLE proposta_visits ADD CONSTRAINT proposta_visits_kind_check CHECK (kind IN ('page', 'slide', 'leave'));
+   CREATE TABLE proposta_summaries (
+     visitor_id integer NOT NULL REFERENCES proposta_visitors (id) ON DELETE CASCADE,
+     started_at timestamptz NOT NULL,
+     ended_at timestamptz NOT NULL,
+     sent_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (visitor_id, started_at)
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

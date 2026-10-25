@@ -37,6 +37,7 @@
 //   node dist/cli.js transfer report [--days 30]     (bipe#531: active iOS accounts with a way back that survives the App Store transfer)
 //   node dist/cli.js proposta password [--password-stdin]   (ADR 0158: the one shared password; prints a new one once, or reads yours; ends every session)
 //   node dist/cli.js proposta visits [--days 30]       (per visitor email, then the visits, newest first)
+//   node dist/cli.js proposta sessions [--days 30]     (ADR 0160: each sitting with the time on each page and slide)
 //   node dist/cli.js proposta forget <email>          (LGPD deletion request: visitor, sessions and visits)
 //   node dist/cli.js theft status <user_id>          (ADR 0044: guardians count and the open mark, no guardian IDs)
 //   node dist/cli.js theft clear <user_id>           (ADR 0051: support clears a mark after a CPF check by hand; unlocks the covered accounts too)
@@ -62,7 +63,7 @@ import { validCnpj } from "./registry.js";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { transferReadiness } from "./transfer.js";
-import { forgetVisitor, propostaReport, setSharedPassword } from "./proposta.js";
+import { clock, forgetVisitor, propostaReport, setSharedPassword, sittings } from "./proposta.js";
 import { newSecret } from "./secrets.js";
 import { loadConfig } from "./config.js";
 import { Mas } from "./mas.js";
@@ -98,6 +99,13 @@ try {
     const report = await propostaReport(db, days);
     console.table(report.visitors.map((r) => ({ id: r.id, email: r.email, last_seen: r.last_seen_at, page_views: r.page_views, max_slide: r.max_slide })));
     console.table(report.visits.map((v) => ({ at: v.at.slice(0, 16), visitor: v.visitor_id, kind: v.kind, path: v.path, slide: v.slide, referrer: v.referrer, utm: Object.values(v.utm).join(" ") || null, place: [v.city, v.region, v.country].filter(Boolean).join(", ") || null })));
+  } else if (group === "proposta" && command === "sessions") {
+    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    if (!(Number.isInteger(days) && days > 0 && days <= 365)) throw new Error("--days must be 1 to 365");
+    for (const s of await sittings(db, days)) {
+      console.log(`\n${s.startedAt.toISOString().slice(0, 16)}  ${s.email}  ${clock(s.ms)}  ${s.place ?? "-"}  ${s.referrer ?? "-"}  ${Object.values(s.utm).join(" ")}`);
+      for (const t of s.steps) console.log(`  ${clock(t.ms).padStart(5)}  ${t.path}${t.slide === null ? "" : `  ${t.slide} ${t.title ?? ""}`}`);
+    }
   } else if (group === "proposta" && command === "forget" && arg) {
     console.log((await forgetVisitor(db, arg)) ? "deleted visitor, sessions and visits" : "no visitor with that email");
   } else if (group === "invite" && command === "list") {
