@@ -346,6 +346,8 @@
     "bipe_email_confirmed": "E-mail confirmado.",
     "bipe_email_remove": "Remover e-mail",
     "bipe_email_link_invalid": "Esse link não vale mais. Peça outro no app.",
+    "bipe_email_send": "Mandar link",
+    "bipe_email_change_reason": "Confirme que é você para mudar o e-mail de recuperação.",
     "bipe_error_email_unavailable": "A gente não está conseguindo mandar e-mail agora. Tente de novo mais tarde.",
     "bipe_recovery_title": "Voltar para sua conta",
     "bipe_recovery_qr": "Estou com o celular antigo",
