@@ -42,14 +42,18 @@ import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugR
 import { Intake, verifyIntakeSignature } from "./intake.js";
 import { SupportBot } from "./support.js";
 import { NewsBot } from "./news.js";
+import { startCvmRefresh } from "./cvm.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
+import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
 import { orderHousekeeping } from "./orders.js";
 import { queueHousekeeping } from "./queue.js";
 import { quoteHousekeeping } from "./quotes.js";
 import { businessRoutes, CATALOG_PHOTO_PATH } from "./business-routes.js";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { login, logout, pageOf, PROPOSTA_COOKIE, PROPOSTA_COOKIE_PATH, PropostaBeaconBody, PropostaLoginBody, propostaReport, prunePropostaLog, recordVisit, referrerOrigin, sessionVisitor, SESSION_DAYS } from "./proposta.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -62,6 +66,7 @@ const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INV
 const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID] });
 const news = new NewsBot(db, config);
 const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news };
+const linkDeps: LinkDeps = { ...accounts, links: new Links(config) };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
@@ -75,7 +80,9 @@ console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`support bot: ${support.enabled ? "on" : "off (no SUPPORT_ACCESS_TOKEN or SUPPORT_STORE_PASSPHRASE)"}`);
 console.log(`news bot: ${news.enabled ? "on" : "off (no NEWS_ACCESS_TOKEN or NEWS_STORE_PASSPHRASE)"}`);
+console.log(`cvm register: ${config.CVM_REFRESH ? "daily refresh on" : "off (CVM_REFRESH=false)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
+console.log(`linked recovery: ${JSON.stringify(linkDeps.links.providers().providers)}`);
 
 const limits = {
   signup: new SignupLimits(config.SIGNUP_MAX_PER_HOUR),
@@ -119,6 +126,13 @@ const limits = {
   recoveryEmailAddress: new RateLimiter(3, 3_600_000),
   recoveryConfirm: new RateLimiter(10, 3_600_000),
   recoveryClaim: new RateLimiter(120, 3_600_000),
+  // Linked Apple or Google account (ADR 0096).
+  linkStart: new RateLimiter(20, 3_600_000),
+  linkSet: new RateLimiter(10, 3_600_000),
+  recoveryLinkStart: new RateLimiter(20, 3_600_000),
+  recoveryLink: new RateLimiter(10, 3_600_000),
+  recoveryLinkGlobal: new RateLimiter(300, 3_600_000),
+  linkCallback: new RateLimiter(60, 3_600_000),
   // Web sign-in approval (ADR 0118).
   webLinkFinish: new RateLimiter(20, 3_600_000),
   webLinkPlace: new RateLimiter(60, 3_600_000),
@@ -134,6 +148,8 @@ const limits = {
   // gov.br signed challenge (bipe#543).
   govbrChallenge: new RateLimiter(10, 3_600_000),
   govbrDocument: new RateLimiter(20, 3_600_000),
+  propostaLogin: new RateLimiter(10, 15 * 60_000),
+  propostaBeacon: new RateLimiter(600, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -148,6 +164,10 @@ const pruneGovbr = () =>
     .catch((e) => console.error(`govbr prune failed: ${(e as Error).message}`));
 pruneGovbr();
 setInterval(pruneGovbr, 24 * 3_600_000).unref();
+const pruneLinkRows = () =>
+  void pruneLinks(db).catch((e) => console.error(`link prune failed: ${(e as Error).message}`));
+pruneLinkRows();
+setInterval(pruneLinkRows, 3_600_000).unref();
 const kickScan = () => void runScan(db, config, "pending").catch((e) => console.error(`cnpj scan failed: ${(e as Error).message}`));
 setInterval(kickScan, 15 * 60_000).unref();
 
@@ -176,6 +196,7 @@ pruneWaitlistEntries();
 setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
 support.start();
 news.start();
+if (config.CVM_REFRESH) startCvmRefresh(db);
 const pruneReports = () =>
   void pruneBugReports(db, config.BUG_REPORTS_DIR)
     .then((n) => n > 0 && console.log(`problem reports pruned: ${n}`))
@@ -199,6 +220,13 @@ const toolsJob = () =>
     .catch((e) => console.error(`business housekeeping failed: ${(e as Error).message}`));
 toolsJob();
 setInterval(toolsJob, 60 * 60_000).unref();
+// Strategic pages (ADR 0157, ADR 0158): visits go after 365 days, ended sessions go.
+const prunePropostaJob = () =>
+  void prunePropostaLog(db)
+    .then((n) => n > 0 && console.log(`strategic page visits pruned: ${n}`))
+    .catch((e) => console.error(`strategic page prune failed: ${(e as Error).message}`));
+prunePropostaJob();
+setInterval(prunePropostaJob, 24 * 3_600_000).unref();
 const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
@@ -258,6 +286,13 @@ const WorkHoursBody = z.object({
   time_zone: z.string().min(1).max(64),
   days: z.array(z.object({ day: z.number().int(), ranges: z.array(z.object({ start: TimeField, end: TimeField })).max(10) })).max(7),
 });
+const LinkProofBody = z.object({
+  id_token: z.string().min(1).max(8192).optional(),
+  flow_id: z.string().min(1).max(64).optional(),
+  handoff: z.string().max(128).optional(),
+});
+const RecoveryLinkBody = LinkProofBody.extend({ provider: z.enum(["apple", "google"]), pin: PinField });
+const LinkWebBody = z.object({ app_id: z.enum(APP_IDS) });
 const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
 const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
@@ -474,6 +509,87 @@ app.post("/v1/recovery/:id/claim", async (c) => {
   c.header("cache-control", "no-store");
   return c.json(await claimRecovery(accounts, c.req.param("id").slice(0, 64), claim_secret));
 });
+// Linked Apple or Google account for recovery (ADR 0096, bipe#305). Never log a token, a code, a state or a handoff.
+function providerParam(c: Context): Provider {
+  const provider = c.req.param("provider") ?? "";
+  if (!isProvider(provider)) throw new ApiError("not_found");
+  return provider;
+}
+
+app.get("/v1/links/providers", (c) => c.json(linkDeps.links.providers()));
+
+app.post("/v1/me/links/nonce", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.linkStart.check(userId);
+  c.header("cache-control", "no-store");
+  return c.json(await newNonce(linkDeps, "link", userId), 201);
+});
+
+app.post("/v1/me/links/:provider/web", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  const provider = providerParam(c);
+  limits.linkStart.check(userId);
+  const { app_id } = await parse(c, LinkWebBody);
+  c.header("cache-control", "no-store");
+  return c.json(await startWebFlow(linkDeps, provider, "link", userId, app_id), 201);
+});
+
+app.put("/v1/me/links/:provider", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  const provider = providerParam(c);
+  limits.linkSet.check(userId);
+  await linkAccount(linkDeps, userId, provider, await parse(c, LinkProofBody));
+  return c.body(null, 204);
+});
+
+app.delete("/v1/me/links/:provider", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await unlinkAccount(linkDeps, userId, providerParam(c));
+  return c.body(null, 204);
+});
+
+app.post("/v1/recovery/link/nonce", async (c) => {
+  limits.recoveryLinkStart.check(clientIp(c));
+  c.header("cache-control", "no-store");
+  return c.json(await newNonce(linkDeps, "recovery", null), 201);
+});
+
+app.post("/v1/recovery/link/:provider/web", async (c) => {
+  const provider = providerParam(c);
+  limits.recoveryLinkStart.check(clientIp(c));
+  const { app_id } = await parse(c, LinkWebBody);
+  c.header("cache-control", "no-store");
+  return c.json(await startWebFlow(linkDeps, provider, "recovery", null, app_id), 201);
+});
+
+app.post("/v1/recovery/link", async (c) => {
+  limits.recoveryLink.check(clientIp(c));
+  limits.recoveryLinkGlobal.check("all");
+  const { provider, pin, ...proof } = await parse(c, RecoveryLinkBody);
+  c.header("cache-control", "no-store");
+  return c.json(await recoverWithLink(linkDeps, provider, proof, pin), 201);
+});
+
+// The provider sends the browser here at the end of the web flow; the answer sends it on to the app.
+async function linkCallback(c: Context, provider: Provider, input: { state?: string; code?: string; idToken?: string; error?: string }) {
+  limits.linkCallback.check(clientIp(c));
+  const target = await finishWebFlow(linkDeps, provider, input);
+  c.header("cache-control", "no-store");
+  c.header("referrer-policy", "no-referrer");
+  if (!target) throw new ApiError("bad_request", "state");
+  return c.redirect(target, 303);
+}
+
+const field = (v: unknown) => (typeof v === "string" ? v : undefined);
+
+app.get("/v1/links/callback/google", (c) =>
+  linkCallback(c, "google", { state: c.req.query("state"), code: c.req.query("code"), error: c.req.query("error") }));
+
+app.post("/v1/links/callback/apple", async (c) => {
+  const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+  return linkCallback(c, "apple", { state: field(form.state), code: field(form.code), idToken: field(form.id_token), error: field(form.error) });
+});
+
 
 // The invite page on the public site reads the preview from the browser.
 app.use("/v1/invites/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
@@ -894,6 +1010,56 @@ app.get("/v1/admin/growth", async (c) => {
   return c.json(staffGrowth(await growthNumbers(db, from), from));
 });
 
+// Strategic pages at bipe.chat/proposta/ (ADR 0157, ADR 0158): any email with one shared password. The edge sends /proposta/_auth/* here, so the cookie belongs
+// to bipe.chat, and asks /v1/proposta/check before each request (Caddy forward_auth).
+const placeOf = (ip: string) => {
+  try {
+    return geo.place(ip);
+  } catch {
+    return {};
+  }
+};
+app.post("/v1/proposta/login", async (c) => {
+  limits.propostaLogin.check(clientIp(c));
+  const body = await parse(c, PropostaLoginBody);
+  const secret = await login(db, body.email, body.password);
+  setCookie(c, PROPOSTA_COOKIE, secret, { path: PROPOSTA_COOKIE_PATH, httpOnly: true, secure: true, sameSite: "Lax", maxAge: SESSION_DAYS * 86_400 });
+  c.header("cache-control", "no-store");
+  return c.body(null, 204);
+});
+app.post("/v1/proposta/logout", async (c) => {
+  await logout(db, getCookie(c, PROPOSTA_COOKIE));
+  deleteCookie(c, PROPOSTA_COOKIE, { path: PROPOSTA_COOKIE_PATH, secure: true });
+  return c.body(null, 204);
+});
+app.get("/v1/proposta/check", async (c) => {
+  const visitor = await sessionVisitor(db, getCookie(c, PROPOSTA_COOKIE));
+  if (visitor === null) throw new ApiError("unauthorized");
+  const page = (c.req.header("x-forwarded-method") ?? "GET") === "GET" ? pageOf(c.req.header("x-forwarded-uri")) : null;
+  if (page) {
+    // A failed log write must not lock the visitor out.
+    await recordVisit(db, visitor, { kind: "page", path: page.path, utm: page.utm, referrer: referrerOrigin(c.req.header("referer"), config.PUBLIC_SITE_URL), place: placeOf(clientIp(c)) })
+      .catch((e) => console.error(`strategic page visit not logged: ${(e as Error).message}`));
+  }
+  return c.body(null, 204);
+});
+// The deck sends the slide on screen with sendBeacon (text/plain JSON).
+app.post("/v1/proposta/beacon", async (c) => {
+  limits.propostaBeacon.check(clientIp(c));
+  const visitor = await sessionVisitor(db, getCookie(c, PROPOSTA_COOKIE));
+  if (visitor === null) throw new ApiError("unauthorized");
+  let json: unknown;
+  try {
+    json = JSON.parse(await c.req.text());
+  } catch {
+    throw new ApiError("bad_request");
+  }
+  const body = PropostaBeaconBody.safeParse(json);
+  if (!body.success) throw new ApiError("bad_request", body.error.issues[0]?.path.join("."));
+  await recordVisit(db, visitor, { kind: "slide", path: body.data.path, slide: body.data.slide, place: placeOf(clientIp(c)) });
+  return c.body(null, 204);
+});
+
 // Read-only staff reports (bipe#368). Each route: staff gate first, then one report.
 const staffGet = (path: string, report: (c: Context) => Promise<unknown>) =>
   app.get(path, async (c) => {
@@ -928,6 +1094,12 @@ app.get("/v1/admin/bug-reports/:id/files/:name", async (c) => {
   c.header("x-content-type-options", "nosniff");
   c.header("content-disposition", `attachment; filename="${name}"`);
   return c.body(new Uint8Array(body));
+});
+// Strategic pages (ADR 0158): visitors by the email they typed, and their visits.
+staffGet("/v1/admin/proposta", (c) => {
+  const days = z.coerce.number().int().min(1).max(365).default(30).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return propostaReport(db, days.data);
 });
 staffGet("/v1/admin/reports", (c) => {
   const days = z.coerce.number().int().min(1).max(400).default(90).safeParse(c.req.query("days"));
