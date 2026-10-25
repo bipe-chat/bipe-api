@@ -471,6 +471,30 @@ function reservedHandleSkeletons(reg) {
   return Object.values(reg.reserved.categories).flat().map((n) => n.replace(/\s+/g, ""));
 }
 
+// Escolha seu @ (bipe-chat/bipe#200). normalize() without homoglyph folding, then the runs of [a-z0-9] are the
+// words. Two or more words: first.last, firstlast, first_last, first, last.first, first.last1, firstlast1. One word:
+// word, word1, word2, word_. Each is cut to maxLength, loses trailing dots, and stays only with the handle shape
+// (minLength..maxLength, pattern; no owned-handle exception). Duplicates go; at most suggestions.candidates.
+export function handleSuggestions(displayName, reg) {
+  const h = reg.handles;
+  const words = normalize(displayName, {}).split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const f = words[0];
+  const l = words[words.length - 1];
+  const raw = words.length > 1
+    ? [`${f}.${l}`, `${f}${l}`, `${f}_${l}`, f, `${l}.${f}`, `${f}.${l}1`, `${f}${l}1`]
+    : [f, `${f}1`, `${f}2`, `${f}_`];
+  const pattern = new RegExp(h.pattern);
+  const out = [];
+  for (const candidate of raw) {
+    const cut = candidate.slice(0, h.maxLength).replace(/\.+$/, "");
+    if (cut.length < h.minLength || !pattern.test(cut) || out.includes(cut)) continue;
+    out.push(cut);
+    if (out.length === h.suggestions.candidates) break;
+  }
+  return out;
+}
+
 export function handleSkeleton(handle, reg) {
   return normalize(handle, reg.homoglyphs.map).replace(new RegExp(reg.handles.skeletonStrip, "g"), "").replace(/\s+/g, "");
 }
