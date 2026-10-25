@@ -13,6 +13,9 @@
 //   node dist/cli.js waitlist forget <email>         (LGPD deletion request)
 //   node dist/cli.js waitlist release <platform> --count N [--days 14]   (ADR 0089: oldest entries first, one invite email each)
 //   node dist/cli.js support status                  (ADR 0114: support rooms, Starlings lines waiting, last sync)
+//   node dist/cli.js news send <file.json>           (ADR 0117: queues a news item {id, text, link?, importance}; text through the humanizer first)
+//   node dist/cli.js news list                       (items with sent and failed counts; rooms and opted-out users)
+//   node dist/cli.js news backfill                   (a news room for every user who signed up before the news bot)
 //   node dist/cli.js bugreports list                 (problem reports, newest first: id, platform, version, files; no text)
 //   node dist/cli.js bugreports show <id>            (one report with its text and file names)
 //   node dist/cli.js bugreports forget <user_id>     (LGPD deletion request: rows and files)
@@ -44,6 +47,7 @@ import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import { type Config, loadMailConfig } from "./config.js";
 import { forgetBugReports, getBugReport, listBugReports } from "./bug-reports.js";
 import { clearBanner, currentBanner, setBanner } from "./banner.js";
+import { newsList, queueNewsItem, requestNewsBackfill } from "./news.js";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { transferReadiness } from "./transfer.js";
@@ -112,6 +116,16 @@ try {
               (SELECT updated_at FROM support_sync WHERE id = 1) AS last_sync`,
     );
     console.table(rows);
+  } else if (group === "news" && command === "send" && arg) {
+    const item = await queueNewsItem(db, JSON.parse(readFileSync(arg, "utf8")));
+    console.log(`news item ${item.id} queued (${item.importance}); the server sends it within a few minutes`);
+  } else if (group === "news" && command === "list") {
+    const report = await newsList(db);
+    console.log(`rooms ${report.rooms}, opted out ${report.opted_out}`);
+    for (const i of report.items) console.log(`${i.id}  ${i.importance}  queued ${i.created_at.toISOString().slice(0, 16)}  ${i.done_at ? "done" : "sending"}  sent ${i.sent}  failed ${i.failed}`);
+  } else if (group === "news" && command === "backfill") {
+    await requestNewsBackfill(db);
+    console.log("news backfill requested; the server makes the rooms, rate-limited (news list shows the count)");
   } else if (group === "bugreports" && command === "list") {
     for (const r of (await listBugReports(db)).reports) {
       console.log(`${r.id}  ${r.created_at.slice(0, 16)}  ${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"})  logs ${r.log_count}  shots ${r.screenshot_count}  ${r.relayed ? "relayed" : "not relayed"}`);

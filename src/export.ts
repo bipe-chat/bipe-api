@@ -100,5 +100,8 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     problem_reports: await bugReportsOf(db, userId),
     // Support DM (ADR 0114): the room ID only. The messages are in the room; the bot keeps no copy.
     support_room: await one(db, "SELECT room_id, created_at FROM support_rooms WHERE user_id = $1", userId),
+    // Novidades do Bipe (ADR 0117): the room, whether news is off, and which items reached the user.
+    news_room: await one(db, "SELECT room_id, opted_out, left_at, created_at FROM news_rooms WHERE user_id = $1", userId),
+    news_deliveries: await all(db, "SELECT item_id, failed, sent_at FROM news_deliveries WHERE user_id = $1 ORDER BY sent_at", userId),
   };
 }

@@ -319,6 +319,42 @@ const MIGRATIONS = [
      moved_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (user_id, device_id)
    );`,
+  // Novidades do Bipe (ADR 0117, bipe#383): one read-only room per user, news items, the delivery log, the bot's sync
+  // position and the backfill request. opted_out: the user left the room or turned news off in Settings.
+  `CREATE TABLE news_rooms (
+     user_id text PRIMARY KEY,
+     room_id text NOT NULL UNIQUE,
+     opted_out boolean NOT NULL DEFAULT false,
+     left_at timestamptz,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE news_items (
+     id text PRIMARY KEY,
+     body text NOT NULL,
+     link text,
+     importance text NOT NULL CHECK (importance IN ('normal', 'important')),
+     created_at timestamptz NOT NULL DEFAULT now(),
+     done_at timestamptz
+   );
+   CREATE TABLE news_deliveries (
+     item_id text NOT NULL REFERENCES news_items(id),
+     user_id text NOT NULL,
+     failed boolean NOT NULL DEFAULT false,
+     sent_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (item_id, user_id)
+   );
+   CREATE INDEX news_deliveries_user ON news_deliveries (user_id);
+   CREATE TABLE news_sync (
+     id integer PRIMARY KEY CHECK (id = 1),
+     since text NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE news_state (
+     id integer PRIMARY KEY CHECK (id = 1),
+     backfill_requested_at timestamptz,
+     backfill_done_at timestamptz
+   );
+   INSERT INTO news_state (id) VALUES (1);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

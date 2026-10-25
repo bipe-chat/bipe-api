@@ -28,6 +28,8 @@ export interface AccountDeps {
   mailer: Mailer;
   /** Growth events (ADR 0098). Absent in the admin CLI. */
   growth?: Growth;
+  /** Novidades do Bipe (ADR 0117): makes the news room at sign-up. Absent in the admin CLI. */
+  news?: { welcome(userId: string): void };
   /** Android Key Attestation (bipe#92). Absent: Google's pinned roots. Only synthetic tests set it. */
   verifyKeyAttestation?: KeyAttestationVerifier;
 }
