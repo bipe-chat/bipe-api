@@ -218,6 +218,7 @@ function validate(reg) {
   const lg = reg.legal;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(lg.legalVersion) || Number.isNaN(Date.parse(`${lg.legalVersion}T00:00:00Z`))) fail("legal: legalVersion must be YYYY-MM-DD");
   for (const k of ["termsPath", "privacyPath", "enTermsPath", "enPrivacyPath"]) if (!/^\/[a-z/-]+\/$/.test(lg[k] ?? "")) fail(`legal: ${k}`);
+  for (const k of ["homePath", "enHomePath"]) if (!/^\/([a-z/-]+\/)?$/.test(lg[k] ?? "")) fail(`legal: ${k}`);
   // Growth events (ADR 0098): a fixed list, no content.
   const gr = reg.growth;
   const growthIds = new Set();
