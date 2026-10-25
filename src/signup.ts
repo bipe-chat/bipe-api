@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomInt } fr
 import type { Db } from "./db.js";
 import { type AccountDeps, checkNewEmail, checkPinRule, normalizeEmail, startEmailVerification } from "./accounts.js";
 import { type Attestation, verifyAttestation } from "./attest.js";
+import { type KeyAttestation, verifyKeyAttestation } from "./key-attest.js";
 import { ApiError } from "./errors.js";
 import { skeletonFree, validHandle } from "./handles.js";
 import { inviterOf, returnInviteUse, takeInviteUse } from "./invites.js";
@@ -24,7 +25,7 @@ export interface SignupInput {
   lang?: Lang;
   handle?: string;
   display_name?: string;
-  attestation?: Attestation;
+  attestation?: Attestation | KeyAttestation;
   signup_key?: string;
   terms_version?: string;
   account_type?: AccountType;
@@ -129,11 +130,29 @@ function openSealed(key: string, sealed: Buffer): { password: string; recovery_t
   }
 }
 
+/** True when the device is attested. Throws attestation_invalid for a proof that does not verify. */
+function checkAttestation({ config, verifyKeyAttestation: verifyKey = verifyKeyAttestation }: AccountDeps, att: SignupInput["attestation"]): boolean {
+  if (!att) return false;
+  if ("key_attestation_chain" in att) {
+    const result = verifyKey(att, {
+      packages: config.ANDROID_ATTEST_PACKAGES,
+      certDigests: config.ANDROID_ATTEST_CERT_DIGESTS,
+      bootKeys: config.ANDROID_ATTEST_BOOT_KEYS,
+    });
+    if (!result.attested) console.log(`key attestation: not attested (${result.reason})`);
+    return result.attested;
+  }
+  verifyAttestation(att, config.APP_ATTEST_APP_IDS, config.APP_ATTEST_ENVIRONMENT);
+  return true;
+}
+
 async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: string | null, creation?: CreationSlot) {
   const { db, mas, config } = deps;
-  // App Attest first: it is the cheapest check that stops scripted sign-ups. A given attestation must be valid.
-  if (input.attestation) verifyAttestation(input.attestation, config.APP_ATTEST_APP_IDS, config.APP_ATTEST_ENVIRONMENT);
-  else if (config.SIGNUP_ATTEST_REQUIRED || input.account_type === "company") throw new ApiError("attestation_invalid");
+  // Attestation first: it is the cheapest check that stops scripted sign-ups. A given attestation must be valid.
+  // Android (bipe#92): a genuine chain from a phone that is not attested counts as no attestation (ADR 0043).
+  if (!checkAttestation(deps, input.attestation) && (config.SIGNUP_ATTEST_REQUIRED || input.account_type === "company")) {
+    throw new ApiError("attestation_invalid");
+  }
   const accountType: AccountType = input.account_type ?? "personal";
   // ADR 0113: before anything is created. The row goes in with the signups row.
   const termsVersion = checkTermsVersion(input.terms_version, config.SIGNUP_TERMS_REQUIRED);

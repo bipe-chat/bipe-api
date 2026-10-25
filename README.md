@@ -24,8 +24,27 @@ ID must be added deliberately; there is no implicit allowlist.
 
 `SIGNUP_ATTEST_REQUIRED=false` still permits a request without a proof. A
 supplied proof is always checked against the environment, approved App IDs,
-single-use challenge and Apple's pinned certificate root. This switch stays
-separate while Android attestation is built (bipe#92/#132).
+single-use challenge and Apple's pinned certificate root.
+
+## Android Key Attestation policy
+
+Android sends `key_attestation_chain` (bipe#92, `src/key-attest.ts`, no Google
+library). The chain must end at one of Google's attestation roots in
+`certs/google-key-attestation-roots.pem`, carry the single-use challenge, and
+name an app in `ANDROID_ATTEST_PACKAGES` (default `chat.bipe.app`,
+`chat.bipe.app.next`, `chat.bipe.app.next.debug`). When
+`ANDROID_ATTEST_CERT_DIGESTS` (hex SHA-256 of the signing certificates) is
+set, one digest must match. Leave it empty while tester builds use CI debug
+keys. A chain that fails one of these checks gets `attestation_invalid`, and
+so does a chain with a certificate on Google's revocation list, which the API
+loads every 6 hours.
+
+A valid chain makes the phone attested only with a hardware keystore (TEE or
+StrongBox), a locked bootloader and boot state `Verified`, or `SelfSigned`
+with a key in `ANDROID_ATTEST_BOOT_KEYS` (GrapheneOS, ADR 0043). Without the
+revocation list, no phone counts as attested. Otherwise the sign-up goes on as
+if no attestation was sent: `SIGNUP_ATTEST_REQUIRED` and company accounts
+decide. Rooted phones and custom ROMs keep sign-up.
 
 Run the isolated policy tests:
 
@@ -33,10 +52,11 @@ Run the isolated policy tests:
 pnpm test:attest
 ```
 
-They use synthetic certificate chains. They cover production/development
+They use synthetic certificate chains. They cover Android chains (root, chain,
+revocation, challenge, package, signing digest, boot state), production/development
 separation, team and bundle mismatches, pinned trust, challenge reuse and
 expiry, nonce binding, startup validation and optional signup behavior.
-They do not prove that a real TestFlight device can attest.
+They do not prove that a real TestFlight device or Android phone can attest.
 
 ## Scheduling calculation
 

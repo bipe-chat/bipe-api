@@ -4,6 +4,9 @@ import { z } from "zod";
 const emptyAsUnset = <T extends z.ZodType>(schema: T) =>
   z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : typeof v === "string" ? v.trim() : v), schema.optional());
 
+const list = (v: string) => v.split(",").map((s) => s.trim()).filter(Boolean);
+const ANDROID_PACKAGES_DEFAULT = "chat.bipe.app,chat.bipe.app.next,chat.bipe.app.next.debug";
+
 const Env = z.object({
   PORT: z.coerce.number().int().default(8080),
   DATABASE_URL: z.string().min(1),
@@ -27,6 +30,15 @@ const Env = z.object({
   APP_ATTEST_APP_IDS: z.string().transform((v) => v.split(",").map((s) => s.trim())).pipe(
     z.array(z.string().regex(/^[A-Z0-9]{10}\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/, "TEAMID.bundleid")).min(1),
   ),
+  // Android Key Attestation (bipe#92, ADR 0043). Package names of the Bipe app: the store ID and the Bipe Next tester IDs.
+  // Empty (Compose) means the default.
+  ANDROID_ATTEST_PACKAGES: z.string().optional().transform((v) => list(v?.trim() ? v : ANDROID_PACKAGES_DEFAULT)).pipe(
+    z.array(z.string().regex(/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/, "package name")).min(1),
+  ),
+  // Lower-case hex SHA-256 of the app signing certificates. Empty: not checked (the CI debug key changes every run).
+  ANDROID_ATTEST_CERT_DIGESTS: z.string().default("").transform((v) => list(v.toLowerCase())).pipe(z.array(z.string().regex(/^[0-9a-f]{64}$/, "sha256 hex"))),
+  // Lower-case hex verified boot keys of custom operating systems that count as attested (GrapheneOS, ADR 0043).
+  ANDROID_ATTEST_BOOT_KEYS: z.string().default("").transform((v) => list(v.toLowerCase())).pipe(z.array(z.string().regex(/^[0-9a-f]{64}$/, "sha256 hex"))),
   SIGNUP_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   // Personal invites each user may hold (pending plus used), before admin grants.
   INVITES_PER_USER: z.coerce.number().int().nonnegative().default(10),

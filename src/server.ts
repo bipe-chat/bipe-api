@@ -13,6 +13,7 @@ import { Mas } from "./mas.js";
 import { RateLimiter } from "./ratelimit.js";
 import { SignupLimits } from "./signup-limits.js";
 import { newChallenge } from "./attest.js";
+import { refreshKeyAttestationStatus } from "./key-attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
@@ -137,6 +138,10 @@ setInterval(pruneGovbr, 24 * 3_600_000).unref();
 const kickScan = () => void runScan(db, config, "pending").catch((e) => console.error(`cnpj scan failed: ${(e as Error).message}`));
 setInterval(kickScan, 15 * 60_000).unref();
 
+// Android Key Attestation (bipe#92): Google's list of revoked attestation keys.
+void refreshKeyAttestationStatus();
+setInterval(() => void refreshKeyAttestationStatus(), 6 * 3_600_000).unref();
+
 // Handle change history retention (ADR 0066). Logs the count only.
 const pruneChanges = () =>
   void pruneHandleChanges(db)
@@ -187,12 +192,22 @@ const SignupBody = z.object({
   lang: Lang.optional(),
   handle: z.string().max(64).optional(),
   display_name: z.string().max(100).optional(),
+  // One form: Apple App Attest or Android Key Attestation (bipe#92). Both fields at once are a bad request.
   attestation: z
-    .object({
-      key_id: z.string().min(1).max(128),
-      attestation_object: z.string().min(1).max(16_384),
-      challenge: z.string().min(1).max(128),
-    })
+    .union([
+      z.object({
+        key_attestation_chain: z.array(z.string().min(1).max(8192)).min(2).max(8),
+        challenge: z.string().min(1).max(128),
+        key_id: z.never().optional(),
+        attestation_object: z.never().optional(),
+      }),
+      z.object({
+        key_id: z.string().min(1).max(128),
+        attestation_object: z.string().min(1).max(16_384),
+        challenge: z.string().min(1).max(128),
+        key_attestation_chain: z.never().optional(),
+      }),
+    ])
     .optional(),
   signup_key: z.string().regex(SECRET_PATTERN).optional(),
   terms_version: z.string().regex(TERMS_VERSION_PATTERN).optional(),
