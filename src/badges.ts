@@ -8,7 +8,7 @@ import { join } from "node:path";
 import pg from "pg";
 import type { Db } from "./db.js";
 import { cvmField } from "./cvm.js";
-import { badgeRules } from "./registry.js";
+import { badgeRules, brandMarkRules } from "./registry.js";
 
 const KID = /^prod-\d{4}-(0[1-9]|1[0-2])$/;
 // Matrix unpadded base64 of a 32-byte Ed25519 key (master key and device key).
@@ -100,6 +100,65 @@ export class Badges {
     const envelope = this.signPayload(payload);
     this.cache.set(userId, { key: cacheKey, exp, envelope });
     return { status: 200, envelope };
+  }
+
+  /**
+   * The brand behind a mark (ADR 0162): a verified claim with an active registry record, as for its own badge.
+   * Its name is the name of the brand's CNPJ badge. null: the account may not grant marks.
+   */
+  async verifiedBrand(userId: string): Promise<{ name: string; cnpj: string } | null> {
+    const { rows } = await this.db.query<{ cnpj: string; legal_name: string | null; trade_name: string | null }>(
+      `SELECT c.cnpj, r.legal_name, r.trade_name FROM business_claims c JOIN cnpj_registry r ON r.cnpj = c.cnpj
+        WHERE c.user_id = $1 AND c.status = 'verified' AND c.method IS NOT NULL AND c.verified_at IS NOT NULL
+          AND r.active AND r.legal_name IS NOT NULL AND r.release_month IS NOT NULL`,
+      [userId],
+    );
+    const row = rows[0];
+    return row?.legal_name ? { name: row.trade_name || row.legal_name, cnpj: row.cnpj } : null;
+  }
+
+  /**
+   * The active brand marks of a reseller's work account as lvl "brand-mark" envelopes (ADR 0162 point 7), oldest
+   * grant first. A mark whose brand lost its seal is left out. No signing key or no master key: no marks.
+   */
+  async brandMarks(userId: string, now = Math.floor(Date.now() / 1000)): Promise<BadgeEnvelope[]> {
+    if (!this.key || !this.synapse) return [];
+    const { rows } = await this.db.query<{ id: string; brand_user_id: string; label: string }>(
+      `SELECT id, brand_user_id, label FROM brand_marks WHERE reseller_user_id = $1 AND ended_at IS NULL
+        ORDER BY granted_at, id LIMIT $2`,
+      [userId, brandMarkRules.maxPerAccount],
+    );
+    if (rows.length === 0) return [];
+    const msk = await this.masterKey(userId);
+    if (!msk) return [];
+    const envelopes: BadgeEnvelope[] = [];
+    for (const mark of rows) {
+      const brand = await this.verifiedBrand(mark.brand_user_id);
+      if (!brand || !brandMarkRules.labels.includes(mark.label)) continue;
+      const cacheKey = JSON.stringify([mark.id, mark.brand_user_id, mark.label, brand.name, brand.cnpj, msk, this.key.kid]);
+      const cached = this.cache.get(`mark:${mark.id}`);
+      if (cached && cached.key === cacheKey && now < cached.exp - badgeRules.renewDaysBeforeExpiry * DAY) {
+        envelopes.push(cached.envelope);
+        continue;
+      }
+      const exp = now + badgeRules.lifeDays * DAY;
+      const payload = {
+        sub: userId,
+        lvl: "brand-mark",
+        name: brand.name,
+        mark: mark.id,
+        brand: mark.brand_user_id,
+        cnpj: brand.cnpj,
+        label: mark.label,
+        msk,
+        iat: now,
+        exp,
+      };
+      const envelope = this.signPayload(payload);
+      this.cache.set(`mark:${mark.id}`, { key: cacheKey, exp, envelope });
+      envelopes.push(envelope);
+    }
+    return envelopes;
   }
 
   /** A person badge (lvl pix or govbr), bound to the device key the user verified from. */

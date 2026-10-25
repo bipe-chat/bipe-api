@@ -38,6 +38,7 @@ import { recordKeychainMove } from "./transfer.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
+import { BrandMarks } from "./brand-marks.js";
 import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugReportFile, submitBugReport, type BugReportDeps } from "./bug-reports.js";
 import { Intake, verifyIntakeSignature } from "./intake.js";
 import { SupportBot } from "./support.js";
@@ -75,6 +76,7 @@ const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_
 const support = new SupportBot(db, config, intake);
 const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL, support };
 console.log(`badges: ${badges.state}`);
+const brandMarks = new BrandMarks(db, (id) => badges.verifiedBrand(id), config.PUBLIC_SITE_URL);
 console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" : "off (no STARLINGS_APP_INTAKE_KEY)"}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
@@ -150,6 +152,10 @@ const limits = {
   govbrDocument: new RateLimiter(20, 3_600_000),
   propostaLogin: new RateLimiter(10, 15 * 60_000),
   propostaBeacon: new RateLimiter(600, 3_600_000),
+  // Brand marks (ADR 0162).
+  brandMarks: new RateLimiter(120, 60_000),
+  brandMarkInvite: new RateLimiter(30, 3_600_000),
+  brandMarkCode: new RateLimiter(60, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -194,6 +200,14 @@ const pruneWaitlistEntries = () =>
     .catch((e) => console.error(`waitlist prune failed: ${(e as Error).message}`));
 pruneWaitlistEntries();
 setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
+// Brand marks (ADR 0162): ended marks and events after 365 days, unused invites 30 days after they expire.
+const pruneBrandMarks = () =>
+  void brandMarks
+    .prune()
+    .then((n) => n > 0 && console.log(`brand mark rows pruned: ${n}`))
+    .catch((e) => console.error(`brand mark prune failed: ${(e as Error).message}`));
+pruneBrandMarks();
+setInterval(pruneBrandMarks, 24 * 3_600_000).unref();
 support.start();
 news.start();
 if (config.CVM_REFRESH) startCvmRefresh(db);
@@ -231,6 +245,7 @@ const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth s
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
 const CnpjBody = z.object({ cnpj: z.string().max(32) });
+const BrandMarkInviteBody = z.object({ label: z.string().max(32) });
 const EcnpjBody = z.object({ signature: z.string().min(1).max(131_072) });
 const DomainBody = z.object({ domain: z.string().max(253) });
 
@@ -860,6 +875,59 @@ app.get("/v1/badges/:userId", async (c) => {
   if (result.status === 410) return c.json({ reason: result.reason }, 410);
   if (result.status === 404) throw new ApiError("not_found");
   return c.json(result.envelope);
+});
+
+// Brand marks (ADR 0162, bipe#483). Public like the badge: customers check a reseller's marks. The apps verify each
+// envelope locally and keep the answer for at most recheckMinutes.
+app.use("/v1/brand-marks/:userId", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.get("/v1/brand-marks/:userId", async (c) => {
+  limits.brandMarks.check(clientIp(c));
+  const userId = c.req.param("userId");
+  if (!/^@[^:\s]{1,255}:[^\s]{1,255}$/.test(userId)) return c.json({ marks: [] });
+  c.header("cache-control", "public, max-age=60");
+  return c.json({ marks: await badges.brandMarks(userId) });
+});
+
+app.post("/v1/me/brand-marks/invites", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.brandMarkInvite.check(userId);
+  const body = BrandMarkInviteBody.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) throw new ApiError("bad_request");
+  return c.json(await brandMarks.createInvite(userId, body.data.label), 201);
+});
+app.delete("/v1/me/brand-marks/invites/:inviteId", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await brandMarks.cancelInvite(userId, c.req.param("inviteId"));
+  return c.body(null, 204);
+});
+app.get("/v1/me/brand-marks/granted", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await brandMarks.granted(userId));
+});
+app.get("/v1/me/brand-marks", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await brandMarks.held(userId));
+});
+app.delete("/v1/me/brand-marks/:markId", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await brandMarks.end(userId, c.req.param("markId"));
+  return c.body(null, 204);
+});
+app.get("/v1/brand-marks/invites/:code", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.brandMarkCode.check(userId);
+  return c.json(await brandMarks.preview(c.req.param("code")));
+});
+app.post("/v1/brand-marks/invites/:code/accept", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.brandMarkCode.check(userId);
+  return c.json(await brandMarks.accept(userId, c.req.param("code")), 201);
+});
+app.post("/v1/brand-marks/invites/:code/refuse", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.brandMarkCode.check(userId);
+  await brandMarks.refuse(userId, c.req.param("code"));
+  return c.body(null, 204);
 });
 
 // Account type (ADR 0132): the apps draw a company avatar as a rounded square. Public, like the badge.
