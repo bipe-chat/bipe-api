@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "$comment": "First run for new and returning users (bipe-chat/bipe#415, ADR 0072, ADR 0113). One source for the start screen, the sign-up steps, the recovery rows and the later prompts on iOS and Android. `start`: the start screen variant per state; exactly one variant matches each pair of `invitePending` (an invite came from a link or a deferred install) and `inviteRequired` (GET /v1/signup/config). Every screen has one `primary` (filled) button and zero or more `text` buttons. `to` is a step key, `recovery`, `waitlist` or `create` (POST /v1/signup). `steps` are the sign-up screens in order. `recovery` rows are in screen order; `when` names the state that shows a row; `gate` is `planned:<issue>` for a row that stays hidden until bipe-chat/bipe#<issue> ships. `prompts` come after the account exists; `trigger` says when. Titles and bodies are bipe_* string keys.",
+  "$comment": "First run for new and returning users (bipe-chat/bipe#415, ADR 0072, ADR 0113). One source for the start screen, the sign-up steps, the recovery rows and the later prompts on iOS and Android. `start`: the start screen variant per state; exactly one variant matches each pair of `invitePending` (an invite came from a link or a deferred install) and `inviteRequired` (GET /v1/signup/config). Every screen has one `primary` (filled) button and zero or more `text` buttons. `to` is a step key, `recovery`, `waitlist` or `create` (POST /v1/signup). `steps` are the sign-up screens in order. `recovery` rows are in screen order; `when` names the state that shows a row; `gate` is `planned:<issue>` for a row that stays hidden until bipe-chat/bipe#<issue> ships. `prompts` come after the account exists; `trigger` says when. `chatListWithoutRecovery` (bipe#531): GET /v1/me/account says independent_recovery false, the account is at least accounts.json recoveryReminder.firstAfterDays old on this phone and the snooze ended; the handle card goes first, one card at a time (spec recovery-reminder). Titles and bodies are bipe_* string keys.",
   "start": [
     {
       "key": "invited",
@@ -83,6 +83,14 @@
       "title": "bipe_handle_prompt_title",
       "body": "bipe_handle_prompt_body",
       "primary": { "title": "bipe_handle_prompt_action", "to": "handleScreen" },
+      "text": [{ "title": "bipe_fallback_skip", "to": "dismiss" }]
+    },
+    {
+      "key": "recovery",
+      "trigger": "chatListWithoutRecovery",
+      "title": "bipe_fallback_title",
+      "body": "bipe_fallback_reminder",
+      "primary": { "title": "bipe_fallback_email", "to": "recoveryEmailAdd" },
       "text": [{ "title": "bipe_fallback_skip", "to": "dismiss" }]
     }
   ]
