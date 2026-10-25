@@ -605,6 +605,7 @@
     "bipe_linked_account_unlinked": "Conta desvinculada.",
     "bipe_linked_account_error": "Não deu para vincular esta conta. Tente de novo.",
     "bipe_linked_account_unlink_error": "Não deu para desvincular esta conta. Tente de novo.",
+    "bipe_linked_account_taken": "Essa conta já está vinculada a outra conta do Bipe.",
     "bipe_recovery_apple": "Com minha conta Apple",
     "bipe_recovery_google": "Com minha conta Google",
     "bipe_recovery_linked_body": "Entre na conta que vinculou ao Bipe. Depois vem sua senha de 8 números e uma espera de %1$s horas.",

@@ -1,0 +1,9 @@
+{
+  "$comment": "Pix request marks (ADR 0046, bipe-chat/bipe#130). Bipe is not in the money path (ADR 0012): \"pago\" comes from two marks on the request card, never from bank data. A mark is a room event of eventType whose content has m.relates_to {rel_type: relType, event_id: <the card event>}, mark (one of marks), payer (the payer's user ID: the line of a split card; may be left out on a card with one payer) and, on sent only, e2e_id (the payer's claim from the bank receipt, format e2eIdPattern: E, the 8-digit ISPB, 23 letters or digits). Only the payer of the line marks sent; only the requester (the card's sender) marks received or not_received. Transitions per line, from issued: sent from issued, sent or not_received; received from issued, sent or not_received; not_received from sent or received. Marks are read in origin_server_ts order, ties by event ID. A mark that breaks a rule is rejected and never changes a line; every accepted mark stays in the line history, so a correction shows both events. A line is paid only in state received. The BR Code txid of a card is its request ID: letters and digits only, at most txidMaxLength. Reference implementation: pixMarkLines and pixTxid in tools/lib/pix.mjs; cases: test-vectors/pix-marks.json.",
+  "version": 1,
+  "eventType": "chat.bipe.pix_mark",
+  "relType": "m.reference",
+  "marks": ["sent", "received", "not_received"],
+  "e2eIdPattern": "^E[0-9]{8}[A-Za-z0-9]{23}$",
+  "txidMaxLength": 25
+}
