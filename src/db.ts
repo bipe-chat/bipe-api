@@ -355,6 +355,182 @@ const MIGRATIONS = [
      backfill_done_at timestamptz
    );
    INSERT INTO news_state (id) VALUES (1);`,
+  // Catálogo (ADR 0104) and Agenda (ADRs 0099 to 0103, docs/scheduling.md). One item table holds products and
+  // services; a service has scheduling fields only when the Agenda uses it. Bookings keep no customer text (ADR 0102).
+  // No two active bookings of one agenda overlap, buffers included: the exclusion constraint uses the agenda's
+  // bigint key as a one-point range, so it needs no btree_gist extension.
+  `CREATE TABLE catalog_items (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     kind text NOT NULL CHECK (kind IN ('service', 'product')),
+     name text NOT NULL,
+     price jsonb NOT NULL,
+     description text,
+     category text,
+     active boolean NOT NULL,
+     sort integer NOT NULL CHECK (sort >= 0),
+     sold_out_on date,
+     duration_minutes integer CHECK (duration_minutes >= 1),
+     buffer_before_minutes integer CHECK (buffer_before_minutes >= 0),
+     buffer_after_minutes integer CHECK (buffer_after_minutes >= 0),
+     agenda_ids text[],
+     photo bytea,
+     photo_version text,
+     archived_at timestamptz,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX catalog_items_business ON catalog_items (business_id, sort, id) WHERE archived_at IS NULL;
+   CREATE TABLE agenda_settings (
+     business_id text PRIMARY KEY,
+     published boolean NOT NULL DEFAULT false,
+     time_zone text NOT NULL,
+     min_notice_minutes integer NOT NULL,
+     horizon_days integer NOT NULL,
+     slot_step_minutes integer NOT NULL,
+     cancel_window_minutes integer NOT NULL,
+     confirm_mode text NOT NULL CHECK (confirm_mode IN ('auto', 'request')),
+     max_open_bookings integer NOT NULL,
+     reminder_minutes integer[] NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE agendas (
+     id text PRIMARY KEY,
+     seq bigserial UNIQUE,
+     business_id text NOT NULL,
+     name text NOT NULL,
+     photo text,
+     active boolean NOT NULL,
+     sort integer NOT NULL CHECK (sort >= 0),
+     availability jsonb NOT NULL DEFAULT '[]',
+     deleted_at timestamptz
+   );
+   CREATE INDEX agendas_business ON agendas (business_id);
+   CREATE TABLE agenda_overrides (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     agenda_id text NOT NULL REFERENCES agendas(id),
+     date_from date NOT NULL,
+     date_to date NOT NULL CHECK (date_to >= date_from),
+     closed boolean NOT NULL,
+     ranges jsonb NOT NULL
+   );
+   CREATE INDEX agenda_overrides_agenda ON agenda_overrides (agenda_id, date_from);
+   CREATE TABLE bookings (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     service_id text NOT NULL REFERENCES catalog_items(id),
+     agenda_id text NOT NULL REFERENCES agendas(id),
+     agenda_seq bigint NOT NULL,
+     start_at timestamptz NOT NULL,
+     end_at timestamptz NOT NULL CHECK (end_at > start_at),
+     busy_start timestamptz NOT NULL,
+     busy_end timestamptz NOT NULL CHECK (busy_end > busy_start),
+     buffer_before_minutes integer NOT NULL,
+     buffer_after_minutes integer NOT NULL,
+     status text NOT NULL CHECK (status IN ('held', 'requested', 'confirmed', 'done', 'cancelled', 'no_show')),
+     customer_id text,
+     customer_name text,
+     CHECK ((customer_id IS NULL) <> (customer_name IS NULL)),
+     source text NOT NULL CHECK (source IN ('customer', 'owner')),
+     hold_expires_at timestamptz,
+     ended_reason text,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now(),
+     EXCLUDE USING gist (int8range(agenda_seq, agenda_seq, '[]') WITH =, tstzrange(busy_start, busy_end) WITH &&)
+       WHERE (status IN ('held', 'requested', 'confirmed'))
+   );
+   CREATE INDEX bookings_business ON bookings (business_id, start_at);
+   CREATE INDEX bookings_customer ON bookings (customer_id, start_at) WHERE customer_id IS NOT NULL;`,
+  // Fila virtual (ADR 0107), Orçamento (ADR 0106), Pedidos (ADR 0105). Records hold IDs, items, amounts, times and
+  // status, never customer text. One active queue place and one open order per customer per business.
+  `CREATE TABLE queue_settings (
+     business_id text PRIMARY KEY,
+     no_show_after_minutes integer NOT NULL CHECK (no_show_after_minutes >= 1)
+   );
+   CREATE TABLE queues (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     day date NOT NULL,
+     time_zone text NOT NULL,
+     open boolean NOT NULL,
+     UNIQUE (business_id, day)
+   );
+   CREATE TABLE queue_places (
+     id text PRIMARY KEY,
+     queue_id text NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
+     business_id text NOT NULL,
+     customer_id text,
+     customer_name text,
+     CHECK ((customer_id IS NULL) <> (customer_name IS NULL)),
+     source text NOT NULL CHECK (source IN ('customer', 'owner')),
+     service_id text,
+     status text NOT NULL CHECK (status IN ('waiting', 'called', 'served', 'no_show', 'left')),
+     joined_at timestamptz NOT NULL DEFAULT now(),
+     called_at timestamptz,
+     served_at timestamptz
+   );
+   CREATE INDEX queue_places_queue ON queue_places (queue_id, joined_at);
+   CREATE UNIQUE INDEX queue_places_one_active ON queue_places (business_id, customer_id)
+     WHERE customer_id IS NOT NULL AND status IN ('waiting', 'called');
+   CREATE TABLE quote_requests (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     customer_id text NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX quote_requests_business ON quote_requests (business_id, created_at);
+   CREATE TABLE quotes (
+     id text PRIMARY KEY,
+     request_id text NOT NULL UNIQUE REFERENCES quote_requests(id),
+     business_id text NOT NULL,
+     customer_id text NOT NULL,
+     status text NOT NULL CHECK (status IN ('offered', 'accepted', 'refused')),
+     current_version integer NOT NULL,
+     booking_id text,
+     order_id text,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX quotes_business ON quotes (business_id, updated_at);
+   CREATE INDEX quotes_customer ON quotes (customer_id, updated_at);
+   CREATE TABLE quote_versions (
+     quote_id text NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+     version integer NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     valid_until timestamptz NOT NULL,
+     lines jsonb NOT NULL,
+     total_amount_cents bigint NOT NULL,
+     visit_service_id text,
+     PRIMARY KEY (quote_id, version)
+   );
+   CREATE TABLE order_settings (
+     business_id text PRIMARY KEY,
+     time_zone text NOT NULL,
+     weekdays integer[] NOT NULL,
+     cutoff text NOT NULL
+   );
+   CREATE TABLE orders (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     customer_id text,
+     customer_name text,
+     CHECK ((customer_id IS NULL) <> (customer_name IS NULL)),
+     source text NOT NULL CHECK (source IN ('customer', 'owner')),
+     lines jsonb NOT NULL,
+     total_amount_cents bigint NOT NULL,
+     fulfilment text NOT NULL CHECK (fulfilment IN ('pickup', 'delivery')),
+     payment text NOT NULL CHECK (payment IN ('in_person', 'pix')),
+     status text NOT NULL CHECK (status IN ('sent', 'accepted', 'refused', 'ready', 'done', 'cancelled')),
+     refuse_reason text,
+     quote_id text,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX orders_business ON orders (business_id, created_at);
+   CREATE INDEX orders_customer ON orders (customer_id, created_at) WHERE customer_id IS NOT NULL;
+   CREATE UNIQUE INDEX orders_one_open ON orders (business_id, customer_id)
+     WHERE customer_id IS NOT NULL AND status IN ('sent', 'accepted', 'ready');`,
   // Linked Apple or Google account for recovery (ADR 0096, bipe#305). subject_hash: HMAC-SHA256(pepper, issuer + sub);
   // no email, name or provider token. Nonces, states and handoffs are kept as SHA-256 hashes. link_events: 7 days.
   `CREATE TABLE account_links (
