@@ -31,6 +31,8 @@ export function loadRegistries(root) {
     haptics: read("registries/haptics.json"),
     badgeKeys: read("registries/badge-keys.json"),
     clearedChats: read("registries/cleared-chats.json"),
+    imageDescriptions: read("registries/image-descriptions.json"),
+    pixMarks: read("registries/pix-marks.json"),
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
@@ -110,6 +112,7 @@ export function validateLinkedRecovery(accounts) {
   if (linked.delayHours !== 24 || linked.requiresPin !== true || linked.allowsPinReset !== false || linked.maxAccountsPerProvider !== 1) {
     fail("accounts: linked recovery must preserve ADR 0096 (24 hours, existing PIN, no PIN reset, one account per provider)");
   }
+  if (!Number.isInteger(linked.flowMinutes) || linked.flowMinutes < 1 || linked.flowMinutes > 15) fail("accounts: linked recovery flowMinutes must be 1 to 15");
 }
 
 export function validateOfficialAccounts(reg) {
@@ -150,6 +153,11 @@ function validate(reg) {
   const rn = reg.relationshipNames;
   if (rn.comparison !== "normalised-exact" || rn.fullNameMinimumWords !== 2 || rn.familyTerms !== "whole-words" || rn.confirmation !== "saved-label-and-verified-name") fail("relationship-names: unsupported ADR 0018 policy");
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
+  const pxm = reg.pixMarks;
+  if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
+  try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }
+  const desc = reg.imageDescriptions;
+  if (!/^chat\.bipe\.[a-z_]+$/.test(desc.field) || !Number.isInteger(desc.maxLength) || desc.maxLength < 100 || desc.maxLength > 4000) fail("image-descriptions: field must be chat.bipe.<name> and maxLength an integer from 100 to 4000");
   const dm = reg.dmSelection;
   if (dm.order !== "latest-event-descending" || dm.missingActivity !== "last" || dm.tieBreak !== "room-id-ascending"
       || dm.eligibility !== "joined-dm-with-peer" || dm.clearedRooms !== "hide-before-selection" || dm.allClearedStartChat !== "reuse-newest-existing" || dm.filterOrder !== "select-before-unread-or-name") fail("dm-selection: unsupported ADR 0141 policy");
@@ -227,6 +235,8 @@ function validate(reg) {
   if (!/^[0-9]$/.test(ph.mobilePrefix)) fail("phones: mobilePrefix");
   if (!(Number.isInteger(ph.maxInputLength) && ph.maxInputLength > 0)) fail("phones: maxInputLength");
   if (!(Number.isInteger(ph.internationalMinDigits) && ph.internationalMinDigits > 0 && ph.internationalMaxDigits >= ph.internationalMinDigits)) fail("phones: international digit range");
+  if (!(Number.isInteger(ph.linkConfirmMonths) && ph.linkConfirmMonths >= 1 && ph.linkConfirmMonths <= 24)) fail("phones: linkConfirmMonths");
+  if (!(Number.isInteger(ph.linkConfirmWarnDays) && ph.linkConfirmWarnDays >= 1 && ph.linkConfirmWarnDays < ph.linkConfirmMonths * 28)) fail("phones: linkConfirmWarnDays");
   validateBadgeKeys(reg.badgeKeys);
   const ac = reg.accounts;
   validateLinkedRecovery(ac);
@@ -251,6 +261,7 @@ function validate(reg) {
   const lg = reg.legal;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(lg.legalVersion) || Number.isNaN(Date.parse(`${lg.legalVersion}T00:00:00Z`))) fail("legal: legalVersion must be YYYY-MM-DD");
   for (const k of ["termsPath", "privacyPath", "enTermsPath", "enPrivacyPath"]) if (!/^\/[a-z/-]+\/$/.test(lg[k] ?? "")) fail(`legal: ${k}`);
+  for (const k of ["homePath", "enHomePath"]) if (!/^\/([a-z/-]+\/)?$/.test(lg[k] ?? "")) fail(`legal: ${k}`);
   // Growth events (ADR 0098): a fixed list, no content.
   const gr = reg.growth;
   const growthIds = new Set();
