@@ -5,6 +5,7 @@ import type { Badges } from "./badges.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { problemWithProfile, profileRules } from "./registry.js";
+import { recordProfileChange } from "./profile-facts.js";
 
 type Row = { enabled: boolean; name: string; bio: string; photo_version: string | null };
 
@@ -85,11 +86,14 @@ export async function saveProfile(
     const { rowCount } = await db.query("SELECT 1 FROM handles WHERE user_id = $1", [userId]);
     if (!rowCount) throw new ApiError("profile_invalid", "no_handle");
   }
+  const { rows: before } = await db.query<{ name: string }>("SELECT name FROM public_profiles WHERE user_id = $1", [userId]);
   await db.query(
     `INSERT INTO public_profiles (user_id, enabled, name, bio) VALUES ($1, $2, $3, $4)
      ON CONFLICT (user_id) DO UPDATE SET enabled = EXCLUDED.enabled, name = EXCLUDED.name, bio = EXCLUDED.bio, updated_at = now()`,
     [userId, update.enabled, name, bio],
   );
+  // ADR 0049: a changed public name is a change fact (the date only). A first name is not a change.
+  if (before[0]?.name && before[0].name !== name) await recordProfileChange(db, userId, "name", "public");
   return myProfile(db, apiUrl, userId);
 }
 
@@ -100,11 +104,17 @@ export async function setPhoto(db: Db, apiUrl: string, userId: string, body: Uin
      ON CONFLICT (user_id) DO UPDATE SET photo = EXCLUDED.photo, photo_version = EXCLUDED.photo_version, updated_at = now()`,
     [userId, photo, randomBytes(6).toString("base64url")],
   );
+  // ADR 0049: a new public photo is a change fact (the date only).
+  await recordProfileChange(db, userId, "photo", "public");
   return myProfile(db, apiUrl, userId);
 }
 
 export async function deletePhoto(db: Db, apiUrl: string, userId: string) {
-  await db.query("UPDATE public_profiles SET photo = NULL, photo_version = NULL, updated_at = now() WHERE user_id = $1", [userId]);
+  const { rowCount } = await db.query(
+    "UPDATE public_profiles SET photo = NULL, photo_version = NULL, updated_at = now() WHERE user_id = $1 AND photo IS NOT NULL",
+    [userId],
+  );
+  if (rowCount) await recordProfileChange(db, userId, "photo", "public");
   return myProfile(db, apiUrl, userId);
 }
 

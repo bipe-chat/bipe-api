@@ -55,6 +55,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       "SELECT old_handle, new_handle, source, changed_at FROM handle_changes WHERE user_id = $1 ORDER BY changed_at",
       userId,
     ),
+    profile_changes: await all(db, "SELECT kind, source, changed_at FROM profile_changes WHERE user_id = $1 ORDER BY changed_at", userId),
     public_profile: profile && {
       enabled: profile.enabled,
       name: profile.name,
