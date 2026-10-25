@@ -32,6 +32,7 @@ export function loadRegistries(root) {
     badgeKeys: read("registries/badge-keys.json"),
     clearedChats: read("registries/cleared-chats.json"),
     imageDescriptions: read("registries/image-descriptions.json"),
+    pixMarks: read("registries/pix-marks.json"),
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
@@ -114,6 +115,9 @@ function validate(reg) {
   const rn = reg.relationshipNames;
   if (rn.comparison !== "normalised-exact" || rn.fullNameMinimumWords !== 2 || rn.familyTerms !== "whole-words" || rn.confirmation !== "saved-label-and-verified-name") fail("relationship-names: unsupported ADR 0018 policy");
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
+  const pxm = reg.pixMarks;
+  if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
+  try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }
   const desc = reg.imageDescriptions;
   if (!/^chat\.bipe\.[a-z_]+$/.test(desc.field) || !Number.isInteger(desc.maxLength) || desc.maxLength < 100 || desc.maxLength > 4000) fail("image-descriptions: field must be chat.bipe.<name> and maxLength an integer from 100 to 4000");
   const dm = reg.dmSelection;
@@ -212,6 +216,7 @@ function validate(reg) {
   const lg = reg.legal;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(lg.legalVersion) || Number.isNaN(Date.parse(`${lg.legalVersion}T00:00:00Z`))) fail("legal: legalVersion must be YYYY-MM-DD");
   for (const k of ["termsPath", "privacyPath", "enTermsPath", "enPrivacyPath"]) if (!/^\/[a-z/-]+\/$/.test(lg[k] ?? "")) fail(`legal: ${k}`);
+  for (const k of ["homePath", "enHomePath"]) if (!/^\/([a-z/-]+\/)?$/.test(lg[k] ?? "")) fail(`legal: ${k}`);
   // Growth events (ADR 0098): a fixed list, no content.
   const gr = reg.growth;
   const growthIds = new Set();
