@@ -35,6 +35,7 @@ export function loadRegistries(root) {
     pixMarks: read("registries/pix-marks.json"),
     dataUse: read("registries/data-use.json"),
     brandMarks: read("registries/brand-marks.json"),
+    voiceTranscript: read("registries/voice-transcript.json"),
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
@@ -165,6 +166,10 @@ function validate(reg) {
   if (!Number.isInteger(bm.maxPerAccount) || bm.maxPerAccount < 1) fail("brand-marks: maxPerAccount must be a positive integer");
   if (!Number.isInteger(bm.inviteDays) || bm.inviteDays < 1) fail("brand-marks: inviteDays must be a positive integer");
   if (!Number.isInteger(bm.recheckMinutes) || bm.recheckMinutes < 1) fail("brand-marks: recheckMinutes must be a positive integer");
+  const vt = reg.voiceTranscript;
+  if (typeof vt.pauseSeconds !== "number" || vt.pauseSeconds <= 0 || vt.pauseSeconds > 10) fail("voice-transcript: pauseSeconds must be a number from 0 to 10");
+  if (!Number.isInteger(vt.minCharacters) || !Number.isInteger(vt.maxCharacters) || vt.minCharacters < 1 || vt.maxCharacters <= vt.minCharacters) fail("voice-transcript: minCharacters and maxCharacters must be positive integers, max above min");
+  if (typeof vt.separator !== "string" || !/^\n+$/.test(vt.separator)) fail("voice-transcript: separator must be one or more line breaks");
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }
