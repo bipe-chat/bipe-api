@@ -96,6 +96,13 @@
           ]
         },
         {
+          "key": "theft",
+          "title": "bipe_theft_title",
+          "rows": [
+            { "key": "theftProtection", "title": "bipe_theft_title", "kind": "link", "adr": "0044" }
+          ]
+        },
+        {
           "key": "devices",
           "title": "bipe_account_devices",
           "rows": [
@@ -113,7 +120,8 @@
         {
           "key": "leave",
           "rows": [
-            { "key": "signOut", "title": "bipe_account_sign_out", "kind": "destructive" }
+            { "key": "signOut", "title": "bipe_account_sign_out", "kind": "destructive" },
+            { "key": "delete", "title": "bipe_account_delete", "kind": "destructive", "adr": "0140" }
           ]
         }
       ]
@@ -135,6 +143,7 @@
             { "key": "language", "title": "bipe_settings_language", "footer": "bipe_settings_language_footer", "kind": "action", "gate": "ios" },
             { "key": "mediaQuality", "title": "bipe_chats_media_quality", "kind": "link" },
             { "key": "showMedia", "title": "bipe_chats_show_media", "kind": "choice" },
+            { "key": "dataUse", "title": "bipe_chats_data_use", "kind": "link" },
             { "key": "liveLocation", "title": "bipe_chats_live_location", "footer": "bipe_chats_live_location_footer", "kind": "link" }
           ]
         }

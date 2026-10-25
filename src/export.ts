@@ -42,8 +42,15 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
        FROM recoveries WHERE user_id = $1 ORDER BY created_at`,
       userId,
     ),
+    // ADR 0140: a waiting account deletion request.
+    account_deletion: await one(
+      db,
+      "SELECT id, device_id, redact_messages, state, created_at, due_at FROM account_deletions WHERE user_id = $1 AND state IN ('waiting', 'running')",
+      userId,
+    ),
     // bipe#531: the iPhones that moved their keychain items before the App Store transfer.
     keychain_moves: await all(db, "SELECT device_id, moved_at FROM keychain_moves WHERE user_id = $1 ORDER BY moved_at", userId),
+    work_hours: await one(db, "SELECT enabled, time_zone, days, updated_at FROM work_hours WHERE user_id = $1", userId),
     // ADR 0096: the provider and the dates only. The subject hash is keyed and stays out.
     linked_accounts: await all(db, "SELECT provider, linked_at FROM account_links WHERE user_id = $1 ORDER BY provider", userId),
     link_events: await all(db, "SELECT provider, change, at FROM link_events WHERE user_id = $1 ORDER BY at", userId),
@@ -54,6 +61,8 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       "SELECT old_handle, new_handle, source, changed_at FROM handle_changes WHERE user_id = $1 ORDER BY changed_at",
       userId,
     ),
+    theft: await theftExport(db, userId),
+    profile_changes: await all(db, "SELECT kind, source, changed_at FROM profile_changes WHERE user_id = $1 ORDER BY changed_at", userId),
     public_profile: profile && {
       enabled: profile.enabled,
       name: profile.name,
@@ -125,6 +134,19 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       "SELECT id, business_id, source, lines, total_amount_cents, fulfilment, payment, status, refuse_reason, created_at FROM orders WHERE customer_id = $1 OR business_id = $1 ORDER BY created_at",
       userId,
     ),
+    // Brand marks (ADR 0162): marks the caller holds or granted, the caller's own invites (no code hash) and the steps
+    // the caller took. The other party appears as an account ID, as both sides already see it.
+    brand_marks: await all(
+      db,
+      "SELECT id, brand_user_id, reseller_user_id, label, granted_at, ended_at, ended_by FROM brand_marks WHERE brand_user_id = $1 OR reseller_user_id = $1 ORDER BY granted_at",
+      userId,
+    ),
+    brand_mark_invites: await all(
+      db,
+      "SELECT id, label, created_at, expires_at, ended_at, outcome FROM brand_mark_invites WHERE brand_user_id = $1 ORDER BY created_at",
+      userId,
+    ),
+    brand_mark_events: await all(db, "SELECT mark_id, invite_id, action, at FROM brand_mark_events WHERE actor_user_id = $1 ORDER BY at", userId),
     business_bookings: await all(
       db,
       `SELECT id, service_id, agenda_id, start_at, end_at, status, source, created_at FROM bookings WHERE business_id = $1 ORDER BY start_at`,
@@ -132,3 +154,13 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     ),
   };
 }
+
+/** Guardians the caller chose, the caller's marks and phone records (bipe#600). */
+async function theftExport(db: Db, userId: string) {
+  return {
+    guardians: await all(db, "SELECT guardian_id, added_at FROM guardians WHERE owner_id = $1 ORDER BY added_at", userId),
+    marks: await all(db, "SELECT stolen_at, cleared_at FROM theft_marks WHERE user_id = $1 ORDER BY stolen_at", userId),
+    phones: await all(db, "SELECT device_id, seen_at FROM account_phones WHERE user_id = $1 ORDER BY seen_at", userId),
+  };
+}
+

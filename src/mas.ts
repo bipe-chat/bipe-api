@@ -13,6 +13,14 @@ export class Mas {
     return { id: (await this.json(res)).data.id };
   }
 
+  /** The MAS user and whether MAS already deactivated it (account deletion, ADR 0140). Null when unknown. */
+  async userState(username: string): Promise<{ id: string; deactivated: boolean } | null> {
+    const res = await this.call("GET", `/users/by-username/${encodeURIComponent(username)}`);
+    if (res.status === 404) return null;
+    const { id, attributes: a } = (await this.json(res)).data;
+    return { id, deactivated: Boolean(a?.deactivated_at) };
+  }
+
   /** True only when MAS marks the user admin (mas-cli manage promote-admin) and the user is active. */
   async isAdmin(username: string): Promise<boolean> {
     const res = await this.call("GET", `/users/by-username/${encodeURIComponent(username)}`);
@@ -82,6 +90,46 @@ export class Mas {
     if (!res.ok && res.status !== 400) await this.json(res);
   }
 
+  // Theft mark (ADR 0051, bipe#600). Endpoints of the MAS 1.26 admin API; the session filters are unverified against a
+  // real MAS until the real stack test covers them (test/real).
+
+  async lockUser(userId: string): Promise<void> {
+    const res = await this.call("POST", `/users/${encodeURIComponent(userId)}/lock`, {});
+    if (!res.ok) await this.json(res);
+  }
+
+  async unlockUser(userId: string): Promise<void> {
+    const res = await this.call("POST", `/users/${encodeURIComponent(userId)}/unlock`, {});
+    if (!res.ok) await this.json(res);
+  }
+
+  /** Every active compatibility, OAuth 2.0 and browser session of a user, with its Matrix device when MAS names one. */
+  async activeSessions(userId: string): Promise<MasSession[]> {
+    const out: MasSession[] = [];
+    for (const kind of ["compat-sessions", "oauth2-sessions", "user-sessions"] as const) {
+      let cursor: string | undefined;
+      for (let page = 0; page < 20; page++) {
+        const q = new URLSearchParams({ "filter[user]": userId, "filter[status]": "active", "page[first]": "100" });
+        if (cursor) q.set("page[after]", cursor);
+        const body = await this.json(await this.call("GET", `/${kind}?${q}`));
+        const data = body.data as { id: string; attributes?: { device_id?: string | null; scope?: string | null; finished_at?: string | null } }[];
+        for (const s of data) {
+          if (s.attributes?.finished_at) continue;
+          out.push({ kind, id: s.id, deviceId: deviceOf(s.attributes) });
+        }
+        if (data.length < 100) break;
+        cursor = data.at(-1)!.id;
+      }
+    }
+    return out;
+  }
+
+  async finishSession(session: MasSession): Promise<void> {
+    const res = await this.call("POST", `/${session.kind}/${encodeURIComponent(session.id)}/finish`, {});
+    // 400: the session is already finished.
+    if (!res.ok && res.status !== 400) await this.json(res);
+  }
+
   async deactivate(userId: string): Promise<void> {
     const res = await this.call("POST", `/users/${userId}/deactivate`, {});
     if (!res.ok) await this.json(res);
@@ -132,3 +180,13 @@ export class Mas {
     return this.token.value;
   }
 }
+
+export type MasSession = { kind: "compat-sessions" | "oauth2-sessions" | "user-sessions"; id: string; deviceId: string | null };
+
+/** The Matrix device of a MAS session: device_id (compatibility) or the device scope token (OAuth 2.0). */
+export function deviceOf(a: { device_id?: string | null; scope?: string | null } | undefined): string | null {
+  if (a?.device_id) return a.device_id;
+  const m = /(?:^| )urn:matrix:(?:org\.matrix\.msc2967\.)?client:device:(\S+)/.exec(a?.scope ?? "");
+  return m?.[1] ?? null;
+}
+

@@ -24,6 +24,8 @@ import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan,
 import { loadPinnedCertificates } from "./cms.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
 import { createGovbrChallenge, GOVBR_PDF_MAX_BYTES, pruneGovbrChallenges, submitGovbrDocument } from "./govbr.js";
+import { ProfileFacts } from "./profile-facts.js";
+import { Theft } from "./theft.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
 import { legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
@@ -35,9 +37,12 @@ import { researchRoutes } from "./research/routes.js";
 import { finishWebLink, Geo } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
+import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
+import { SynapseAdmin } from "./synapse-admin.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
+import { BrandMarks } from "./brand-marks.js";
 import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugReportFile, submitBugReport, type BugReportDeps } from "./bug-reports.js";
 import { Intake, verifyIntakeSignature } from "./intake.js";
 import { SupportBot } from "./support.js";
@@ -45,6 +50,7 @@ import { NewsBot } from "./news.js";
 import { startCvmRefresh } from "./cvm.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
+import { getWorkHours, setWorkHours } from "./work-hours.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
 import { orderHousekeeping } from "./orders.js";
@@ -70,10 +76,13 @@ const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
 const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
+const theft = new Theft(db, mas, badges, config.SERVER_NAME);
+const profileFacts = new ProfileFacts(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_INTAKE_KEY);
 const support = new SupportBot(db, config, intake);
 const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL, support };
 console.log(`badges: ${badges.state}`);
+const brandMarks = new BrandMarks(db, (id) => badges.verifiedBrand(id), config.PUBLIC_SITE_URL);
 console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" : "off (no STARLINGS_APP_INTAKE_KEY)"}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
@@ -92,6 +101,9 @@ const limits = {
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
   handleChanges: new RateLimiter(60, 60_000),
+  profileFacts: new RateLimiter(60, 60_000),
+  theftMarks: new RateLimiter(120, 60_000),
+  theftAction: new RateLimiter(10, 60_000),
   setHandle: new RateLimiter(10, 3_600_000),
   invitePreview: new RateLimiter(30, 60_000),
   invitePreviewHead: new RateLimiter(60, 60_000),
@@ -119,6 +131,8 @@ const limits = {
   credentials: new RateLimiter(5, 3_600_000),
   emailSet: new RateLimiter(5, 3_600_000),
   keychainMove: new RateLimiter(20, 3_600_000),
+  deletion: new RateLimiter(3, 3_600_000),
+  deletionCancel: new RateLimiter(20, 3_600_000),
   emailVerify: new RateLimiter(20, 3_600_000),
   recoveryToken: new RateLimiter(10, 3_600_000),
   recoveryTokenGlobal: new RateLimiter(300, 3_600_000),
@@ -144,11 +158,16 @@ const limits = {
   newsSwitch: new RateLimiter(20, 3_600_000),
   starlingsReply: new RateLimiter(600, 3_600_000),
   banner: new RateLimiter(120, 60_000),
+  workHours: new RateLimiter(30, 3_600_000),
   // gov.br signed challenge (bipe#543).
   govbrChallenge: new RateLimiter(10, 3_600_000),
   govbrDocument: new RateLimiter(20, 3_600_000),
   propostaLogin: new RateLimiter(10, 15 * 60_000),
   propostaBeacon: new RateLimiter(600, 3_600_000),
+  // Brand marks (ADR 0162).
+  brandMarks: new RateLimiter(120, 60_000),
+  brandMarkInvite: new RateLimiter(30, 3_600_000),
+  brandMarkCode: new RateLimiter(60, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -193,8 +212,18 @@ const pruneWaitlistEntries = () =>
     .catch((e) => console.error(`waitlist prune failed: ${(e as Error).message}`));
 pruneWaitlistEntries();
 setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
+// Brand marks (ADR 0162): ended marks and events after 365 days, unused invites 30 days after they expire.
+const pruneBrandMarks = () =>
+  void brandMarks
+    .prune()
+    .then((n) => n > 0 && console.log(`brand mark rows pruned: ${n}`))
+    .catch((e) => console.error(`brand mark prune failed: ${(e as Error).message}`));
+pruneBrandMarks();
+setInterval(pruneBrandMarks, 24 * 3_600_000).unref();
 support.start();
 news.start();
+// Profile change facts (ADR 0049): Synapse profile sync every 15 minutes, 30-day retention.
+profileFacts.start();
 if (config.CVM_REFRESH) startCvmRefresh(db);
 const pruneReports = () =>
   void pruneBugReports(db, config.BUG_REPORTS_DIR)
@@ -226,6 +255,22 @@ const prunePropostaJob = () =>
     .catch((e) => console.error(`strategic page prune failed: ${(e as Error).message}`));
 prunePropostaJob();
 setInterval(prunePropostaJob, 24 * 3_600_000).unref();
+// Account deletion (ADR 0140): due requests run every minute; the kept verification records go after their retention.
+const deletions: DeletionDeps = {
+  ...accounts,
+  synapse: config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null,
+  bugReportsDir: config.BUG_REPORTS_DIR,
+  serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID],
+};
+console.log(`account deletion job: ${deletions.synapse ? "on" : "off (no SYNAPSE_ADMIN_TOKEN): requests wait"}`);
+const deletionJob = () => void runDueDeletions(deletions).catch((e) => console.error(`deletion job failed: ${(e as Error).message}`));
+setInterval(deletionJob, DELETION_TICK_MS).unref();
+const pruneDeletionRecords = () =>
+  void pruneDeletions(db)
+    .then((n) => n > 0 && console.log(`deletion records pruned: ${n}`))
+    .catch((e) => console.error(`deletion prune failed: ${(e as Error).message}`));
+pruneDeletionRecords();
+setInterval(pruneDeletionRecords, 24 * 3_600_000).unref();
 // ADR 0160: one summary email per finished sitting to PROPOSTA_NOTIFY_EMAIL. Never log the address or the email.
 const propostaSummaryJob = () =>
   void sendSummaries(db, accounts.mailer, config.PROPOSTA_NOTIFY_EMAIL)
@@ -236,6 +281,7 @@ const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth s
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
 const CnpjBody = z.object({ cnpj: z.string().max(32) });
+const BrandMarkInviteBody = z.object({ label: z.string().max(32) });
 const EcnpjBody = z.object({ signature: z.string().min(1).max(131_072) });
 const DomainBody = z.object({ domain: z.string().max(253) });
 
@@ -285,6 +331,12 @@ const RedeemBody = z.object({ recovery_token: SecretField, pin: PinField });
 const RecoveryEmailBody = z.object({ email: z.email().max(254) });
 const ConfirmBody = z.object({ token: SecretField, pin: PinField.optional(), new_pin: PinField.optional() });
 const ClaimBody = z.object({ claim_secret: SecretField });
+const TimeField = z.string().max(5);
+const WorkHoursBody = z.object({
+  enabled: z.boolean(),
+  time_zone: z.string().min(1).max(64),
+  days: z.array(z.object({ day: z.number().int(), ranges: z.array(z.object({ start: TimeField, end: TimeField })).max(10) })).max(7),
+});
 const LinkProofBody = z.object({
   id_token: z.string().min(1).max(8192).optional(),
   flow_id: z.string().min(1).max(64).optional(),
@@ -295,6 +347,10 @@ const LinkWebBody = z.object({ app_id: z.enum(APP_IDS) });
 const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
 const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
+const GuardiansBody = z.object({ user_ids: z.array(z.string().max(255)).max(10) });
+const PhoneBody = z.object({ phone_id: z.string().min(16).max(64) });
+const TheftMarksBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
+const ProfileFactsBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
 const HandleChangesBody = z.object({ user_ids: z.array(z.string().max(255)).max(100), since: z.iso.datetime({ offset: true }).optional() });
 // Lengths are checked by problemWithProfile(); these caps only bound the request.
 const ProfileBody = z.object({ enabled: z.boolean(), name: z.string().max(400), bio: z.string().max(2000) });
@@ -380,11 +436,11 @@ app.post("/v1/signup/resume", async (c) => {
 // --- Device-first accounts (ADR 0057, ADR 0059) --------------------------------------------------------
 
 app.get("/v1/me/account", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   // The app signed in, so it has its credentials: the sealed sign-up copy (ADR 0094) can go.
   await forgetSignupReplay(db, userId);
   growth.onboarded(userId);
-  return c.json(await accountStatus(accounts, userId, config.MAX_PERSONAL_ACCOUNTS));
+  return c.json(await accountStatus(accounts, userId, config.MAX_PERSONAL_ACCOUNTS, deviceId));
 });
 
 // ADR 0113: accounts from before the clickwrap, and everyone after a new legalVersion, accept on a re-accept screen.
@@ -461,6 +517,22 @@ app.put("/v1/me/email", async (c) => {
 app.delete("/v1/me/email", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   await removeEmail(accounts, userId);
+  return c.body(null, 204);
+});
+
+// Account deletion (ADR 0140): the owner check ran on the phone; the senha is checked here. 72 hours to cancel.
+const DeletionBody = z.object({ pin: PinField, redact_messages: z.boolean() });
+app.post("/v1/me/deletion", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  limits.deletion.check(userId);
+  const { pin, redact_messages } = await parse(c, DeletionBody);
+  return c.json(await requestDeletion(accounts, userId, deviceId, pin, redact_messages), 201);
+});
+
+app.post("/v1/me/deletions/:id/cancel", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.deletionCancel.check(userId);
+  await cancelDeletion(accounts, userId, c.req.param("id").slice(0, 64));
   return c.body(null, 204);
 });
 
@@ -700,6 +772,18 @@ app.post("/v1/me/support", async (c) => {
 
 // Novidades do Bipe (ADR 0117, bipe#387): the Settings switch. GET reads it, PUT turns news on (a new room when the
 // user left the old one), DELETE turns it off (the app also leaves the room).
+// Work side opening hours (ADR 0138 rule 4, bipe#511). Company accounts only.
+app.get("/v1/me/work-hours", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await getWorkHours(db, userId));
+});
+
+app.put("/v1/me/work-hours", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.workHours.check(userId);
+  return c.json(await setWorkHours(db, userId, await parse(c, WorkHoursBody)));
+});
+
 app.get("/v1/me/news", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   return c.json(await news.state(userId));
@@ -806,6 +890,54 @@ app.post("/v1/handle-changes", async (c) => {
   return c.json(await handleChanges(db, body.user_ids, body.since ? new Date(body.since) : undefined));
 });
 
+// Theft protection (ADR 0044, ADR 0051, bipe#600, bipe#268).
+app.get("/v1/me/guardians", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await theft.state(userId));
+});
+
+app.put("/v1/me/guardians", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.theftAction.check(userId);
+  const body = await parse(c, GuardiansBody);
+  return c.json(await theft.setGuardians(userId, body.user_ids));
+});
+
+app.put("/v1/me/phone", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  const body = await parse(c, PhoneBody);
+  await theft.recordPhone(userId, deviceId, body.phone_id);
+  return c.body(null, 204);
+});
+
+app.post("/v1/theft/:userId/mark", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.theftAction.check(userId);
+  return c.json(await theft.mark(userId, c.req.param("userId")));
+});
+
+app.post("/v1/theft/:userId/clear", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.theftAction.check(userId);
+  await theft.clear(userId, c.req.param("userId"));
+  return c.body(null, 204);
+});
+
+app.post("/v1/theft-marks", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.theftMarks.check(userId);
+  const body = await parse(c, TheftMarksBody);
+  return c.json(await theft.statements(body.user_ids));
+});
+
+// Account age and profile change dates (ADR 0049, bipe#598).
+app.post("/v1/profile-facts", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.profileFacts.check(userId);
+  const body = await parse(c, ProfileFactsBody);
+  return c.json(await profileFacts.facts(body.user_ids));
+});
+
 app.get("/v1/handles/:handle", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.lookup.check(userId);
@@ -847,6 +979,59 @@ app.get("/v1/badges/:userId", async (c) => {
   if (result.status === 410) return c.json({ reason: result.reason }, 410);
   if (result.status === 404) throw new ApiError("not_found");
   return c.json(result.envelope);
+});
+
+// Brand marks (ADR 0162, bipe#483). Public like the badge: customers check a reseller's marks. The apps verify each
+// envelope locally and keep the answer for at most recheckMinutes.
+app.use("/v1/brand-marks/:userId", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.get("/v1/brand-marks/:userId", async (c) => {
+  limits.brandMarks.check(clientIp(c));
+  const userId = c.req.param("userId");
+  if (!/^@[^:\s]{1,255}:[^\s]{1,255}$/.test(userId)) return c.json({ marks: [] });
+  c.header("cache-control", "public, max-age=60");
+  return c.json({ marks: await badges.brandMarks(userId) });
+});
+
+app.post("/v1/me/brand-marks/invites", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.brandMarkInvite.check(userId);
+  const body = BrandMarkInviteBody.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) throw new ApiError("bad_request");
+  return c.json(await brandMarks.createInvite(userId, body.data.label), 201);
+});
+app.delete("/v1/me/brand-marks/invites/:inviteId", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await brandMarks.cancelInvite(userId, c.req.param("inviteId"));
+  return c.body(null, 204);
+});
+app.get("/v1/me/brand-marks/granted", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await brandMarks.granted(userId));
+});
+app.get("/v1/me/brand-marks", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await brandMarks.held(userId));
+});
+app.delete("/v1/me/brand-marks/:markId", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await brandMarks.end(userId, c.req.param("markId"));
+  return c.body(null, 204);
+});
+app.get("/v1/brand-marks/invites/:code", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.brandMarkCode.check(userId);
+  return c.json(await brandMarks.preview(c.req.param("code")));
+});
+app.post("/v1/brand-marks/invites/:code/accept", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.brandMarkCode.check(userId);
+  return c.json(await brandMarks.accept(userId, c.req.param("code")), 201);
+});
+app.post("/v1/brand-marks/invites/:code/refuse", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.brandMarkCode.check(userId);
+  await brandMarks.refuse(userId, c.req.param("code"));
+  return c.body(null, 204);
 });
 
 // Account type (ADR 0132): the apps draw a company avatar as a rounded square. Public, like the badge.

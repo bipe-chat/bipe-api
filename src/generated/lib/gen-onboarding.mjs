@@ -1,8 +1,9 @@
 // First run (registries/onboarding.json, bipe-chat/bipe#415): validation and Swift/Kotlin output.
 
-const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss"];
+const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss", "shareInvite", "shareProfile", "profileQr", "notes", "photoPicker", "pinCheck"];
 const STATES = ["syncedToken"];
-const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery"];
+const CARD_STATES = ["hasHandle"];
+const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "voceWithoutPhoto", "pinReminderDue"];
 const KEY = /^[a-z][A-Za-z]*$/;
 
 function fail(msg) {
@@ -58,9 +59,23 @@ export function validateOnboarding(reg) {
     if (r.when !== undefined && !STATES.includes(r.when)) fail(`${r.key}: when "${r.when}"`);
     if (r.gate !== undefined && !/^(planned:\d+|flag:developer)$/.test(r.gate)) fail(`${r.key}: gate "${r.gate}"`);
   }
+  if (!Number.isInteger(o.promptSlot?.hours) || o.promptSlot.hours < 1) fail("promptSlot.hours must be a whole number of hours");
+  const pr = o.pinReminder;
+  if (!Array.isArray(pr?.days) || pr.days.length === 0 || !pr.days.every((d) => Number.isInteger(d) && d > 0)) fail("pinReminder.days must be whole days");
+  if (!Number.isInteger(pr.thenEveryDays) || pr.thenEveryDays < 1) fail("pinReminder.thenEveryDays must be whole days");
+  const first = o.firstList;
+  if (!first || !Number.isInteger(first.maxChats) || first.maxChats < 0) fail("firstList.maxChats must be a whole number");
+  for (const c of first.cards) {
+    if (!KEY.test(c.key) || first.cards.filter((d) => d.key === c.key).length > 1) fail(`firstList: key "${c.key}"`);
+    needString(c.title, c.key);
+    needString(c.body, c.key);
+    needButtons(c, c.key);
+    if (c.when !== undefined && !CARD_STATES.includes(c.when)) fail(`${c.key}: when "${c.when}"`);
+  }
   for (const p of o.prompts) {
     needKey(p.key, "prompts");
     if (!TRIGGERS.includes(p.trigger)) fail(`${p.key}: trigger "${p.trigger}"`);
+    if (p.slot !== undefined && typeof p.slot !== "boolean") fail(`${p.key}: slot must be true or false`);
     needString(p.title, p.key);
     needString(p.body, p.key);
     needButtons(p, p.key);
@@ -151,6 +166,13 @@ public enum BipeOnboardingPrompt: String, CaseIterable, Sendable {
 ${o.prompts.map((p) => `    case ${p.key}`).join("\n")}
 
 ${screenMembers(o.prompts)}
+
+    /// True when the prompt shares the one prompt slot (\`BipeOnboarding.promptSlotHours\`, bipe-chat/bipe#200).
+    public var usesSlot: Bool {
+        switch self {
+${o.prompts.map((p) => `        case .${p.key}: ${p.slot === true}`).join("\n")}
+        }
+    }
 }
 
 /// Rows of "Já tenho conta", in screen order.
@@ -184,7 +206,27 @@ ${o.recovery.map((r) => `        case .${r.key}: ${opt(r.gate)}`).join("\n")}
     }
 }
 
+/// Cards at the top of Conversas while it lists at most \`BipeOnboarding.firstListMaxChats\` chats (bipe-chat/bipe#198).
+public enum BipeOnboardingCard: String, CaseIterable, Sendable {
+${o.firstList.cards.map((c) => `    case ${c.key}`).join("\n")}
+
+${screenMembers(o.firstList.cards)}
+
+    /// True when the card shows only while the account has an @.
+    public var needsHandle: Bool {
+        switch self {
+${o.firstList.cards.map((c) => `        case .${c.key}: ${c.when === "hasHandle"}`).join("\n")}
+        }
+    }
+}
+
 public enum BipeOnboarding {
+    public static let firstListMaxChats = ${o.firstList.maxChats}
+    /// Hours between two slot prompts on one account (bipe-chat/bipe#200).
+    public static let promptSlotHours = ${o.promptSlot.hours}
+    /// Trigger pinReminderDue (bipe-chat/bipe#202): the gap in days after each step, then pinReminderThenEveryDays.
+    public static let pinReminderDays = [${o.pinReminder.days.join(", ")}]
+    public static let pinReminderThenEveryDays = ${o.pinReminder.thenEveryDays}
     public static let waitlistBodyKey = ${quote(o.waitlist.body)}
     public static let waitlistPrimary = ${button(o.waitlist.primary)}
     public static let waitlistDoneKey = ${quote(o.waitlist.done)}
@@ -234,7 +276,13 @@ ${startTable(o).map(({ p, r, key }) => `            invitePending == ${p} && inv
 
 ${screenEnum("BipeOnboardingStep", "Sign-up screens, in order.", o.steps)}}
 
-${screenEnum("BipeOnboardingPrompt", "Prompts after the account exists.", o.prompts)}}
+${screenEnum("BipeOnboardingPrompt", "Prompts after the account exists.", o.prompts)}
+    /** True when the prompt shares the one prompt slot ([BipeOnboarding.PROMPT_SLOT_HOURS], bipe-chat/bipe#200). */
+    val usesSlot: Boolean
+        get() = when (this) {
+${o.prompts.map((p) => `            ${snake(p.key)} -> ${p.slot === true}`).join("\n")}
+        }
+}
 
 /** Rows of "Já tenho conta", in screen order. gate: "planned:<issue>" = hidden until that issue ships; "flag:developer" = developer builds only. */
 enum class BipeOnboardingRecoveryRow(
@@ -248,7 +296,28 @@ ${o.recovery.map((r) => `    ${snake(r.key)}(${res(r.title)}, ${res(r.body)}, ${
     ;
 }
 
+/** Cards at the top of Conversas while it lists at most [BipeOnboarding.FIRST_LIST_MAX_CHATS] chats (bipe-chat/bipe#198). */
+enum class BipeOnboardingCard(
+    @StringRes val title: Int,
+    @StringRes val body: Int,
+    /** The one filled button. */
+    val primary: BipeOnboardingButton,
+    /** Text buttons, in order under the filled button. */
+    val text: List<BipeOnboardingButton>,
+    /** True when the card shows only while the account has an @. */
+    val needsHandle: Boolean,
+) {
+${o.firstList.cards.map((c) => `    ${snake(c.key)}(${res(c.title)}, ${res(c.body)}, ${button(c.primary)}, listOf(${c.text.map(button).join(", ")}), ${c.when === "hasHandle"}),`).join("\n")}
+    ;
+}
+
 object BipeOnboarding {
+    const val FIRST_LIST_MAX_CHATS: Int = ${o.firstList.maxChats}
+    /** Hours between two slot prompts on one account (bipe-chat/bipe#200). */
+    const val PROMPT_SLOT_HOURS: Int = ${o.promptSlot.hours}
+    /** Trigger pinReminderDue (bipe-chat/bipe#202): the gap in days after each step, then [PIN_REMINDER_THEN_EVERY_DAYS]. */
+    val PIN_REMINDER_DAYS: List<Int> = listOf(${o.pinReminder.days.join(", ")})
+    const val PIN_REMINDER_THEN_EVERY_DAYS: Int = ${o.pinReminder.thenEveryDays}
     @StringRes val waitlistBody: Int = ${res(o.waitlist.body)}
     val waitlistPrimary: BipeOnboardingButton = ${button(o.waitlist.primary)}
     @StringRes val waitlistDone: Int = ${res(o.waitlist.done)}

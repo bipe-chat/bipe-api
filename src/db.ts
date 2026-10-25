@@ -635,6 +635,110 @@ const MIGRATIONS = [
    );
    ALTER TABLE recoveries DROP CONSTRAINT recoveries_method_check;
    ALTER TABLE recoveries ADD CONSTRAINT recoveries_method_check CHECK (method IN ('token', 'email', 'guardian', 'cpf', 'apple', 'google'));`,
+  // Work side opening hours (ADR 0138 rule 4, bipe#511): one row per company account; days as the contract's WorkDay list.
+  `CREATE TABLE work_hours (
+     user_id text PRIMARY KEY,
+     enabled boolean NOT NULL,
+     time_zone text NOT NULL,
+     days jsonb NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );`,
+  // Brand marks for resellers (ADR 0162, bipe#483). Invite codes only as SHA-256. Events: who did what, by account ID.
+  `CREATE TABLE brand_mark_invites (
+     id uuid PRIMARY KEY,
+     brand_user_id text NOT NULL,
+     label text NOT NULL,
+     code_hash text NOT NULL UNIQUE,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     expires_at timestamptz NOT NULL,
+     ended_at timestamptz,
+     outcome text CHECK (outcome IN ('accepted', 'refused', 'cancelled'))
+   );
+   CREATE INDEX brand_mark_invites_brand ON brand_mark_invites (brand_user_id) WHERE ended_at IS NULL;
+   CREATE TABLE brand_marks (
+     id uuid PRIMARY KEY,
+     brand_user_id text NOT NULL,
+     reseller_user_id text NOT NULL,
+     label text NOT NULL,
+     invite_id uuid NOT NULL,
+     granted_at timestamptz NOT NULL DEFAULT now(),
+     ended_at timestamptz,
+     ended_by text
+   );
+   CREATE UNIQUE INDEX brand_marks_active_pair ON brand_marks (brand_user_id, reseller_user_id) WHERE ended_at IS NULL;
+   CREATE INDEX brand_marks_reseller ON brand_marks (reseller_user_id) WHERE ended_at IS NULL;
+   CREATE TABLE brand_mark_events (
+     id bigserial PRIMARY KEY,
+     mark_id uuid,
+     invite_id uuid,
+     action text NOT NULL CHECK (action IN ('invite_created', 'invite_cancelled', 'accepted', 'refused', 'ended')),
+     actor_user_id text NOT NULL,
+     at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX brand_mark_events_actor ON brand_mark_events (actor_user_id, at);`,
+  // Profile change facts (ADR 0049, bipe#598): dates only. The snapshot keeps HMAC digests of the current Synapse display
+  // name and avatar URL to notice a change; never the name, the URL or an image.
+  `CREATE TABLE profile_changes (
+     id bigserial PRIMARY KEY,
+     user_id text NOT NULL,
+     kind text NOT NULL CHECK (kind IN ('name', 'photo')),
+     source text NOT NULL CHECK (source IN ('matrix', 'public')),
+     changed_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX profile_changes_user ON profile_changes (user_id, changed_at);
+   CREATE TABLE profile_snapshots (
+     user_id text PRIMARY KEY,
+     name_digest text NOT NULL,
+     photo_digest text NOT NULL,
+     seen_at timestamptz NOT NULL DEFAULT now()
+   );`,
+  // Account deletion (ADR 0140, bipe#528): one open request per account, the 72-hour wait and the job's progress.
+  // waiting: cancellable until due_at. running: the job started (step = last finished step). done: the account is gone;
+  // the row keeps only user_id and the times, for the verification-record retention. A cancel deletes the row.
+  // last_error holds a step name and an HTTP status, never a body.
+  `CREATE TABLE account_deletions (
+     id text PRIMARY KEY,
+     user_id text NOT NULL,
+     device_id text,
+     redact_messages boolean NOT NULL,
+     state text NOT NULL CHECK (state IN ('waiting', 'running', 'done')),
+     created_at timestamptz NOT NULL DEFAULT now(),
+     due_at timestamptz NOT NULL,
+     step text,
+     redact_id text,
+     tries integer NOT NULL DEFAULT 0,
+     next_try_at timestamptz,
+     last_error text,
+     done_at timestamptz
+   );
+   CREATE UNIQUE INDEX account_deletions_one_open ON account_deletions (user_id) WHERE state IN ('waiting', 'running');
+   CREATE INDEX account_deletions_due ON account_deletions (due_at) WHERE state IN ('waiting', 'running');`,
+  // Theft protection (ADR 0044, ADR 0051, bipe#600, bipe#268): guardians, marks, and the phone of each account device.
+  `CREATE TABLE guardians (
+     owner_id text NOT NULL,
+     guardian_id text NOT NULL,
+     added_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (owner_id, guardian_id)
+   );
+   CREATE INDEX guardians_guardian ON guardians (guardian_id);
+   CREATE TABLE theft_marks (
+     id bigserial PRIMARY KEY,
+     user_id text NOT NULL,
+     stolen_at timestamptz NOT NULL DEFAULT now(),
+     marked_by text NOT NULL,
+     root_id bigint REFERENCES theft_marks (id),
+     cleared_at timestamptz,
+     cleared_by text
+   );
+   CREATE UNIQUE INDEX theft_marks_open ON theft_marks (user_id) WHERE cleared_at IS NULL;
+   CREATE TABLE account_phones (
+     user_id text NOT NULL,
+     device_id text NOT NULL,
+     phone_id text NOT NULL,
+     seen_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, device_id)
+   );
+   CREATE INDEX account_phones_phone ON account_phones (phone_id);`,
   // Strategic pages (ADR 0160): slide titles, leave events (end the time on the last slide), and one summary email
   // per sitting. A proposta_summaries row is written before the send, so a sitting gets at most one email.
   `ALTER TABLE proposta_visits ADD COLUMN title text;

@@ -76,6 +76,14 @@ export class Growth {
     return rows;
   }
 
+  /** Account deletion (ADR 0140): every row of one account, the per-user sync positions included. */
+  async forget(userId: string): Promise<void> {
+    if (!this.secret) return;
+    const uid = this.uid(userId);
+    await this.db.query("DELETE FROM growth_events WHERE uid = $1", [uid]);
+    await this.db.query("DELETE FROM growth_sync WHERE source = $1", [`contact_verified:${uid}`]);
+  }
+
   /** Adds n to (user, event, day). For a `once` event, only the first day counts. */
   private async put(q: Queryable, uid: string, event: string, day: string, n = 1): Promise<void> {
     const rule = events.get(event);

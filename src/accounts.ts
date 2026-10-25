@@ -12,6 +12,7 @@ import { newSecret, PinHasher, sameSecret, SECRET_PATTERN, secretHash } from "./
 import { acceptedTermsVersion } from "./terms.js";
 import { linkState } from "./links.js";
 import { hasIndependentRecovery } from "./transfer.js";
+import { pendingDeletion } from "./deletion.js";
 
 // Device-first accounts: ADR 0057 and ADR 0059 (bipe/docs/adr), security.md rules 5 and 6.
 // - The hidden MAS password is made here, set through the MAS admin API and returned once. Never stored, never logged.
@@ -226,9 +227,12 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
   return row.state;
 }
 
-/** `maxAccounts`: the live cap of personal accounts per phone (ADR 0086). Company accounts do not count. */
-export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts) {
-  const [secrets, emails, recoveries, termsVersion, signupRow, links, independent] = await Promise.all([
+/**
+ * `maxAccounts`: the live cap of personal accounts per phone (ADR 0086). Company accounts do not count.
+ * `deviceId`: the caller's device, so a waiting deletion says whether this device asked (ADR 0140).
+ */
+export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts, deviceId: string | null = null) {
+  const [secrets, emails, recoveries, termsVersion, signupRow, links, independent, deletion] = await Promise.all([
     db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
       "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
       [userId],
@@ -247,6 +251,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     db.query<{ account_type: string }>("SELECT account_type FROM signups WHERE user_id = $1", [userId]),
     linkState(db, userId),
     hasIndependentRecovery(db, userId),
+    pendingDeletion(db, userId, deviceId),
   ]);
   const s = secrets.rows[0];
   const e = emails.rows[0];
@@ -278,6 +283,8 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     independent_recovery: independent,
     // ADR 0096: linked Apple and Google accounts (provider only) and the link changes of the last 7 days.
     ...links,
+    // ADR 0140: the waiting deletion. The device that asked shows a banner; every other device shows the alert.
+    ...(deletion ? { deletion } : {}),
   };
 }
 
