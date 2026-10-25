@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "$comment": "Brand marks for resellers (bipe ADR 0162, bipe-chat/bipe#483). A verified brand (CNPJ seal) grants a mark to a reseller's work account through a single-use invite; the reseller accepts. labels: the fixed words, one string key each (bipe_brand_mark_label_<id>, argument: the brand's name); the brand picks one, no free text. maxPerAccount: active marks one work account holds. inviteDays: life of an unused invite. recheckMinutes: how long the apps keep a fetched mark before they ask again (the same as the CNPJ seal), so a revoked mark goes from customers' phones within that time. The envelope is a badge of lvl brand-mark (docs/badge-attestation.md), life lifeDays of registries/badge-keys.json.",
+  "labels": ["revendedora", "revendedor", "corretor", "representante"],
+  "maxPerAccount": 3,
+  "inviteDays": 14,
+  "recheckMinutes": 10
+}

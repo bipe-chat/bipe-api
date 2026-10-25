@@ -34,6 +34,7 @@ export function loadRegistries(root) {
     imageDescriptions: read("registries/image-descriptions.json"),
     pixMarks: read("registries/pix-marks.json"),
     dataUse: read("registries/data-use.json"),
+    brandMarks: read("registries/brand-marks.json"),
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
@@ -156,6 +157,12 @@ function validate(reg) {
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
   const du = reg.dataUse;
   if (!Number.isInteger(du.budgetMegabytesPerDay) || du.budgetMegabytesPerDay < 1 || typeof du.dataSaverDefault !== "boolean") fail("data-use: budgetMegabytesPerDay must be a positive integer and dataSaverDefault a boolean");
+  const bm = reg.brandMarks;
+  if (!Array.isArray(bm.labels) || bm.labels.length === 0 || new Set(bm.labels).size !== bm.labels.length || !bm.labels.every((l) => typeof l === "string" && /^[a-z]+$/.test(l))) fail("brand-marks: labels must be unique lower-case ids");
+  for (const l of bm.labels) if (!reg.stringsEn?.strings?.[`bipe_brand_mark_label_${l}`]) fail(`brand-marks: label ${l} has no string bipe_brand_mark_label_${l}`);
+  if (!Number.isInteger(bm.maxPerAccount) || bm.maxPerAccount < 1) fail("brand-marks: maxPerAccount must be a positive integer");
+  if (!Number.isInteger(bm.inviteDays) || bm.inviteDays < 1) fail("brand-marks: inviteDays must be a positive integer");
+  if (!Number.isInteger(bm.recheckMinutes) || bm.recheckMinutes < 1) fail("brand-marks: recheckMinutes must be a positive integer");
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }

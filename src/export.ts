@@ -126,6 +126,19 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       "SELECT id, business_id, source, lines, total_amount_cents, fulfilment, payment, status, refuse_reason, created_at FROM orders WHERE customer_id = $1 OR business_id = $1 ORDER BY created_at",
       userId,
     ),
+    // Brand marks (ADR 0162): marks the caller holds or granted, the caller's own invites (no code hash) and the steps
+    // the caller took. The other party appears as an account ID, as both sides already see it.
+    brand_marks: await all(
+      db,
+      "SELECT id, brand_user_id, reseller_user_id, label, granted_at, ended_at, ended_by FROM brand_marks WHERE brand_user_id = $1 OR reseller_user_id = $1 ORDER BY granted_at",
+      userId,
+    ),
+    brand_mark_invites: await all(
+      db,
+      "SELECT id, label, created_at, expires_at, ended_at, outcome FROM brand_mark_invites WHERE brand_user_id = $1 ORDER BY created_at",
+      userId,
+    ),
+    brand_mark_events: await all(db, "SELECT mark_id, invite_id, action, at FROM brand_mark_events WHERE actor_user_id = $1 ORDER BY at", userId),
     business_bookings: await all(
       db,
       `SELECT id, service_id, agenda_id, start_at, end_at, status, source, created_at FROM bookings WHERE business_id = $1 ORDER BY start_at`,
