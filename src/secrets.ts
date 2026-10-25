@@ -60,6 +60,29 @@ export class PinHasher {
       throw new ApiError("internal");
     }
     const peppered = createHmac("sha256", this.pepper).update(pin, "utf8").digest();
-    return new Promise((resolve, reject) => scrypt(peppered, salt, 32, SCRYPT, (err, key) => (err ? reject(err) : resolve(key))));
+    return scryptKey(peppered, salt);
   }
+}
+
+function scryptKey(input: Buffer, salt: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => scrypt(input, salt, 32, SCRYPT, (err, key) => (err ? reject(err) : resolve(key))));
+}
+
+// Strategic-page passwords (ADR 0157). Staff set them for each invitee, so they are not PINs and have no pepper.
+// Same scrypt parameters and "scrypt1$<salt>$<hash>" format as the PIN hash.
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const key = await scryptKey(Buffer.from(password, "utf8"), salt);
+  return `${PREFIX}$${salt.toString("base64url")}$${key.toString("base64url")}`;
+}
+
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const [prefix, salt, hash] = stored.split("$");
+  if (prefix !== PREFIX || !salt || !hash) {
+    console.error("passwords: stored hash has an unknown format");
+    throw new ApiError("internal");
+  }
+  const expected = Buffer.from(hash, "base64url");
+  const key = await scryptKey(Buffer.from(password, "utf8"), Buffer.from(salt, "base64url"));
+  return key.length === expected.length && timingSafeEqual(key, expected);
 }

@@ -557,6 +557,41 @@ const MIGRATIONS = [
    );
    INSERT INTO cvm_state (id) VALUES (1);
    ALTER TABLE cnpj_registry ADD COLUMN cnae_main text, ADD COLUMN cnae_secondary text[];`,
+  // Strategic pages at bipe.chat/proposta/ (ADR 0157): invitees that staff make, their sessions and the visit log.
+  // Passwords as scrypt hashes, session secrets as SHA-256. Visits keep no IP and no user agent; they go after
+  // 365 days, and with the invitee (proposta forget).
+  `CREATE TABLE proposta_invitees (
+     id serial PRIMARY KEY,
+     email text NOT NULL UNIQUE,
+     label text,
+     password_hash text NOT NULL,
+     expires_at timestamptz,
+     revoked_at timestamptz,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     last_seen_at timestamptz
+   );
+   CREATE TABLE proposta_sessions (
+     token_hash text PRIMARY KEY,
+     invitee_id integer NOT NULL REFERENCES proposta_invitees (id) ON DELETE CASCADE,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     expires_at timestamptz NOT NULL
+   );
+   CREATE INDEX proposta_sessions_invitee ON proposta_sessions (invitee_id);
+   CREATE TABLE proposta_visits (
+     id bigserial PRIMARY KEY,
+     invitee_id integer NOT NULL REFERENCES proposta_invitees (id) ON DELETE CASCADE,
+     at timestamptz NOT NULL DEFAULT now(),
+     kind text NOT NULL CHECK (kind IN ('page', 'slide')),
+     path text NOT NULL,
+     slide integer,
+     referrer text,
+     utm jsonb NOT NULL DEFAULT '{}',
+     city text,
+     region text,
+     country text
+   );
+   CREATE INDEX proposta_visits_at ON proposta_visits (at);
+   CREATE INDEX proposta_visits_invitee ON proposta_visits (invitee_id, at);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

@@ -35,6 +35,12 @@
 //   node dist/cli.js banner clear
 //   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
 //   node dist/cli.js transfer report [--days 30]     (bipe#531: active iOS accounts with a way back that survives the App Store transfer)
+//   node dist/cli.js proposta add <email> [--note "Itaú, investor"] [--days N] [--password-stdin]   (ADR 0157: prints a new password once, or reads yours)
+//   node dist/cli.js proposta password <email> [--password-stdin]   (new password; ends the invitee's sessions)
+//   node dist/cli.js proposta revoke <email>          (ends access and sessions; the visits stay)
+//   node dist/cli.js proposta list
+//   node dist/cli.js proposta visits [--days 30]       (per invitee, then the visits, newest first)
+//   node dist/cli.js proposta forget <email>          (LGPD deletion request: invitee, sessions and visits)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
@@ -56,6 +62,7 @@ import { validCnpj } from "./registry.js";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { transferReadiness } from "./transfer.js";
+import { addInvitee, forgetInvitee, newInviteePassword, propostaReport, revokeInvitee, setInviteePassword } from "./proposta.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -64,7 +71,7 @@ await migrate(db);
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" }, since: { type: "string", default: "2026-01-01" } },
+  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" }, since: { type: "string", default: "2026-01-01" }, "password-stdin": { type: "boolean", default: false } },
 });
 const [group, command, arg, arg2] = positionals;
 
@@ -74,6 +81,28 @@ try {
     if (!(Number.isInteger(uses) && uses > 0 && Number.isInteger(days) && days > 0)) throw new Error("--uses and --days must be positive integers");
     // The code is printed once and stored only as a hash.
     console.log((await createInvite(db, uses, days, values.note)).code);
+  } else if (group === "proposta" && (command === "add" || command === "password") && arg) {
+    // A generated password is printed once and stored only as a hash. Send it to the invitee yourself.
+    const password = values["password-stdin"] ? readFileSync(0, "utf8").trim() : newInviteePassword();
+    if (command === "add") {
+      // --days has a shared default of 14 for other commands; here no --days means no expiry.
+      const days = process.argv.includes("--days") ? Number(values.days) : undefined;
+      if (days !== undefined && !(Number.isInteger(days) && days > 0)) throw new Error("--days must be a positive integer");
+      await addInvitee(db, arg, password, values.note, days);
+    } else if (!(await setInviteePassword(db, arg, password))) throw new Error("no invitee with that email");
+    console.log(values["password-stdin"] ? "password set" : password);
+  } else if (group === "proposta" && command === "revoke" && arg) {
+    console.log((await revokeInvitee(db, arg)) ? "revoked; sessions ended" : "no active invitee with that email");
+  } else if (group === "proposta" && command === "list") {
+    console.table((await propostaReport(db, 30)).invitees.map(({ page_views, max_slide, ...r }) => r));
+  } else if (group === "proposta" && command === "visits") {
+    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    if (!(Number.isInteger(days) && days > 0 && days <= 365)) throw new Error("--days must be 1 to 365");
+    const report = await propostaReport(db, days);
+    console.table(report.invitees.map((r) => ({ id: r.id, email: r.email, label: r.label, last_seen: r.last_seen_at, page_views: r.page_views, max_slide: r.max_slide })));
+    console.table(report.visits.map((v) => ({ at: v.at.slice(0, 16), invitee: v.invitee_id, kind: v.kind, path: v.path, slide: v.slide, referrer: v.referrer, utm: Object.values(v.utm).join(" ") || null, place: [v.city, v.region, v.country].filter(Boolean).join(", ") || null })));
+  } else if (group === "proposta" && command === "forget" && arg) {
+    console.log((await forgetInvitee(db, arg)) ? "deleted invitee, sessions and visits" : "no invitee with that email");
   } else if (group === "invite" && command === "list") {
     const { rows } = await db.query(
       "SELECT id, created_by, uses_left, expires_at, revoked_at, note, (SELECT count(*) FROM signups s WHERE s.invite_id = i.id) AS signups FROM invites i ORDER BY id",
