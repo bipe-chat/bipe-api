@@ -56,7 +56,7 @@ export function validateOnboarding(reg) {
     needString(r.title, r.key);
     needString(r.body, r.key);
     if (r.when !== undefined && !STATES.includes(r.when)) fail(`${r.key}: when "${r.when}"`);
-    if (r.gate !== undefined && !/^planned:\d+$/.test(r.gate)) fail(`${r.key}: gate "${r.gate}"`);
+    if (r.gate !== undefined && !/^(planned:\d+|flag:developer)$/.test(r.gate)) fail(`${r.key}: gate "${r.gate}"`);
   }
   for (const p of o.prompts) {
     needKey(p.key, "prompts");
@@ -176,7 +176,7 @@ ${o.recovery.map((r) => `        case .${r.key}: ${r.when === "syncedToken"}`).j
         }
     }
 
-    /// "planned:<issue>" when the row stays hidden until that issue ships.
+    /// "planned:<issue>" when the row stays hidden until that issue ships; "flag:developer" for developer builds only.
     public var gate: String? {
         switch self {
 ${o.recovery.map((r) => `        case .${r.key}: ${opt(r.gate)}`).join("\n")}
@@ -236,7 +236,7 @@ ${screenEnum("BipeOnboardingStep", "Sign-up screens, in order.", o.steps)}}
 
 ${screenEnum("BipeOnboardingPrompt", "Prompts after the account exists.", o.prompts)}}
 
-/** Rows of "Já tenho conta", in screen order. gate: "planned:<issue>" = hidden until that issue ships. */
+/** Rows of "Já tenho conta", in screen order. gate: "planned:<issue>" = hidden until that issue ships; "flag:developer" = developer builds only. */
 enum class BipeOnboardingRecoveryRow(
     @StringRes val title: Int,
     @StringRes val body: Int,
