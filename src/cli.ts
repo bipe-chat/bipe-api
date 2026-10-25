@@ -13,6 +13,9 @@
 //   node dist/cli.js waitlist forget <email>         (LGPD deletion request)
 //   node dist/cli.js waitlist release <platform> --count N [--days 14]   (ADR 0089: oldest entries first, one invite email each)
 //   node dist/cli.js support status                  (ADR 0114: support rooms, Starlings lines waiting, last sync)
+//   node dist/cli.js news send <file.json>           (ADR 0117: queues a news item {id, text, link?, importance}; text through the humanizer first)
+//   node dist/cli.js news list                       (items with sent and failed counts; rooms and opted-out users)
+//   node dist/cli.js news backfill                   (a news room for every user who signed up before the news bot)
 //   node dist/cli.js bugreports list                 (problem reports, newest first: id, platform, version, files; no text)
 //   node dist/cli.js bugreports show <id>            (one report with its text and file names)
 //   node dist/cli.js bugreports forget <user_id>     (LGPD deletion request: rows and files)
@@ -28,6 +31,7 @@
 //   node dist/cli.js banner show
 //   node dist/cli.js banner clear
 //   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
+//   node dist/cli.js transfer report [--days 30]     (bipe#531: active iOS accounts with a way back that survives the App Store transfer)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
@@ -43,7 +47,10 @@ import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import { type Config, loadMailConfig } from "./config.js";
 import { forgetBugReports, getBugReport, listBugReports } from "./bug-reports.js";
 import { clearBanner, currentBanner, setBanner } from "./banner.js";
+import { newsList, queueNewsItem, requestNewsBackfill } from "./news.js";
 import { readFileSync } from "node:fs";
+import pg from "pg";
+import { transferReadiness } from "./transfer.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -109,6 +116,16 @@ try {
               (SELECT updated_at FROM support_sync WHERE id = 1) AS last_sync`,
     );
     console.table(rows);
+  } else if (group === "news" && command === "send" && arg) {
+    const item = await queueNewsItem(db, JSON.parse(readFileSync(arg, "utf8")));
+    console.log(`news item ${item.id} queued (${item.importance}); the server sends it within a few minutes`);
+  } else if (group === "news" && command === "list") {
+    const report = await newsList(db);
+    console.log(`rooms ${report.rooms}, opted out ${report.opted_out}`);
+    for (const i of report.items) console.log(`${i.id}  ${i.importance}  queued ${i.created_at.toISOString().slice(0, 16)}  ${i.done_at ? "done" : "sending"}  sent ${i.sent}  failed ${i.failed}`);
+  } else if (group === "news" && command === "backfill") {
+    await requestNewsBackfill(db);
+    console.log("news backfill requested; the server makes the rooms, rate-limited (news list shows the count)");
   } else if (group === "bugreports" && command === "list") {
     for (const r of (await listBugReports(db)).reports) {
       console.log(`${r.id}  ${r.created_at.slice(0, 16)}  ${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"})  logs ${r.log_count}  shots ${r.screenshot_count}  ${r.relayed ? "relayed" : "not relayed"}`);
@@ -194,6 +211,19 @@ try {
     console.table(report.retention);
     console.log("All events: users and count");
     console.table(report.totals);
+  } else if (group === "transfer" && command === "report") {
+    // --days defaults to 14 for invites; this report's window is 30 days unless --days is given.
+    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    if (!(Number.isInteger(days) && days >= 1 && days <= 90)) throw new Error("--days must be 1 to 90");
+    const synapseUrl = process.env.SYNAPSE_DATABASE_URL?.trim();
+    if (!synapseUrl) throw new Error("SYNAPSE_DATABASE_URL is not set");
+    const synapse = new pg.Pool({ connectionString: synapseUrl, max: 1 });
+    try {
+      console.log(`iOS accounts seen in the last ${days} days. null: a count of 1 or 2 (minimum cell). Shares in percent.`);
+      console.table(await transferReadiness(db, synapse, days));
+    } finally {
+      await synapse.end();
+    }
   } else if (group === "phone" && command === "link" && arg?.startsWith("@") && arg2) {
     await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), arg, arg2, values.force === true);
     console.log(`linked a number to ${arg}`);
@@ -201,7 +231,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user");
     process.exitCode = 2;
   }
 } finally {
