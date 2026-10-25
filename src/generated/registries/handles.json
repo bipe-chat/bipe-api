@@ -7,5 +7,10 @@
   "pattern": "^[a-z0-9](?:[a-z0-9_]|\\.(?!\\.))*[a-z0-9_]$",
   "skeletonStrip": "[._]",
   "changeCooldownDays": 30,
-  "releaseHoldDays": 90
+  "releaseHoldDays": 90,
+  "suggestions": {
+    "$comment": "Escolha seu @ (bipe-chat/bipe#200): handleSuggestions(displayName) gives up to candidates handles of the right shape, in order; the app checks availability in that order and shows the first shown that are free. Rule and order: tools/lib/registries.mjs handleSuggestions, test-vectors/handle-suggestions.json.",
+    "shown": 3,
+    "candidates": 8
+  }
 }

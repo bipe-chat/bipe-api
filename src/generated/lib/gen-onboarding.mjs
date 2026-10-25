@@ -1,9 +1,9 @@
 // First run (registries/onboarding.json, bipe-chat/bipe#415): validation and Swift/Kotlin output.
 
-const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss", "shareInvite", "shareProfile", "profileQr", "notes"];
+const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss", "shareInvite", "shareProfile", "profileQr", "notes", "photoPicker"];
 const STATES = ["syncedToken"];
 const CARD_STATES = ["hasHandle"];
-const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery"];
+const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "voceWithoutPhoto"];
 const KEY = /^[a-z][A-Za-z]*$/;
 
 function fail(msg) {
@@ -59,6 +59,7 @@ export function validateOnboarding(reg) {
     if (r.when !== undefined && !STATES.includes(r.when)) fail(`${r.key}: when "${r.when}"`);
     if (r.gate !== undefined && !/^(planned:\d+|flag:developer)$/.test(r.gate)) fail(`${r.key}: gate "${r.gate}"`);
   }
+  if (!Number.isInteger(o.promptSlot?.hours) || o.promptSlot.hours < 1) fail("promptSlot.hours must be a whole number of hours");
   const first = o.firstList;
   if (!first || !Number.isInteger(first.maxChats) || first.maxChats < 0) fail("firstList.maxChats must be a whole number");
   for (const c of first.cards) {
@@ -71,6 +72,7 @@ export function validateOnboarding(reg) {
   for (const p of o.prompts) {
     needKey(p.key, "prompts");
     if (!TRIGGERS.includes(p.trigger)) fail(`${p.key}: trigger "${p.trigger}"`);
+    if (p.slot !== undefined && typeof p.slot !== "boolean") fail(`${p.key}: slot must be true or false`);
     needString(p.title, p.key);
     needString(p.body, p.key);
     needButtons(p, p.key);
@@ -161,6 +163,13 @@ public enum BipeOnboardingPrompt: String, CaseIterable, Sendable {
 ${o.prompts.map((p) => `    case ${p.key}`).join("\n")}
 
 ${screenMembers(o.prompts)}
+
+    /// True when the prompt shares the one prompt slot (\`BipeOnboarding.promptSlotHours\`, bipe-chat/bipe#200).
+    public var usesSlot: Bool {
+        switch self {
+${o.prompts.map((p) => `        case .${p.key}: ${p.slot === true}`).join("\n")}
+        }
+    }
 }
 
 /// Rows of "Já tenho conta", in screen order.
@@ -210,6 +219,8 @@ ${o.firstList.cards.map((c) => `        case .${c.key}: ${c.when === "hasHandle"
 
 public enum BipeOnboarding {
     public static let firstListMaxChats = ${o.firstList.maxChats}
+    /// Hours between two slot prompts on one account (bipe-chat/bipe#200).
+    public static let promptSlotHours = ${o.promptSlot.hours}
     public static let waitlistBodyKey = ${quote(o.waitlist.body)}
     public static let waitlistPrimary = ${button(o.waitlist.primary)}
     public static let waitlistDoneKey = ${quote(o.waitlist.done)}
@@ -259,7 +270,13 @@ ${startTable(o).map(({ p, r, key }) => `            invitePending == ${p} && inv
 
 ${screenEnum("BipeOnboardingStep", "Sign-up screens, in order.", o.steps)}}
 
-${screenEnum("BipeOnboardingPrompt", "Prompts after the account exists.", o.prompts)}}
+${screenEnum("BipeOnboardingPrompt", "Prompts after the account exists.", o.prompts)}
+    /** True when the prompt shares the one prompt slot ([BipeOnboarding.PROMPT_SLOT_HOURS], bipe-chat/bipe#200). */
+    val usesSlot: Boolean
+        get() = when (this) {
+${o.prompts.map((p) => `            ${snake(p.key)} -> ${p.slot === true}`).join("\n")}
+        }
+}
 
 /** Rows of "Já tenho conta", in screen order. gate: "planned:<issue>" = hidden until that issue ships; "flag:developer" = developer builds only. */
 enum class BipeOnboardingRecoveryRow(
@@ -290,6 +307,8 @@ ${o.firstList.cards.map((c) => `    ${snake(c.key)}(${res(c.title)}, ${res(c.bod
 
 object BipeOnboarding {
     const val FIRST_LIST_MAX_CHATS: Int = ${o.firstList.maxChats}
+    /** Hours between two slot prompts on one account (bipe-chat/bipe#200). */
+    const val PROMPT_SLOT_HOURS: Int = ${o.promptSlot.hours}
     @StringRes val waitlistBody: Int = ${res(o.waitlist.body)}
     val waitlistPrimary: BipeOnboardingButton = ${button(o.waitlist.primary)}
     @StringRes val waitlistDone: Int = ${res(o.waitlist.done)}
