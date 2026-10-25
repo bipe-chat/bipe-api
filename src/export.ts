@@ -42,6 +42,9 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
        FROM recoveries WHERE user_id = $1 ORDER BY created_at`,
       userId,
     ),
+    // ADR 0096: the provider and the dates only. The subject hash is keyed and stays out.
+    linked_accounts: await all(db, "SELECT provider, linked_at FROM account_links WHERE user_id = $1 ORDER BY provider", userId),
+    link_events: await all(db, "SELECT provider, change, at FROM link_events WHERE user_id = $1 ORDER BY at", userId),
     handle: await one(db, "SELECT handle, set_at FROM handles WHERE user_id = $1", userId),
     handle_holds: await all(db, "SELECT hold_until FROM handle_holds WHERE user_id = $1 ORDER BY hold_until", userId),
     handle_changes: await all(

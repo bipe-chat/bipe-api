@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "$comment": "First run for new and returning users (bipe-chat/bipe#415, ADR 0072, ADR 0113). One source for the start screen, the sign-up steps, the recovery rows and the later prompts on iOS and Android. `start`: the start screen variant per state; exactly one variant matches each pair of `invitePending` (an invite came from a link or a deferred install) and `inviteRequired` (GET /v1/signup/config). Every screen has one `primary` (filled) button and zero or more `text` buttons. `to` is a step key, `recovery`, `waitlist` or `create` (POST /v1/signup). `steps` are the sign-up screens in order. `recovery` rows are in screen order; `when` names the state that shows a row; `gate` is `planned:<issue>` for a row that stays hidden until bipe-chat/bipe#<issue> ships. `prompts` come after the account exists; `trigger` says when. Titles and bodies are bipe_* string keys.",
+  "$comment": "First run for new and returning users (bipe-chat/bipe#415, ADR 0072, ADR 0113). One source for the start screen, the sign-up steps, the recovery rows and the later prompts on iOS and Android. `start`: the start screen variant per state; exactly one variant matches each pair of `invitePending` (an invite came from a link or a deferred install) and `inviteRequired` (GET /v1/signup/config). Every screen has one `primary` (filled) button and zero or more `text` buttons. `to` is a step key, `recovery`, `waitlist` or `create` (POST /v1/signup). `steps` are the sign-up screens in order. `recovery` rows are in screen order; `when` names the state that shows a row; `gate` is `planned:<issue>` for a row that stays hidden until bipe-chat/bipe#<issue> ships. `apple` and `google` (ADR 0096) show only when GET /v1/links/providers offers a path for that provider on the platform (Apple native on iOS, else web). `prompts` come after the account exists; `trigger` says when. Titles and bodies are bipe_* string keys.",
   "start": [
     {
       "key": "invited",
@@ -65,6 +65,8 @@
   "recovery": [
     { "key": "token", "title": "bipe_pin_enter_title", "body": "bipe_recovery_token_found", "when": "syncedToken" },
     { "key": "oldPhone", "title": "bipe_recovery_qr", "body": "bipe_recovery_qr_body", "gate": "planned:203" },
+    { "key": "apple", "title": "bipe_recovery_apple", "body": "bipe_recovery_linked_body" },
+    { "key": "google", "title": "bipe_recovery_google", "body": "bipe_recovery_linked_body" },
     { "key": "email", "title": "bipe_recovery_email", "body": "bipe_recovery_email_body" },
     { "key": "beta", "title": "bipe_recovery_beta", "body": "bipe_recovery_beta_body", "gate": "flag:developer" }
   ],

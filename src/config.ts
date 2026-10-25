@@ -81,6 +81,16 @@ const Env = z.object({
   // Device-first accounts (ADR 0057): secret key for the PIN hashes, 32 bytes as hex. Never in the database.
   // Without it the PIN routes answer "internal". A value that is not 64 hex characters stops the start.
   BIPE_PIN_PEPPER: emptyAsUnset(z.string().regex(/^[0-9a-fA-F]{64}$/, "64 hex characters")),
+  // Linked Apple or Google account for recovery (ADR 0096). Client IDs are not secrets; the Google client secret is.
+  // Every value is optional: a provider without its values is not offered (GET /v1/links/providers) and its routes
+  // answer link_unavailable. APPLE_APP_IDS: bundle IDs that may send a Sign in with Apple ID token from the app.
+  // APPLE_SERVICE_ID: the Services ID of the Apple web flow (Android). GOOGLE_WEB_CLIENT_ID and _SECRET: the
+  // Google "Web application" OAuth client of the web flow (both platforms). Its redirect URI is
+  // PUBLIC_API_URL/v1/links/callback/google; Apple's return URL is PUBLIC_API_URL/v1/links/callback/apple.
+  APPLE_APP_IDS: z.string().default("").transform(list).pipe(z.array(z.string().regex(/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/, "bundle ID"))),
+  APPLE_SERVICE_ID: emptyAsUnset(z.string().regex(/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/, "Services ID")),
+  GOOGLE_WEB_CLIENT_ID: emptyAsUnset(z.string().regex(/^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/, "Google client ID")),
+  GOOGLE_WEB_CLIENT_SECRET: emptyAsUnset(z.string().min(16)),
   // Outgoing email for recovery links and notices. Empty host: email is off. Port 465: implicit TLS.
   // Any other port: STARTTLS is required; the client never sends in plain text.
   BIPE_SMTP_HOST: emptyAsUnset(z.string()),

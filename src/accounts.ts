@@ -10,6 +10,7 @@ import type { Mas } from "./mas.js";
 import { accountRules, appString, type Lang, problemWithPin } from "./registry.js";
 import { newSecret, PinHasher, sameSecret, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { acceptedTermsVersion } from "./terms.js";
+import { linkState } from "./links.js";
 
 // Device-first accounts: ADR 0057 and ADR 0059 (bipe/docs/adr), security.md rules 5 and 6.
 // - The hidden MAS password is made here, set through the MAS admin API and returned once. Never stored, never logged.
@@ -54,7 +55,7 @@ function localpartOf(config: Config, userId: string): string {
   return m[1]!;
 }
 
-const newRecoveryId = () => randomBytes(16).toString("base64url");
+export const newRecoveryId = () => randomBytes(16).toString("base64url");
 
 function requireSecret(value: string): void {
   if (!SECRET_PATTERN.test(value)) throw new ApiError("recovery_invalid");
@@ -66,7 +67,7 @@ export function checkPinRule(pin: string): void {
   if (problem) throw new ApiError("pin_weak", problem);
 }
 
-async function inTransaction<T>(db: Db, work: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+export async function inTransaction<T>(db: Db, work: (client: pg.PoolClient) => Promise<T>): Promise<T> {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -224,7 +225,7 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
 
 /** `maxAccounts`: the live cap of personal accounts per phone (ADR 0086). Company accounts do not count. */
 export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts) {
-  const [secrets, emails, recoveries, termsVersion, signupRow] = await Promise.all([
+  const [secrets, emails, recoveries, termsVersion, signupRow, links] = await Promise.all([
     db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
       "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
       [userId],
@@ -241,6 +242,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     ),
     acceptedTermsVersion(db, userId),
     db.query<{ account_type: string }>("SELECT account_type FROM signups WHERE user_id = $1", [userId]),
+    linkState(db, userId),
   ]);
   const s = secrets.rows[0];
   const e = emails.rows[0];
@@ -268,6 +270,8 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     max_accounts: maxAccounts,
     // ADR 0087. Accounts made before the column, and beta accounts without a signups row, are personal.
     account_type: signupRow.rows[0]?.account_type === "company" ? "company" : "personal",
+    // ADR 0096: linked Apple and Google accounts (provider only) and the link changes of the last 7 days.
+    ...links,
   };
 }
 
@@ -500,7 +504,7 @@ function sendNotice(deps: AccountDeps, email: string, lang: Lang, key: string, w
 }
 
 /** Security notice to the account's verified recovery email, when it has one. */
-async function notify(deps: AccountDeps, userId: string, key: string, when?: Date): Promise<void> {
+export async function notify(deps: AccountDeps, userId: string, key: string, when?: Date): Promise<void> {
   if (!deps.mailer.enabled) return;
   const { rows } = await deps.db.query<{ email: string; lang: Lang }>(
     "SELECT email, lang FROM recovery_emails WHERE user_id = $1 AND email IS NOT NULL",
