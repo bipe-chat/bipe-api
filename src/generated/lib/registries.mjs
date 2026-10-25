@@ -31,6 +31,7 @@ export function loadRegistries(root) {
     haptics: read("registries/haptics.json"),
     badgeKeys: read("registries/badge-keys.json"),
     clearedChats: read("registries/cleared-chats.json"),
+    imageDescriptions: read("registries/image-descriptions.json"),
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
@@ -113,6 +114,8 @@ function validate(reg) {
   const rn = reg.relationshipNames;
   if (rn.comparison !== "normalised-exact" || rn.fullNameMinimumWords !== 2 || rn.familyTerms !== "whole-words" || rn.confirmation !== "saved-label-and-verified-name") fail("relationship-names: unsupported ADR 0018 policy");
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
+  const desc = reg.imageDescriptions;
+  if (!/^chat\.bipe\.[a-z_]+$/.test(desc.field) || !Number.isInteger(desc.maxLength) || desc.maxLength < 100 || desc.maxLength > 4000) fail("image-descriptions: field must be chat.bipe.<name> and maxLength an integer from 100 to 4000");
   const dm = reg.dmSelection;
   if (dm.order !== "latest-event-descending" || dm.missingActivity !== "last" || dm.tieBreak !== "room-id-ascending"
       || dm.eligibility !== "joined-dm-with-peer" || dm.clearedRooms !== "hide-before-selection" || dm.allClearedStartChat !== "reuse-newest-existing" || dm.filterOrder !== "select-before-unread-or-name") fail("dm-selection: unsupported ADR 0141 policy");

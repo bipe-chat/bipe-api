@@ -21,6 +21,9 @@
 //   node dist/cli.js bugreports forget <user_id>     (LGPD deletion request: rows and files)
 //   node dist/cli.js registry fetch [YYYY-MM]          (download a Receita CNPJ release; newest when no month)
 //   node dist/cli.js registry scan [--all]             (scan the newest release for claims; --all re-checks verified ones)
+//   node dist/cli.js cvm refresh                     (ADR 0077: download CVM's provider register and stop orders now)
+//   node dist/cli.js cvm status                      (last refresh, last error, row counts)
+//   node dist/cli.js cvm show <cnpj>                 (the badge's CVM line for one CNPJ)
 //   node dist/cli.js business list
 //   node dist/cli.js business claim <user_id> <cnpj>  (staff: starts the claim as POST /v1/me/business does; then business verify)
 //   node dist/cli.js business verify <user_id>         (staff path, ADR 0042; registry must show the CNPJ active)
@@ -48,6 +51,8 @@ import { type Config, loadMailConfig } from "./config.js";
 import { forgetBugReports, getBugReport, listBugReports } from "./bug-reports.js";
 import { clearBanner, currentBanner, setBanner } from "./banner.js";
 import { newsList, queueNewsItem, requestNewsBackfill } from "./news.js";
+import { cvmField, refreshCvm } from "./cvm.js";
+import { validCnpj } from "./registry.js";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { transferReadiness } from "./transfer.js";
@@ -126,6 +131,21 @@ try {
   } else if (group === "news" && command === "backfill") {
     await requestNewsBackfill(db);
     console.log("news backfill requested; the server makes the rooms, rate-limited (news list shows the count)");
+  } else if (group === "cvm" && command === "refresh") {
+    await refreshCvm(db);
+  } else if (group === "cvm" && command === "status") {
+    const { rows } = await db.query(
+      `SELECT s.refreshed_at, s.last_error, s.last_error_at,
+              (SELECT count(*)::int FROM cvm_registrations) AS registrations,
+              (SELECT count(*)::int FROM cvm_stop_orders) AS stop_orders
+       FROM cvm_state s WHERE s.id = 1`,
+    );
+    console.table(rows);
+  } else if (group === "cvm" && command === "show" && arg) {
+    const cnpj = validCnpj(arg);
+    if (!cnpj) throw new Error("not a CNPJ");
+    const { rows } = await db.query<{ cnae_main: string | null; cnae_secondary: string[] | null }>("SELECT cnae_main, cnae_secondary FROM cnpj_registry WHERE cnpj = $1", [cnpj]);
+    console.log(JSON.stringify((await cvmField(db, cnpj, [rows[0]?.cnae_main, ...(rows[0]?.cnae_secondary ?? [])])) ?? null));
   } else if (group === "bugreports" && command === "list") {
     for (const r of (await listBugReports(db)).reports) {
       console.log(`${r.id}  ${r.created_at.slice(0, 16)}  ${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"})  logs ${r.log_count}  shots ${r.screenshot_count}  ${r.relayed ? "relayed" : "not relayed"}`);

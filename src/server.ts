@@ -42,6 +42,7 @@ import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugR
 import { Intake, verifyIntakeSignature } from "./intake.js";
 import { SupportBot } from "./support.js";
 import { NewsBot } from "./news.js";
+import { startCvmRefresh } from "./cvm.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
@@ -76,6 +77,7 @@ console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`support bot: ${support.enabled ? "on" : "off (no SUPPORT_ACCESS_TOKEN or SUPPORT_STORE_PASSPHRASE)"}`);
 console.log(`news bot: ${news.enabled ? "on" : "off (no NEWS_ACCESS_TOKEN or NEWS_STORE_PASSPHRASE)"}`);
+console.log(`cvm register: ${config.CVM_REFRESH ? "daily refresh on" : "off (CVM_REFRESH=false)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 console.log(`linked recovery: ${JSON.stringify(linkDeps.links.providers().providers)}`);
 
@@ -188,6 +190,7 @@ pruneWaitlistEntries();
 setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
 support.start();
 news.start();
+if (config.CVM_REFRESH) startCvmRefresh(db);
 const pruneReports = () =>
   void pruneBugReports(db, config.BUG_REPORTS_DIR)
     .then((n) => n > 0 && console.log(`problem reports pruned: ${n}`))
