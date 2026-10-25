@@ -104,5 +104,29 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     // Novidades do Bipe (ADR 0117): the room, whether news is off, and which items reached the user.
     news_room: await one(db, "SELECT room_id, opted_out, left_at, created_at FROM news_rooms WHERE user_id = $1", userId),
     news_deliveries: await all(db, "SELECT item_id, failed, sent_at FROM news_deliveries WHERE user_id = $1 ORDER BY sent_at", userId),
+    // Agenda (ADR 0102): bookings the caller made as a customer. A company's own records come with its catálogo.
+    bookings: await all(
+      db,
+      `SELECT id, business_id, service_id, start_at, end_at, status, source, created_at FROM bookings WHERE customer_id = $1 ORDER BY start_at`,
+      userId,
+    ),
+    catalog_items: await all(
+      db,
+      `SELECT id, kind, name, price, description, category, active, archived_at, created_at FROM catalog_items WHERE business_id = $1 ORDER BY sort, id`,
+      userId,
+    ),
+    queue_places: await all(db, "SELECT id, business_id, status, joined_at, called_at, served_at FROM queue_places WHERE customer_id = $1 ORDER BY joined_at", userId),
+    quote_requests: await all(db, "SELECT id, business_id, created_at FROM quote_requests WHERE customer_id = $1 ORDER BY created_at", userId),
+    quotes: await all(db, "SELECT id, business_id, status, current_version, created_at, updated_at FROM quotes WHERE customer_id = $1 OR business_id = $1 ORDER BY created_at", userId),
+    orders: await all(
+      db,
+      "SELECT id, business_id, source, lines, total_amount_cents, fulfilment, payment, status, refuse_reason, created_at FROM orders WHERE customer_id = $1 OR business_id = $1 ORDER BY created_at",
+      userId,
+    ),
+    business_bookings: await all(
+      db,
+      `SELECT id, service_id, agenda_id, start_at, end_at, status, source, created_at FROM bookings WHERE business_id = $1 ORDER BY start_at`,
+      userId,
+    ),
   };
 }

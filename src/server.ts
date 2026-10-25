@@ -45,6 +45,11 @@ import { NewsBot } from "./news.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
+import { agendaHousekeeping } from "./agenda.js";
+import { orderHousekeeping } from "./orders.js";
+import { queueHousekeeping } from "./queue.js";
+import { quoteHousekeeping } from "./quotes.js";
+import { businessRoutes, CATALOG_PHOTO_PATH } from "./business-routes.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -180,6 +185,20 @@ setInterval(pruneReports, 24 * 3_600_000).unref();
 // Retries for Starlings intake lines that failed. A new line is sent at once.
 setInterval(() => void intake.flush(), 60_000).unref();
 void intake.flush();
+// Agenda (bipe#318): confirmed bookings past their end become done, expired holds end, bookings go after two years.
+const agendaJob = () =>
+  void agendaHousekeeping(db)
+    .then((r) => r.pruned > 0 && console.log(`bookings pruned: ${r.pruned}`))
+    .catch((e) => console.error(`agenda housekeeping failed: ${(e as Error).message}`));
+agendaJob();
+setInterval(agendaJob, 5 * 60_000).unref();
+// Fila virtual, Orçamento, Pedidos: stale queue places end, records go after their retention (ADRs 0105 to 0107).
+const toolsJob = () =>
+  void Promise.all([queueHousekeeping(db), quoteHousekeeping(db), orderHousekeeping(db)])
+    .then(([q, qt, o]) => q.pruned + qt.pruned + o.pruned > 0 && console.log(`business records pruned: ${q.pruned + qt.pruned + o.pruned}`))
+    .catch((e) => console.error(`business housekeeping failed: ${(e as Error).message}`));
+toolsJob();
+setInterval(toolsJob, 60 * 60_000).unref();
 const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
@@ -271,7 +290,7 @@ const photoBody = bodyLimit({ maxSize: profileRules.photoMaxBytes, onError: (c) 
 app.use("*", (c, next) => {
   if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
-  if (c.req.path === PHOTO_PATH) return photoBody(c, next);
+  if (c.req.path === PHOTO_PATH || CATALOG_PHOTO_PATH.test(c.req.path)) return photoBody(c, next);
   if (GOVBR_DOCUMENT_PATH.test(c.req.path)) return govbrBody(c, next);
   return smallBody(c, next);
 });
@@ -915,6 +934,9 @@ staffGet("/v1/admin/reports", (c) => {
   if (!days.success) throw new ApiError("bad_request");
   return staffReports.reports(days.data);
 });
+
+// Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
+app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, clientIp }));
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 app.onError((err, c) => {
