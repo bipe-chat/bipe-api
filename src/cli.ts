@@ -38,6 +38,9 @@
 //   node dist/cli.js proposta password [--password-stdin]   (ADR 0158: the one shared password; prints a new one once, or reads yours; ends every session)
 //   node dist/cli.js proposta visits [--days 30]       (per visitor email, then the visits, newest first)
 //   node dist/cli.js proposta forget <email>          (LGPD deletion request: visitor, sessions and visits)
+//   node dist/cli.js theft status <user_id>          (ADR 0044: guardians count and the open mark, no guardian IDs)
+//   node dist/cli.js theft clear <user_id>           (ADR 0051: support clears a mark after a CPF check by hand; unlocks the covered accounts too)
+//   node dist/cli.js deletion status                 (ADR 0140: requests per state, and the ids, steps and errors of failing ones; no user IDs)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
@@ -61,6 +64,10 @@ import pg from "pg";
 import { transferReadiness } from "./transfer.js";
 import { forgetVisitor, propostaReport, setSharedPassword } from "./proposta.js";
 import { newSecret } from "./secrets.js";
+import { loadConfig } from "./config.js";
+import { Mas } from "./mas.js";
+import { Theft } from "./theft.js";
+import { deletionStatus } from "./deletion.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -174,6 +181,18 @@ try {
     console.log(`${r.id}  ${r.created_at}  ${r.user_id}\n${r.platform} ${r.app_version ?? "?"} (${r.build ?? "?"}) ${r.os ?? ""}\nlabels: ${r.labels.join(", ") || "-"}\nfiles: ${r.files.join(", ") || "-"}\n\n${r.text}`);
   } else if (group === "bugreports" && command === "forget" && arg) {
     console.log(`deleted ${await forgetBugReports(db, process.env.BUG_REPORTS_DIR ?? "/data/bug-reports", arg.trim())} reports`);
+  } else if (group === "theft" && command === "status" && arg) {
+    const { rows } = await db.query<{ guardians: number; stolen_at: Date | null }>(
+      `SELECT (SELECT count(*)::int FROM guardians WHERE owner_id = $1) AS guardians,
+              (SELECT stolen_at FROM theft_marks WHERE user_id = $1 AND cleared_at IS NULL) AS stolen_at`,
+      [arg.trim()],
+    );
+    console.log(`guardians ${rows[0]!.guardians}, mark ${rows[0]!.stolen_at ? `on since ${rows[0]!.stolen_at.toISOString()}` : "off"}`);
+  } else if (group === "theft" && command === "clear" && arg) {
+    const config = loadConfig();
+    const theft = new Theft(db, new Mas(config), { signTheft: () => null }, config.SERVER_NAME);
+    await theft.clear("staff", arg.trim(), true);
+    console.log("mark cleared (or no mark was on)");
   } else if (group === "banner" && command === "set" && arg) {
     const banner = await setBanner(db, JSON.parse(readFileSync(arg, "utf8")));
     console.log(`banner set: ${banner.id}, until ${banner.expires_at}${banner.min_app_version ? `, update below ${banner.min_app_version}` : ""}`);
@@ -250,6 +269,10 @@ try {
     console.table(report.retention);
     console.log("All events: users and count");
     console.table(report.totals);
+  } else if (group === "deletion" && command === "status") {
+    const status = await deletionStatus(db);
+    console.table(status.counts);
+    if (status.failing.length > 0) console.table(status.failing);
   } else if (group === "transfer" && command === "report") {
     // --days defaults to 14 for invites; this report's window is 30 days unless --days is given.
     const days = process.argv.includes("--days") ? Number(values.days) : 30;
@@ -270,7 +293,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user");
     process.exitCode = 2;
   }
 } finally {

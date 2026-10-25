@@ -692,6 +692,53 @@ const MIGRATIONS = [
      photo_digest text NOT NULL,
      seen_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Account deletion (ADR 0140, bipe#528): one open request per account, the 72-hour wait and the job's progress.
+  // waiting: cancellable until due_at. running: the job started (step = last finished step). done: the account is gone;
+  // the row keeps only user_id and the times, for the verification-record retention. A cancel deletes the row.
+  // last_error holds a step name and an HTTP status, never a body.
+  `CREATE TABLE account_deletions (
+     id text PRIMARY KEY,
+     user_id text NOT NULL,
+     device_id text,
+     redact_messages boolean NOT NULL,
+     state text NOT NULL CHECK (state IN ('waiting', 'running', 'done')),
+     created_at timestamptz NOT NULL DEFAULT now(),
+     due_at timestamptz NOT NULL,
+     step text,
+     redact_id text,
+     tries integer NOT NULL DEFAULT 0,
+     next_try_at timestamptz,
+     last_error text,
+     done_at timestamptz
+   );
+   CREATE UNIQUE INDEX account_deletions_one_open ON account_deletions (user_id) WHERE state IN ('waiting', 'running');
+   CREATE INDEX account_deletions_due ON account_deletions (due_at) WHERE state IN ('waiting', 'running');`,
+  // Theft protection (ADR 0044, ADR 0051, bipe#600, bipe#268): guardians, marks, and the phone of each account device.
+  `CREATE TABLE guardians (
+     owner_id text NOT NULL,
+     guardian_id text NOT NULL,
+     added_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (owner_id, guardian_id)
+   );
+   CREATE INDEX guardians_guardian ON guardians (guardian_id);
+   CREATE TABLE theft_marks (
+     id bigserial PRIMARY KEY,
+     user_id text NOT NULL,
+     stolen_at timestamptz NOT NULL DEFAULT now(),
+     marked_by text NOT NULL,
+     root_id bigint REFERENCES theft_marks (id),
+     cleared_at timestamptz,
+     cleared_by text
+   );
+   CREATE UNIQUE INDEX theft_marks_open ON theft_marks (user_id) WHERE cleared_at IS NULL;
+   CREATE TABLE account_phones (
+     user_id text NOT NULL,
+     device_id text NOT NULL,
+     phone_id text NOT NULL,
+     seen_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, device_id)
+   );
+   CREATE INDEX account_phones_phone ON account_phones (phone_id);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

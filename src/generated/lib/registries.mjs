@@ -41,6 +41,7 @@ export function loadRegistries(root) {
     relationshipNames: read("registries/relationship-names.json"),
     photoMatch: read("registries/photo-match.json"),
     profileFacts: read("registries/profile-facts.json"),
+    theft: read("registries/theft-protection.json"),
     workHours: read("registries/work-hours.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -222,6 +223,11 @@ function validate(reg) {
     if (!(Number.isInteger(pf[k]) && pf[k] > 0)) fail(`profile-facts: ${k} must be a positive integer`);
   }
   if (pf.noticeDays > pf.windowDays) fail("profile-facts: noticeDays must not exceed windowDays");
+  const tp = reg.theft;
+  for (const k of ["maxGuardians", "markedMessageMinutes", "statementLifeHours", "checkMinutes"]) {
+    if (!(Number.isInteger(tp[k]) && tp[k] > 0)) fail(`theft-protection: ${k} must be a positive integer`);
+  }
+  if (tp.maxGuardians > 3) fail("theft-protection: ADR 0044 allows 1 to 3 guardians");
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   if (!(Number.isInteger(h.ownerMinLength) && h.ownerMinLength >= 1 && h.ownerMinLength <= h.minLength)) fail("handles: ownerMinLength");

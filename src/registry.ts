@@ -21,6 +21,9 @@ export const brandMarkRules = reg.brandMarks as { labels: string[]; maxPerAccoun
 /** Profile change facts (ADR 0049, registries/profile-facts.json). */
 export const profileFactRules = reg.profileFacts as { windowDays: number; newAccountDays: number; noticePairHours: number; noticeDays: number };
 
+/** Theft protection (ADR 0044, ADR 0051, registries/theft-protection.json). */
+export const theftRules = reg.theft as { maxGuardians: number; markedMessageMinutes: number; statementLifeHours: number; checkMinutes: number };
+
 /** Badge trust list and life (ADR 0123, registries/badge-keys.json). */
 export const badgeRules = reg.badgeKeys as { keys: Record<string, string>; lifeDays: number; renewDaysBeforeExpiry: number };
 
@@ -111,6 +114,8 @@ export const accountRules = reg.accounts as {
   emailVerifyLinkHours: number;
   recoveryClaimDays: number;
   maxPersonalAccounts: number;
+  deletionCooldownHours: number;
+  deletionVerificationKeepDays: number;
 };
 
 /** Work side opening hours (registries/work-hours.json, bipe#511). */
