@@ -643,6 +643,39 @@ const MIGRATIONS = [
      days jsonb NOT NULL,
      updated_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Brand marks for resellers (ADR 0162, bipe#483). Invite codes only as SHA-256. Events: who did what, by account ID.
+  `CREATE TABLE brand_mark_invites (
+     id uuid PRIMARY KEY,
+     brand_user_id text NOT NULL,
+     label text NOT NULL,
+     code_hash text NOT NULL UNIQUE,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     expires_at timestamptz NOT NULL,
+     ended_at timestamptz,
+     outcome text CHECK (outcome IN ('accepted', 'refused', 'cancelled'))
+   );
+   CREATE INDEX brand_mark_invites_brand ON brand_mark_invites (brand_user_id) WHERE ended_at IS NULL;
+   CREATE TABLE brand_marks (
+     id uuid PRIMARY KEY,
+     brand_user_id text NOT NULL,
+     reseller_user_id text NOT NULL,
+     label text NOT NULL,
+     invite_id uuid NOT NULL,
+     granted_at timestamptz NOT NULL DEFAULT now(),
+     ended_at timestamptz,
+     ended_by text
+   );
+   CREATE UNIQUE INDEX brand_marks_active_pair ON brand_marks (brand_user_id, reseller_user_id) WHERE ended_at IS NULL;
+   CREATE INDEX brand_marks_reseller ON brand_marks (reseller_user_id) WHERE ended_at IS NULL;
+   CREATE TABLE brand_mark_events (
+     id bigserial PRIMARY KEY,
+     mark_id uuid,
+     invite_id uuid,
+     action text NOT NULL CHECK (action IN ('invite_created', 'invite_cancelled', 'accepted', 'refused', 'ended')),
+     actor_user_id text NOT NULL,
+     at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX brand_mark_events_actor ON brand_mark_events (actor_user_id, at);`,
   // Account deletion (ADR 0140, bipe#528): one open request per account, the 72-hour wait and the job's progress.
   // waiting: cancellable until due_at. running: the job started (step = last finished step). done: the account is gone;
   // the row keeps only user_id and the times, for the verification-record retention. A cancel deletes the row.

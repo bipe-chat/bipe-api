@@ -29,6 +29,8 @@ export type ErrorId =
   | "support_unavailable"
   | "link_taken"
   | "link_unavailable"
+  | "brand_not_verified"
+  | "brand_mark_limit"
   | "deletion_pending"
   // Business tools (bipe-shared api/business-schemas.json AgendaError, BusinessToolError).
   | "slot_taken"
@@ -82,6 +84,8 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   support_unavailable: 503,
   link_taken: 409,
   link_unavailable: 503,
+  brand_not_verified: 403,
+  brand_mark_limit: 409,
   deletion_pending: 409,
   slot_taken: 409,
   hold_expired: 409,

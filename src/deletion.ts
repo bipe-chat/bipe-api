@@ -323,6 +323,11 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
        WHERE customer_id = $1`,
       [userId, label],
     );
+    // Brand marks (ADR 0162): a mark ends with either account, so the deletion removes the user's marks as brand or
+    // reseller, the invites they made and the events they did. Events of the other party keep only that party's ID.
+    await q("DELETE FROM brand_marks WHERE brand_user_id = $1 OR reseller_user_id = $1");
+    await q("DELETE FROM brand_mark_invites WHERE brand_user_id = $1");
+    await q("DELETE FROM brand_mark_events WHERE actor_user_id = $1");
     // Invites the user made stay for the people who joined with them, without the maker.
     await q("UPDATE invites SET created_by = NULL, name = NULL, revoked_at = COALESCE(revoked_at, now()) WHERE created_by = $1");
     for (const table of [

@@ -15,6 +15,9 @@ export const growthRules = reg.growth as {
   events: { id: string; once: boolean; source: "api" | "synapse_db"; detail: string }[];
 };
 
+/** Brand marks for resellers (ADR 0162, registries/brand-marks.json). */
+export const brandMarkRules = reg.brandMarks as { labels: string[]; maxPerAccount: number; inviteDays: number; recheckMinutes: number };
+
 /** Badge trust list and life (ADR 0123, registries/badge-keys.json). */
 export const badgeRules = reg.badgeKeys as { keys: Record<string, string>; lifeDays: number; renewDaysBeforeExpiry: number };
 
