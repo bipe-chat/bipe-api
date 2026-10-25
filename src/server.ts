@@ -34,6 +34,7 @@ import { Visits } from "./visits.js";
 import { researchRoutes } from "./research/routes.js";
 import { finishWebLink, Geo } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
+import { recordKeychainMove } from "./transfer.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
@@ -101,6 +102,7 @@ const limits = {
   pinCheck: new RateLimiter(10, 3_600_000),
   credentials: new RateLimiter(5, 3_600_000),
   emailSet: new RateLimiter(5, 3_600_000),
+  keychainMove: new RateLimiter(20, 3_600_000),
   emailVerify: new RateLimiter(20, 3_600_000),
   recoveryToken: new RateLimiter(10, 3_600_000),
   recoveryTokenGlobal: new RateLimiter(300, 3_600_000),
@@ -372,6 +374,14 @@ app.post("/v1/me/recovery-token", async (c) => {
   limits.credentials.check(userId);
   c.header("cache-control", "no-store");
   return c.json(await rotateRecoveryToken(accounts, userId));
+});
+
+// bipe#531: an iPhone moved its keychain items into the app-group group. The device comes from the token.
+app.post("/v1/me/keychain-move", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  limits.keychainMove.check(userId);
+  await recordKeychainMove(db, userId, deviceId);
+  return c.body(null, 204);
 });
 
 app.put("/v1/me/email", async (c) => {
@@ -837,6 +847,12 @@ staffGet("/v1/admin/experiments", () => experimentsReport(db));
 staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));
 staffGet("/v1/admin/retention", () => staffReports.retention());
+// bipe#531: share of active iOS accounts with a way back that survives the App Store transfer.
+staffGet("/v1/admin/transfer-readiness", (c) => {
+  const days = z.coerce.number().int().min(1).max(90).default(30).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return staffReports.transferReadiness(days.data);
+});
 // Problem reports (bipe#367). The Starlings intake line links to the single report.
 staffGet("/v1/admin/bug-reports", () => listBugReports(db));
 staffGet("/v1/admin/bug-reports/:id", (c) => getBugReport(db, c.req.param("id")!));

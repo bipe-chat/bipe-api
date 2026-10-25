@@ -28,6 +28,7 @@
 //   node dist/cli.js banner show
 //   node dist/cli.js banner clear
 //   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
+//   node dist/cli.js transfer report [--days 30]     (bipe#531: active iOS accounts with a way back that survives the App Store transfer)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
@@ -44,6 +45,8 @@ import { type Config, loadMailConfig } from "./config.js";
 import { forgetBugReports, getBugReport, listBugReports } from "./bug-reports.js";
 import { clearBanner, currentBanner, setBanner } from "./banner.js";
 import { readFileSync } from "node:fs";
+import pg from "pg";
+import { transferReadiness } from "./transfer.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -194,6 +197,19 @@ try {
     console.table(report.retention);
     console.log("All events: users and count");
     console.table(report.totals);
+  } else if (group === "transfer" && command === "report") {
+    // --days defaults to 14 for invites; this report's window is 30 days unless --days is given.
+    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    if (!(Number.isInteger(days) && days >= 1 && days <= 90)) throw new Error("--days must be 1 to 90");
+    const synapseUrl = process.env.SYNAPSE_DATABASE_URL?.trim();
+    if (!synapseUrl) throw new Error("SYNAPSE_DATABASE_URL is not set");
+    const synapse = new pg.Pool({ connectionString: synapseUrl, max: 1 });
+    try {
+      console.log(`iOS accounts seen in the last ${days} days. null: a count of 1 or 2 (minimum cell). Shares in percent.`);
+      console.table(await transferReadiness(db, synapse, days));
+    } finally {
+      await synapse.end();
+    }
   } else if (group === "phone" && command === "link" && arg?.startsWith("@") && arg2) {
     await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), arg, arg2, values.force === true);
     console.log(`linked a number to ${arg}`);
@@ -201,7 +217,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user");
     process.exitCode = 2;
   }
 } finally {
