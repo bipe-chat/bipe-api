@@ -103,6 +103,8 @@ const Env = z.object({
   NEWS_STORE_DIR: z.string().default("/data/news-crypto"),
   NEWS_STORE_PASSPHRASE: emptyAsUnset(z.string().min(32)),
   NEWS_SEND_PER_MINUTE: z.coerce.number().int().min(1).max(600).default(60),
+  // CVM register check (ADR 0077): the daily download from dados.cvm.gov.br. "false" turns it off (no CVM lines).
+  CVM_REFRESH: z.string().default("true").transform((v) => v !== "false"),
   BIPE_MAIL_FROM: z.string().regex(/^[^\r\n<>]*<[^\s<>@]+@[^\s<>@]+>$|^[^\s<>@]+@[^\s<>@]+$/, "an address, or a name and <address>").default("Bipe <nao-responda@bipe.chat>"),
 });
 
