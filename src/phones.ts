@@ -1,14 +1,15 @@
 import { createHmac } from "node:crypto";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import { normalizePhone } from "./registry.js";
+import { normalizePhone, phoneRules } from "./registry.js";
 
 // Phone-number discovery, phase 0 (bipe/docs/phone-link.md). Numbers are stored only as
 // HMAC-SHA256 with a server secret; clear numbers are never stored and never logged.
 // Linking from the apps needs a proof (Pix phone key or SMS code, phases 1 and 2); until then
 // only the admin CLI links numbers.
 
-const CONFIRM_MONTHS = 12;
+// Yearly confirmation (bipe#470): registries/phone-numbers.json linkConfirmMonths, the same value the apps read.
+const CONFIRM_MONTHS = phoneRules.linkConfirmMonths;
 export const LOOKUP_MAX_PER_REQUEST = 500;
 const LOOKUP_DAILY_BUDGET = 2000;
 const LOOKUP_DAILY_BUDGET_NEW_ACCOUNT = 300;
