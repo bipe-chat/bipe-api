@@ -356,7 +356,6 @@
     "bipe_voice_transcribe_unavailable": "This phone can't transcribe this language without the internet.",
     "bipe_voice_transcribe_failed": "Couldn't transcribe. Try again.",
     "bipe_voice_transcribe_denied": "To transcribe, allow speech recognition for Bipe in the phone settings.",
-    "bipe_voice_transcribing": "Transcribing…",
     "bipe_voice_transcript_placeholder": "Check the transcript before sending",
     "bipe_voice_transcript_unavailable": "Couldn't transcribe. You can send the audio without text.",
     "bipe_action_show_more": "Show more",
@@ -1749,6 +1748,7 @@
     "bipe_deletion_done": "This account was deleted.",
     "bipe_deletion_customer_name": "Deleted account",
     "bipe_mail_notice_deletion_started": "Someone asked to delete your Bipe account. If nobody cancels, the account is deleted on %1$s.\n\nIf it was not you, open Bipe on one of your devices and cancel.",
-    "bipe_mail_notice_deletion_cancelled": "The request to delete your Bipe account was cancelled. The account stays as it was.\n\nIf it was not you, open Bipe on one of your devices and check."
+    "bipe_mail_notice_deletion_cancelled": "The request to delete your Bipe account was cancelled. The account stays as it was.\n\nIf it was not you, open Bipe on one of your devices and check.",
+    "bipe_a11y_switch_account": "Switch account"
   }
 }
