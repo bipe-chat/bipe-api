@@ -1,8 +1,8 @@
 // First run (registries/onboarding.json, bipe-chat/bipe#415): validation and Swift/Kotlin output.
 
-const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "dismiss"];
+const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss"];
 const STATES = ["syncedToken"];
-const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle"];
+const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery"];
 const KEY = /^[a-z][A-Za-z]*$/;
 
 function fail(msg) {
