@@ -35,6 +35,7 @@ export function loadRegistries(root) {
     pixMarks: read("registries/pix-marks.json"),
     dataUse: read("registries/data-use.json"),
     brandMarks: read("registries/brand-marks.json"),
+    voiceMedia: read("registries/voice-media.json"),
     voiceTranscript: read("registries/voice-transcript.json"),
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
@@ -170,6 +171,8 @@ function validate(reg) {
   if (typeof vt.pauseSeconds !== "number" || vt.pauseSeconds <= 0 || vt.pauseSeconds > 10) fail("voice-transcript: pauseSeconds must be a number from 0 to 10");
   if (!Number.isInteger(vt.minCharacters) || !Number.isInteger(vt.maxCharacters) || vt.minCharacters < 1 || vt.maxCharacters <= vt.minCharacters) fail("voice-transcript: minCharacters and maxCharacters must be positive integers, max above min");
   if (typeof vt.separator !== "string" || !/^\n+$/.test(vt.separator)) fail("voice-transcript: separator must be one or more line breaks");
+  const vm = reg.voiceMedia;
+  if (![vm.transcriptDays, vm.noTranscriptDays, vm.maxKeptPerAccount].every((n) => Number.isInteger(n) && n >= 1) || vm.noTranscriptDays < vm.transcriptDays) fail("voice-media: transcriptDays, noTranscriptDays and maxKeptPerAccount must be positive integers, noTranscriptDays at least transcriptDays");
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }
