@@ -1,4 +1,5 @@
-// Routes of the business tools (contract: bipe-shared api/openapi.yaml, tags Catálogo and Agenda).
+// Routes of the business tools (contract: bipe-shared api/openapi.yaml, tags Catálogo, Agenda, Fila virtual,
+// Orçamento and Pedidos).
 // Owner routes (/v1/me/business/...) need the company account's own token. Customer routes
 // (/v1/businesses/{handle}/...) take the business handle or its Matrix ID; reads are public, writes need a token.
 import { Hono, type Context } from "hono";
@@ -10,6 +11,9 @@ import { businessOf, requireCompany } from "./business-common.js";
 import * as catalog from "./catalog.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
+import * as orders from "./orders.js";
+import * as queue from "./queue.js";
+import * as quotes from "./quotes.js";
 import { RateLimiter } from "./ratelimit.js";
 
 export type BusinessDeps = {
@@ -45,6 +49,15 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
     hold: new RateLimiter(20, 3_600_000),
     customerWrite: new RateLimiter(60, 3_600_000),
     mine: new RateLimiter(120, 60_000),
+    join: new RateLimiter(20, 3_600_000),
+    order: new RateLimiter(20, 3_600_000),
+    quoteRequest: new RateLimiter(10, 3_600_000),
+  };
+  const mine = async (c: Context) => {
+    const userId = await auth.userId(c.req.header("authorization"));
+    limits.mine.check(userId);
+    c.header("cache-control", "no-store");
+    return userId;
   };
   const owner = async (c: Context, write = true) => {
     const userId = await requireCompany(db, await auth.userId(c.req.header("authorization")));
@@ -221,12 +234,117 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
     limits.hold.check(userId);
     return c.json(await agenda.customerMove(db, businessId, userId, c.req.param("bookingId"), await parse(c, agenda.MoveBody)));
   });
-  app.get("/v1/me/bookings", async (c) => {
-    const userId = await auth.userId(c.req.header("authorization"));
-    limits.mine.check(userId);
-    c.header("cache-control", "no-store");
-    return c.json(await agenda.myBookings(db, userId));
+  app.get("/v1/me/bookings", async (c) => c.json(await agenda.myBookings(db, await mine(c))));
+
+  // ---- Fila virtual ----
+  app.get("/v1/me/business/queue", async (c) => c.json(await queue.ownerQueue(db, await owner(c, false))));
+  app.post("/v1/me/business/queue/open", async (c) => c.json(await queue.setOpen(db, await owner(c), true)));
+  app.post("/v1/me/business/queue/close", async (c) => c.json(await queue.setOpen(db, await owner(c), false)));
+  app.put("/v1/me/business/queue/policy", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await queue.setPolicy(db, businessId, await parse(c, queue.PolicyBody)));
   });
+  app.get("/v1/me/business/queue/places", async (c) => c.json(await queue.ownerPlaces(db, await owner(c, false))));
+  app.post("/v1/me/business/queue/places", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await queue.addPlace(db, businessId, await parse(c, queue.OwnerPlaceBody)), 201);
+  });
+  app.post("/v1/me/business/queue/call-next", async (c) => c.json(await queue.callNext(db, await owner(c))));
+  for (const action of ["served", "no-show", "recall"] as const) {
+    app.post(`/v1/me/business/queue/places/:placeId/${action}`, async (c) =>
+      c.json(await queue.placeAction(db, await owner(c), c.req.param("placeId"), action)));
+  }
+  app.get("/v1/businesses/:handle/queue", async (c) => c.json(await queue.publicQueue(db, await publicBusiness(c))));
+  app.post("/v1/businesses/:handle/queue/join", async (c) => {
+    const { userId, businessId } = await customer(c);
+    limits.join.check(userId);
+    return c.json(await queue.join(db, businessId, userId, await parse(c, queue.JoinBody)), 201);
+  });
+  app.get("/v1/businesses/:handle/queue/me", async (c) => {
+    const userId = await mine(c);
+    return c.json(await queue.myPlace(db, await businessOf(db, c.req.param("handle")), userId));
+  });
+  app.post("/v1/businesses/:handle/queue/places/:placeId/leave", async (c) => {
+    const { userId, businessId } = await customer(c);
+    return c.json(await queue.leave(db, businessId, userId, c.req.param("placeId")));
+  });
+  app.get("/v1/me/queue-places", async (c) => c.json(await queue.myPlaces(db, await mine(c))));
+
+  // ---- Orçamento ----
+  app.get("/v1/me/business/quotes/requests", async (c) => c.json(await quotes.ownerRequests(db, await owner(c, false))));
+  app.post("/v1/me/business/quotes/requests/:requestId/quote", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await quotes.answer(db, businessId, c.req.param("requestId"), await parse(c, quotes.VersionBody)), 201);
+  });
+  app.get("/v1/me/business/quotes", async (c) => c.json(await quotes.ownerQuotes(db, await owner(c, false))));
+  app.get("/v1/me/business/quotes/:quoteId", async (c) => c.json(await quotes.ownerQuote(db, await owner(c, false), c.req.param("quoteId"))));
+  app.post("/v1/me/business/quotes/:quoteId/versions", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await quotes.revise(db, businessId, c.req.param("quoteId"), await parse(c, quotes.VersionBody)), 201);
+  });
+  // Pix charge cards (ADR 0080) are not built: no charge can be linked yet. Bipe moves no money (ADR 0012).
+  app.post("/v1/me/business/quotes/:quoteId/pix-charge", async (c) => {
+    await quotes.ownerQuote(db, await owner(c), c.req.param("quoteId"));
+    throw new ApiError("pix_charge_unavailable");
+  });
+  app.post("/v1/businesses/:handle/quotes/requests", async (c) => {
+    const { userId, businessId } = await customer(c);
+    limits.quoteRequest.check(userId);
+    return c.json(await quotes.request(db, businessId, userId), 201);
+  });
+  app.get("/v1/businesses/:handle/quotes/:quoteId", async (c) => {
+    const userId = await mine(c);
+    return c.json(await quotes.customerQuote(db, await businessOf(db, c.req.param("handle")), userId, c.req.param("quoteId")));
+  });
+  app.post("/v1/businesses/:handle/quotes/:quoteId/accept", async (c) => {
+    const { userId, businessId } = await customer(c);
+    return c.json(await quotes.accept(db, businessId, userId, c.req.param("quoteId"), await parse(c, quotes.AcceptBody)));
+  });
+  app.post("/v1/businesses/:handle/quotes/:quoteId/refuse", async (c) => {
+    const { userId, businessId } = await customer(c);
+    return c.json(await quotes.refuse(db, businessId, userId, c.req.param("quoteId"), await parse(c, quotes.DeclineBody)));
+  });
+  app.get("/v1/me/quotes", async (c) => c.json(await quotes.myQuotes(db, await mine(c))));
+
+  // ---- Pedidos ----
+  app.get("/v1/me/business/orders", async (c) => c.json(await orders.ownerOrders(db, await owner(c, false))));
+  app.post("/v1/me/business/orders", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await orders.ownerOrder(db, businessId, await parse(c, orders.OwnerOrderBody)), 201);
+  });
+  app.get("/v1/me/business/orders/policy", async (c) => c.json(await orders.policyOf(db, await owner(c, false))));
+  app.put("/v1/me/business/orders/policy", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await orders.setPolicy(db, businessId, await parse(c, orders.PolicyBody)));
+  });
+  app.get("/v1/me/business/orders/:orderId", async (c) => c.json(await orders.ownerGet(db, await owner(c, false), c.req.param("orderId"))));
+  for (const action of ["accept", "ready", "done", "cancel"] as const) {
+    app.post(`/v1/me/business/orders/:orderId/${action}`, async (c) =>
+      c.json(await orders.ownerTransition(db, await owner(c), c.req.param("orderId"), action)));
+  }
+  app.post("/v1/me/business/orders/:orderId/refuse", async (c) => {
+    const businessId = await owner(c);
+    const { reason } = await parse(c, orders.RefusalBody);
+    return c.json(await orders.ownerTransition(db, businessId, c.req.param("orderId"), "refuse", reason));
+  });
+  app.post("/v1/me/business/orders/:orderId/pix-charge", async (c) => {
+    await orders.ownerGet(db, await owner(c), c.req.param("orderId"));
+    throw new ApiError("pix_charge_unavailable");
+  });
+  app.post("/v1/businesses/:handle/orders", async (c) => {
+    const { userId, businessId } = await customer(c);
+    limits.order.check(userId);
+    return c.json(await orders.placeOrder(db, businessId, userId, await parse(c, orders.OrderBody)), 201);
+  });
+  app.get("/v1/businesses/:handle/orders/:orderId", async (c) => {
+    const userId = await mine(c);
+    return c.json(await orders.customerGet(db, await businessOf(db, c.req.param("handle")), userId, c.req.param("orderId")));
+  });
+  app.post("/v1/businesses/:handle/orders/:orderId/cancel", async (c) => {
+    const { userId, businessId } = await customer(c);
+    return c.json(await orders.customerCancel(db, businessId, userId, c.req.param("orderId")));
+  });
+  app.get("/v1/me/orders", async (c) => c.json(await orders.myOrders(db, await mine(c))));
 
   return app;
 }

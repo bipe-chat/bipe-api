@@ -442,6 +442,95 @@ const MIGRATIONS = [
    );
    CREATE INDEX bookings_business ON bookings (business_id, start_at);
    CREATE INDEX bookings_customer ON bookings (customer_id, start_at) WHERE customer_id IS NOT NULL;`,
+  // Fila virtual (ADR 0107), Orçamento (ADR 0106), Pedidos (ADR 0105). Records hold IDs, items, amounts, times and
+  // status, never customer text. One active queue place and one open order per customer per business.
+  `CREATE TABLE queue_settings (
+     business_id text PRIMARY KEY,
+     no_show_after_minutes integer NOT NULL CHECK (no_show_after_minutes >= 1)
+   );
+   CREATE TABLE queues (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     day date NOT NULL,
+     time_zone text NOT NULL,
+     open boolean NOT NULL,
+     UNIQUE (business_id, day)
+   );
+   CREATE TABLE queue_places (
+     id text PRIMARY KEY,
+     queue_id text NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
+     business_id text NOT NULL,
+     customer_id text,
+     customer_name text,
+     CHECK ((customer_id IS NULL) <> (customer_name IS NULL)),
+     source text NOT NULL CHECK (source IN ('customer', 'owner')),
+     service_id text,
+     status text NOT NULL CHECK (status IN ('waiting', 'called', 'served', 'no_show', 'left')),
+     joined_at timestamptz NOT NULL DEFAULT now(),
+     called_at timestamptz,
+     served_at timestamptz
+   );
+   CREATE INDEX queue_places_queue ON queue_places (queue_id, joined_at);
+   CREATE UNIQUE INDEX queue_places_one_active ON queue_places (business_id, customer_id)
+     WHERE customer_id IS NOT NULL AND status IN ('waiting', 'called');
+   CREATE TABLE quote_requests (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     customer_id text NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX quote_requests_business ON quote_requests (business_id, created_at);
+   CREATE TABLE quotes (
+     id text PRIMARY KEY,
+     request_id text NOT NULL UNIQUE REFERENCES quote_requests(id),
+     business_id text NOT NULL,
+     customer_id text NOT NULL,
+     status text NOT NULL CHECK (status IN ('offered', 'accepted', 'refused')),
+     current_version integer NOT NULL,
+     booking_id text,
+     order_id text,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX quotes_business ON quotes (business_id, updated_at);
+   CREATE INDEX quotes_customer ON quotes (customer_id, updated_at);
+   CREATE TABLE quote_versions (
+     quote_id text NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+     version integer NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     valid_until timestamptz NOT NULL,
+     lines jsonb NOT NULL,
+     total_amount_cents bigint NOT NULL,
+     visit_service_id text,
+     PRIMARY KEY (quote_id, version)
+   );
+   CREATE TABLE order_settings (
+     business_id text PRIMARY KEY,
+     time_zone text NOT NULL,
+     weekdays integer[] NOT NULL,
+     cutoff text NOT NULL
+   );
+   CREATE TABLE orders (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     customer_id text,
+     customer_name text,
+     CHECK ((customer_id IS NULL) <> (customer_name IS NULL)),
+     source text NOT NULL CHECK (source IN ('customer', 'owner')),
+     lines jsonb NOT NULL,
+     total_amount_cents bigint NOT NULL,
+     fulfilment text NOT NULL CHECK (fulfilment IN ('pickup', 'delivery')),
+     payment text NOT NULL CHECK (payment IN ('in_person', 'pix')),
+     status text NOT NULL CHECK (status IN ('sent', 'accepted', 'refused', 'ready', 'done', 'cancelled')),
+     refuse_reason text,
+     quote_id text,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX orders_business ON orders (business_id, created_at);
+   CREATE INDEX orders_customer ON orders (customer_id, created_at) WHERE customer_id IS NOT NULL;
+   CREATE UNIQUE INDEX orders_one_open ON orders (business_id, customer_id)
+     WHERE customer_id IS NOT NULL AND status IN ('sent', 'accepted', 'ready');`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
