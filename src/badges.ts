@@ -8,7 +8,7 @@ import { join } from "node:path";
 import pg from "pg";
 import type { Db } from "./db.js";
 import { cvmField } from "./cvm.js";
-import { badgeRules, brandMarkRules } from "./registry.js";
+import { badgeRules, brandMarkRules, theftRules } from "./registry.js";
 
 const KID = /^prod-\d{4}-(0[1-9]|1[0-2])$/;
 // Matrix unpadded base64 of a 32-byte Ed25519 key (master key and device key).
@@ -20,7 +20,7 @@ export type BadgeEnvelope = { v: 1; kid: string; payload: string; sig: string };
 export type BadgeResult =
   | { status: 200; envelope: BadgeEnvelope }
   | { status: 404 }
-  | { status: 410; reason: "revoked" | "not_active" | "not_found" | "staff" };
+  | { status: 410; reason: "revoked" | "not_active" | "not_found" | "staff" | "stolen" };
 
 type ClaimRow = {
   cnpj: string;
@@ -57,6 +57,9 @@ export class Badges {
   }
 
   async forUser(userId: string, now = Math.floor(Date.now() / 1000)): Promise<BadgeResult> {
+    // A theft mark suspends every badge of the account (ADR 0044, rule 4).
+    const { rowCount: stolen } = await this.db.query("SELECT 1 FROM theft_marks WHERE user_id = $1 AND cleared_at IS NULL", [userId]);
+    if (stolen) return { status: 410, reason: "stolen" };
     const { rows } = await this.db.query<ClaimRow>(
       `SELECT c.cnpj, c.status, c.reason, c.method, c.verified_at, r.active, r.legal_name, r.trade_name, r.release_month,
               r.cnae_main, r.cnae_secondary
@@ -123,6 +126,9 @@ export class Badges {
    */
   async brandMarks(userId: string, now = Math.floor(Date.now() / 1000)): Promise<BadgeEnvelope[]> {
     if (!this.key || !this.synapse) return [];
+    // A theft mark suspends every badge of the account, brand marks included (ADR 0044, rule 4).
+    const { rowCount: stolen } = await this.db.query("SELECT 1 FROM theft_marks WHERE user_id = $1 AND cleared_at IS NULL", [userId]);
+    if (stolen) return [];
     const { rows } = await this.db.query<{ id: string; brand_user_id: string; label: string }>(
       `SELECT id, brand_user_id, label FROM brand_marks WHERE reseller_user_id = $1 AND ended_at IS NULL
         ORDER BY granted_at, id LIMIT $2`,
@@ -180,6 +186,13 @@ export class Badges {
     const envelope = this.signPayload(payload);
     this.cache.set(userId, { key: cacheKey, exp, envelope });
     return { status: 200, envelope };
+  }
+
+  /** A theft statement (bipe-shared docs/theft-mark.md), or null without a signing key. */
+  signTheft(userId: string, stolenAt: Date, now = Math.floor(Date.now() / 1000)): BadgeEnvelope | null {
+    if (!this.key) return null;
+    const payload = { typ: "theft", sub: userId, stolen_at: Math.floor(stolenAt.getTime() / 1000), iat: now, exp: now + theftRules.statementLifeHours * 3600 };
+    return this.signPayload(payload);
   }
 
   private signPayload(payload: Record<string, unknown>): BadgeEnvelope {

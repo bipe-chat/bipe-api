@@ -713,6 +713,32 @@ const MIGRATIONS = [
    );
    CREATE UNIQUE INDEX account_deletions_one_open ON account_deletions (user_id) WHERE state IN ('waiting', 'running');
    CREATE INDEX account_deletions_due ON account_deletions (due_at) WHERE state IN ('waiting', 'running');`,
+  // Theft protection (ADR 0044, ADR 0051, bipe#600, bipe#268): guardians, marks, and the phone of each account device.
+  `CREATE TABLE guardians (
+     owner_id text NOT NULL,
+     guardian_id text NOT NULL,
+     added_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (owner_id, guardian_id)
+   );
+   CREATE INDEX guardians_guardian ON guardians (guardian_id);
+   CREATE TABLE theft_marks (
+     id bigserial PRIMARY KEY,
+     user_id text NOT NULL,
+     stolen_at timestamptz NOT NULL DEFAULT now(),
+     marked_by text NOT NULL,
+     root_id bigint REFERENCES theft_marks (id),
+     cleared_at timestamptz,
+     cleared_by text
+   );
+   CREATE UNIQUE INDEX theft_marks_open ON theft_marks (user_id) WHERE cleared_at IS NULL;
+   CREATE TABLE account_phones (
+     user_id text NOT NULL,
+     device_id text NOT NULL,
+     phone_id text NOT NULL,
+     seen_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, device_id)
+   );
+   CREATE INDEX account_phones_phone ON account_phones (phone_id);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

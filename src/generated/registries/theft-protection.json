@@ -1,0 +1,8 @@
+{
+  "$comment": "Theft protection, ADR 0044 and ADR 0051 (bipe/docs/adr, security.md rule 14, bipe-chat/bipe#600, #268). maxGuardians: guardians per account. markedMessageMinutes: messages from the marked account sent this long before stolen_at get the marker in contacts' chats. statementLifeHours: life of a signed theft statement (docs/theft-mark.md); the apps fetch again when it ends. checkMinutes: how often an app checks the marks of the people it shows, at most.",
+  "version": 1,
+  "maxGuardians": 3,
+  "markedMessageMinutes": 60,
+  "statementLifeHours": 24,
+  "checkMinutes": 15
+}

@@ -96,6 +96,13 @@
           ]
         },
         {
+          "key": "theft",
+          "title": "bipe_theft_title",
+          "rows": [
+            { "key": "theftProtection", "title": "bipe_theft_title", "kind": "link", "adr": "0044" }
+          ]
+        },
+        {
           "key": "devices",
           "title": "bipe_account_devices",
           "rows": [

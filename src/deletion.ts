@@ -328,6 +328,14 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q("DELETE FROM brand_marks WHERE brand_user_id = $1 OR reseller_user_id = $1");
     await q("DELETE FROM brand_mark_invites WHERE brand_user_id = $1");
     await q("DELETE FROM brand_mark_events WHERE actor_user_id = $1");
+    // Theft protection (ADR 0044, ADR 0051): the user's guardians, guardian roles, phone IDs and marks go. Marks the
+    // user made or cleared for someone else stay for that account, without the user's ID.
+    await q("DELETE FROM guardians WHERE owner_id = $1 OR guardian_id = $1");
+    await q("DELETE FROM account_phones WHERE user_id = $1");
+    await q("UPDATE theft_marks SET root_id = NULL WHERE root_id IN (SELECT id FROM theft_marks WHERE user_id = $1)");
+    await q("DELETE FROM theft_marks WHERE user_id = $1");
+    await q("UPDATE theft_marks SET marked_by = 'deleted' WHERE marked_by = $1");
+    await q("UPDATE theft_marks SET cleared_by = 'deleted' WHERE cleared_by = $1");
     // Invites the user made stay for the people who joined with them, without the maker.
     await q("UPDATE invites SET created_by = NULL, name = NULL, revoked_at = COALESCE(revoked_at, now()) WHERE created_by = $1");
     for (const table of [
