@@ -97,10 +97,16 @@ const Env = z.object({
   SUPPORT_ACCESS_TOKEN: emptyAsUnset(z.string().min(16)),
   SUPPORT_STORE_DIR: z.string().default("/data/support-crypto"),
   SUPPORT_STORE_PASSPHRASE: emptyAsUnset(z.string().min(32)),
+  // Novidades do Bipe (ADR 0117, ADR 0119). Its own account, device and key store; off without the token and the passphrase.
+  NEWS_USER_ID: z.string().regex(/^@[a-z0-9._=\/-]+:[a-z0-9.-]+$/).optional(),
+  NEWS_ACCESS_TOKEN: emptyAsUnset(z.string().min(16)),
+  NEWS_STORE_DIR: z.string().default("/data/news-crypto"),
+  NEWS_STORE_PASSPHRASE: emptyAsUnset(z.string().min(32)),
+  NEWS_SEND_PER_MINUTE: z.coerce.number().int().min(1).max(600).default(60),
   BIPE_MAIL_FROM: z.string().regex(/^[^\r\n<>]*<[^\s<>@]+@[^\s<>@]+>$|^[^\s<>@]+@[^\s<>@]+$/, "an address, or a name and <address>").default("Bipe <nao-responda@bipe.chat>"),
 });
 
-export type Config = Omit<z.infer<typeof Env>, "SUPPORT_USER_ID"> & { SUPPORT_USER_ID: string };
+export type Config = Omit<z.infer<typeof Env>, "SUPPORT_USER_ID" | "NEWS_USER_ID"> & { SUPPORT_USER_ID: string; NEWS_USER_ID: string };
 
 const MailEnv = Env.pick({ PUBLIC_SITE_URL: true, BIPE_SMTP_HOST: true, BIPE_SMTP_PORT: true, BIPE_SMTP_USER: true, BIPE_SMTP_PASSWORD: true, BIPE_MAIL_FROM: true });
 export type MailConfig = z.infer<typeof MailEnv>;
@@ -115,7 +121,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (env.NODE_ENV === "production" && parsed.data.APP_ATTEST_ENVIRONMENT !== "production") {
     throw new Error("invalid environment: APP_ATTEST_ENVIRONMENT");
   }
-  return { ...parsed.data, SUPPORT_USER_ID: parsed.data.SUPPORT_USER_ID ?? `@suporte:${parsed.data.SERVER_NAME}` };
+  return {
+    ...parsed.data,
+    SUPPORT_USER_ID: parsed.data.SUPPORT_USER_ID ?? `@suporte:${parsed.data.SERVER_NAME}`,
+    NEWS_USER_ID: parsed.data.NEWS_USER_ID ?? `@bipe:${parsed.data.SERVER_NAME}`,
+  };
 }
 
 /** The mail settings only, for the admin CLI (it does not need the MAS settings). */

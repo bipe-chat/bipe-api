@@ -6,6 +6,7 @@ import { HANDLE_CHANGE_KEEP_DAYS } from "./handles.js";
 import { RETENTION_DAYS as BUG_REPORT_KEEP_DAYS } from "./bug-reports.js";
 import { growthRules } from "./registry.js";
 import { cell, MIN_CELL } from "./staff-report.js";
+import { transferReadiness } from "./transfer.js";
 import type { Visits } from "./visits.js";
 
 // Read-only staff reports for bipe.chat/admin/* (bipe#368). Each one returns aggregates or business records,
@@ -107,6 +108,11 @@ export class StaffReports {
         return { id: Number(r.id), received_at: new Date(Number(r.received_ts)).toISOString(), room_id: r.room_id, reason: r.reason, score };
       }),
     };
+  }
+
+  /** bipe#531, bipe/docs/team-transfer-recovery.md section 6. */
+  transferReadiness(days: number) {
+    return transferReadiness(this.db, this.synapse, days);
   }
 
   async retention(): Promise<{ items: RetentionItem[] }> {

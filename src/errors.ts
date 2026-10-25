@@ -26,9 +26,17 @@ export type ErrorId =
   | "recovery_invalid"
   | "email_unavailable"
   | "terms_required"
-  | "support_unavailable";
+  | "support_unavailable"
+  // Business tools (bipe-shared api/business-schemas.json AgendaError, BusinessToolError).
+  | "slot_taken"
+  | "hold_expired"
+  | "too_many_open_bookings"
+  | "outside_notice"
+  | "outside_horizon"
+  | "agenda_not_published"
+  | "cancellation_window_closed";
 
-const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503> = {
+const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503> = {
   bad_request: 400,
   invite_invalid: 403,
   invite_quota_exhausted: 403,
@@ -56,6 +64,13 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503> = {
   email_unavailable: 503,
   terms_required: 403,
   support_unavailable: 503,
+  slot_taken: 409,
+  hold_expired: 409,
+  too_many_open_bookings: 422,
+  outside_notice: 422,
+  outside_horizon: 422,
+  agenda_not_published: 422,
+  cancellation_window_closed: 422,
 };
 
 export class ApiError extends Error {
