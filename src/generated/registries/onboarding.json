@@ -82,6 +82,7 @@
     {
       "key": "handle",
       "trigger": "chatListWithoutHandle",
+      "slot": true,
       "title": "bipe_handle_prompt_title",
       "body": "bipe_handle_prompt_body",
       "primary": { "title": "bipe_handle_prompt_action", "to": "handleScreen" },
@@ -94,8 +95,21 @@
       "body": "bipe_fallback_reminder",
       "primary": { "title": "bipe_fallback_email", "to": "recoveryEmailAdd" },
       "text": [{ "title": "bipe_fallback_skip", "to": "dismiss" }]
+    },
+    {
+      "key": "photo",
+      "trigger": "voceWithoutPhoto",
+      "slot": true,
+      "title": "bipe_photo_prompt_title",
+      "body": "bipe_photo_prompt_body",
+      "primary": { "title": "bipe_photo_prompt_action", "to": "photoPicker" },
+      "text": [{ "title": "bipe_fallback_skip", "to": "dismiss" }]
     }
   ],
+  "promptSlot": {
+    "$comment": "Prompts with slot true share one slot per account (bipe-chat/bipe#200): after one shows, no other slot prompt shows for hours. The same prompt may keep showing in its slot. A dismissed prompt never comes back.",
+    "hours": 24
+  },
   "firstList": {
     "$comment": "Cards at the top of Conversas while it lists at most maxChats chats (bipe-chat/bipe#198, spec chat-list-cards). A card goes away for good once used or dismissed.",
     "maxChats": 3,
