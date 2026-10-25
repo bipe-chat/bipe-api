@@ -30,6 +30,8 @@
     "bipe_badge_company_revoked": "Esta empresa não está mais verificada.",
     "bipe_badge_company_revoked_not_active": "Esta empresa não está mais verificada. O CNPJ não aparece ativo na Receita.",
     "bipe_badge_company_suspended": "O selo desta empresa está suspenso até o Bipe conferir a conta de novo.",
+    "bipe_badge_official": "Bipe",
+    "bipe_badge_official_a11y": "Conta oficial do Bipe",
     "bipe_warning_nickname_confirm_title": "É a pessoa que você conhece?",
     "bipe_warning_nickname_confirm_body": "Você salvou este contato como %1$s. A conta está verificada como %2$s. É a mesma pessoa?",
     "bipe_action_nickname_confirm_yes": "Sim, é a mesma pessoa",
