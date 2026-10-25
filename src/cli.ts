@@ -40,6 +40,7 @@
 //   node dist/cli.js proposta forget <email>          (LGPD deletion request: visitor, sessions and visits)
 //   node dist/cli.js theft status <user_id>          (ADR 0044: guardians count and the open mark, no guardian IDs)
 //   node dist/cli.js theft clear <user_id>           (ADR 0051: support clears a mark after a CPF check by hand; unlocks the covered accounts too)
+//   node dist/cli.js deletion status                 (ADR 0140: requests per state, and the ids, steps and errors of failing ones; no user IDs)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
@@ -66,6 +67,7 @@ import { newSecret } from "./secrets.js";
 import { loadConfig } from "./config.js";
 import { Mas } from "./mas.js";
 import { Theft } from "./theft.js";
+import { deletionStatus } from "./deletion.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -267,6 +269,10 @@ try {
     console.table(report.retention);
     console.log("All events: users and count");
     console.table(report.totals);
+  } else if (group === "deletion" && command === "status") {
+    const status = await deletionStatus(db);
+    console.table(status.counts);
+    if (status.failing.length > 0) console.table(status.failing);
   } else if (group === "transfer" && command === "report") {
     // --days defaults to 14 for invites; this report's window is 30 days unless --days is given.
     const days = process.argv.includes("--days") ? Number(values.days) : 30;
@@ -287,7 +293,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user");
     process.exitCode = 2;
   }
 } finally {

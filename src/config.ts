@@ -113,6 +113,11 @@ const Env = z.object({
   NEWS_STORE_DIR: z.string().default("/data/news-crypto"),
   NEWS_STORE_PASSPHRASE: emptyAsUnset(z.string().min(32)),
   NEWS_SEND_PER_MINUTE: z.coerce.number().int().min(1).max(600).default(60),
+  // Account deletion (ADR 0140): a Synapse admin access token for the room handover, the redaction and the
+  // deactivation. A MAS compatibility token of a dedicated admin account (mas-cli manage issue-compatibility-token
+  // <user> --yes-i-want-to-grant-synapse-admin-privileges); MAS gives no Synapse admin scope to client_credentials.
+  // Unset: requests are taken and wait; the job runs none until it is set. Never log it.
+  SYNAPSE_ADMIN_TOKEN: emptyAsUnset(z.string().min(16)),
   // CVM register check (ADR 0077): the daily download from dados.cvm.gov.br. "false" turns it off (no CVM lines).
   CVM_REFRESH: z.string().default("true").transform((v) => v !== "false"),
   BIPE_MAIL_FROM: z.string().regex(/^[^\r\n<>]*<[^\s<>@]+@[^\s<>@]+>$|^[^\s<>@]+@[^\s<>@]+$/, "an address, or a name and <address>").default("Bipe <nao-responda@bipe.chat>"),

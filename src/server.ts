@@ -37,6 +37,8 @@ import { researchRoutes } from "./research/routes.js";
 import { finishWebLink, Geo } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
+import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
+import { SynapseAdmin } from "./synapse-admin.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
@@ -128,6 +130,8 @@ const limits = {
   credentials: new RateLimiter(5, 3_600_000),
   emailSet: new RateLimiter(5, 3_600_000),
   keychainMove: new RateLimiter(20, 3_600_000),
+  deletion: new RateLimiter(3, 3_600_000),
+  deletionCancel: new RateLimiter(20, 3_600_000),
   emailVerify: new RateLimiter(20, 3_600_000),
   recoveryToken: new RateLimiter(10, 3_600_000),
   recoveryTokenGlobal: new RateLimiter(300, 3_600_000),
@@ -250,6 +254,22 @@ const prunePropostaJob = () =>
     .catch((e) => console.error(`strategic page prune failed: ${(e as Error).message}`));
 prunePropostaJob();
 setInterval(prunePropostaJob, 24 * 3_600_000).unref();
+// Account deletion (ADR 0140): due requests run every minute; the kept verification records go after their retention.
+const deletions: DeletionDeps = {
+  ...accounts,
+  synapse: config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null,
+  bugReportsDir: config.BUG_REPORTS_DIR,
+  serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID],
+};
+console.log(`account deletion job: ${deletions.synapse ? "on" : "off (no SYNAPSE_ADMIN_TOKEN): requests wait"}`);
+const deletionJob = () => void runDueDeletions(deletions).catch((e) => console.error(`deletion job failed: ${(e as Error).message}`));
+setInterval(deletionJob, DELETION_TICK_MS).unref();
+const pruneDeletionRecords = () =>
+  void pruneDeletions(db)
+    .then((n) => n > 0 && console.log(`deletion records pruned: ${n}`))
+    .catch((e) => console.error(`deletion prune failed: ${(e as Error).message}`));
+pruneDeletionRecords();
+setInterval(pruneDeletionRecords, 24 * 3_600_000).unref();
 const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
@@ -409,11 +429,11 @@ app.post("/v1/signup/resume", async (c) => {
 // --- Device-first accounts (ADR 0057, ADR 0059) --------------------------------------------------------
 
 app.get("/v1/me/account", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   // The app signed in, so it has its credentials: the sealed sign-up copy (ADR 0094) can go.
   await forgetSignupReplay(db, userId);
   growth.onboarded(userId);
-  return c.json(await accountStatus(accounts, userId, config.MAX_PERSONAL_ACCOUNTS));
+  return c.json(await accountStatus(accounts, userId, config.MAX_PERSONAL_ACCOUNTS, deviceId));
 });
 
 // ADR 0113: accounts from before the clickwrap, and everyone after a new legalVersion, accept on a re-accept screen.
@@ -490,6 +510,22 @@ app.put("/v1/me/email", async (c) => {
 app.delete("/v1/me/email", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   await removeEmail(accounts, userId);
+  return c.body(null, 204);
+});
+
+// Account deletion (ADR 0140): the owner check ran on the phone; the senha is checked here. 72 hours to cancel.
+const DeletionBody = z.object({ pin: PinField, redact_messages: z.boolean() });
+app.post("/v1/me/deletion", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  limits.deletion.check(userId);
+  const { pin, redact_messages } = await parse(c, DeletionBody);
+  return c.json(await requestDeletion(accounts, userId, deviceId, pin, redact_messages), 201);
+});
+
+app.post("/v1/me/deletions/:id/cancel", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.deletionCancel.check(userId);
+  await cancelDeletion(accounts, userId, c.req.param("id").slice(0, 64));
   return c.body(null, 204);
 });
 

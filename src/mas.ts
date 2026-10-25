@@ -13,6 +13,14 @@ export class Mas {
     return { id: (await this.json(res)).data.id };
   }
 
+  /** The MAS user and whether MAS already deactivated it (account deletion, ADR 0140). Null when unknown. */
+  async userState(username: string): Promise<{ id: string; deactivated: boolean } | null> {
+    const res = await this.call("GET", `/users/by-username/${encodeURIComponent(username)}`);
+    if (res.status === 404) return null;
+    const { id, attributes: a } = (await this.json(res)).data;
+    return { id, deactivated: Boolean(a?.deactivated_at) };
+  }
+
   /** True only when MAS marks the user admin (mas-cli manage promote-admin) and the user is active. */
   async isAdmin(username: string): Promise<boolean> {
     const res = await this.call("GET", `/users/by-username/${encodeURIComponent(username)}`);
