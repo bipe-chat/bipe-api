@@ -557,6 +557,42 @@ const MIGRATIONS = [
    );
    INSERT INTO cvm_state (id) VALUES (1);
    ALTER TABLE cnpj_registry ADD COLUMN cnae_main text, ADD COLUMN cnae_secondary text[];`,
+  // Strategic pages at bipe.chat/proposta/ (ADR 0157, ADR 0158): one shared password (scrypt hash, one row), the
+  // visitors by the email they typed, their sessions (SHA-256 of the secret) and the visit log. Visits keep no IP
+  // and no user agent; they go after 365 days, and with the visitor (proposta forget).
+  `CREATE TABLE proposta_password (
+     id integer PRIMARY KEY CHECK (id = 1),
+     password_hash text NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE proposta_visitors (
+     id serial PRIMARY KEY,
+     email text NOT NULL UNIQUE,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     last_seen_at timestamptz
+   );
+   CREATE TABLE proposta_sessions (
+     token_hash text PRIMARY KEY,
+     visitor_id integer NOT NULL REFERENCES proposta_visitors (id) ON DELETE CASCADE,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     expires_at timestamptz NOT NULL
+   );
+   CREATE INDEX proposta_sessions_visitor ON proposta_sessions (visitor_id);
+   CREATE TABLE proposta_visits (
+     id bigserial PRIMARY KEY,
+     visitor_id integer NOT NULL REFERENCES proposta_visitors (id) ON DELETE CASCADE,
+     at timestamptz NOT NULL DEFAULT now(),
+     kind text NOT NULL CHECK (kind IN ('page', 'slide')),
+     path text NOT NULL,
+     slide integer,
+     referrer text,
+     utm jsonb NOT NULL DEFAULT '{}',
+     city text,
+     region text,
+     country text
+   );
+   CREATE INDEX proposta_visits_at ON proposta_visits (at);
+   CREATE INDEX proposta_visits_visitor ON proposta_visits (visitor_id, at);`,
   // Linked Apple or Google account for recovery (ADR 0096, bipe#305). subject_hash: HMAC-SHA256(pepper, issuer + sub);
   // no email, name or provider token. Nonces, states and handoffs are kept as SHA-256 hashes. link_events: 7 days.
   `CREATE TABLE account_links (
