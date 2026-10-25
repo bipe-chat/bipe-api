@@ -531,6 +531,32 @@ const MIGRATIONS = [
    CREATE INDEX orders_customer ON orders (customer_id, created_at) WHERE customer_id IS NOT NULL;
    CREATE UNIQUE INDEX orders_one_open ON orders (business_id, customer_id)
      WHERE customer_id IS NOT NULL AND status IN ('sent', 'accepted', 'ready');`,
+  // CVM register check (ADR 0077, bipe#237): CVM's open register of investment service providers and its stop
+  // orders, refreshed daily as a whole. Company data, no personal data. cnae_*: from the Receita scan, for the
+  // financial CNAE rule.
+  `CREATE TABLE cvm_registrations (
+     cnpj text NOT NULL,
+     source text NOT NULL,
+     category text NOT NULL,
+     status text NOT NULL CHECK (status IN ('active', 'cancelled', 'other')),
+     registered_on date,
+     cancelled_on date
+   );
+   CREATE INDEX cvm_registrations_cnpj ON cvm_registrations (cnpj);
+   CREATE TABLE cvm_stop_orders (
+     cnpj text NOT NULL,
+     act text NOT NULL,
+     act_on date NOT NULL,
+     PRIMARY KEY (cnpj, act, act_on)
+   );
+   CREATE TABLE cvm_state (
+     id integer PRIMARY KEY CHECK (id = 1),
+     refreshed_at timestamptz,
+     last_error text,
+     last_error_at timestamptz
+   );
+   INSERT INTO cvm_state (id) VALUES (1);
+   ALTER TABLE cnpj_registry ADD COLUMN cnae_main text, ADD COLUMN cnae_secondary text[];`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
