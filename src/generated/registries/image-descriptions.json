@@ -1,0 +1,6 @@
+{
+  "$comment": "Image descriptions (alt text, bipe-chat/bipe#501). The sender writes an optional description of a photo in upload-preview. It travels in the content of the m.image event as the top-level string field below, next to body and filename, inside the encrypted event. Readers take it only from an m.image event: a non-string or blank value counts as none, and text after maxLength characters is dropped. VoiceOver and TalkBack read it before the caption (timeline-media, media-viewer). Matrix has no stable alt-text field yet; when one lands, apps send both and read the stable one first.",
+  "version": 1,
+  "field": "chat.bipe.image_description",
+  "maxLength": 1000
+}
