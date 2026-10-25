@@ -1,4 +1,4 @@
-// Synapse admin API for account deletion (ADR 0140, bipe#528) and voice audio expiry (ADR 0164). The token is SYNAPSE_ADMIN_TOKEN, a MAS compatibility
+// Synapse admin API for account deletion (ADR 0140, bipe#528), voice audio expiry (ADR 0164) and the approval nudge (bipe#628). The token is SYNAPSE_ADMIN_TOKEN, a MAS compatibility
 // token of a dedicated admin account. Errors carry the path name and the HTTP status only: bodies can echo user IDs or
 // room names.
 
@@ -11,6 +11,16 @@ export interface StateEvent {
 }
 
 export type RedactStatus = "scheduled" | "active" | "completed" | "failed";
+
+/** One pusher of GET /_synapse/admin/v1/users/<user>/pushers. device_id is null for a pusher from before Synapse kept it. */
+export interface Pusher {
+  app_id: string;
+  pushkey: string;
+  kind: string;
+  enabled?: boolean;
+  device_id?: string | null;
+  data?: Record<string, unknown>;
+}
 
 /** What the deletion job needs from Synapse. Tests give a fake. */
 export interface SynapseAdminApi {
@@ -71,6 +81,11 @@ export class SynapseAdmin implements SynapseAdminApi {
 
   async deactivate(userId: string): Promise<void> {
     await this.call("deactivate", "POST", `/v1/deactivate/${encodeURIComponent(userId)}`, { erase: true });
+  }
+
+  async pushers(userId: string): Promise<Pusher[]> {
+    const body = await this.call("pushers", "GET", `/v1/users/${encodeURIComponent(userId)}/pushers`);
+    return Array.isArray(body.pushers) ? body.pushers : [];
   }
 
   async deleteMedia(serverName: string, mediaId: string): Promise<void> {

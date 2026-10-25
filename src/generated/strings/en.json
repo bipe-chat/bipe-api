@@ -1436,6 +1436,8 @@
     "bipe_app_verify_mismatch": "The symbols were different, so nothing was approved.",
     "bipe_app_verify_done": "Done. Device approved.",
     "bipe_app_verify_cancelled": "The approval was cancelled.",
+    "bipe_app_verify_nudge_body": "A device that signed in to your account asked to read your messages. Open Bipe to approve or decline.",
+    "bipe_app_verify_notify_again": "Notify again",
     "bipe_app_history_banner": "Old messages aren't on this phone yet.",
     "bipe_app_history_title": "Old messages",
     "bipe_app_history_approve": "Approve with another device",

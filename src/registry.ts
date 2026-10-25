@@ -119,6 +119,7 @@ export const accountRules = reg.accounts as {
   maxPersonalAccounts: number;
   deletionCooldownHours: number;
   deletionVerificationKeepDays: number;
+  approvalNudgeMaxPerHour: number;
 };
 
 /** Work side opening hours (registries/work-hours.json, bipe#511). */

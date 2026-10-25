@@ -28,7 +28,7 @@ import { createGovbrChallenge, GOVBR_PDF_MAX_BYTES, pruneGovbrChallenges, submit
 import { ProfileFacts } from "./profile-facts.js";
 import { Theft } from "./theft.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
-import { legalRules, profileRules } from "./registry.js";
+import { accountRules, legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
@@ -52,6 +52,7 @@ import { startCvmRefresh } from "./cvm.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
 import { MEDIA_ID, VoiceMedia } from "./voice-media.js";
+import { sendApprovalNudge } from "./approval-nudge.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
@@ -133,6 +134,7 @@ const limits = {
   credentials: new RateLimiter(5, 3_600_000),
   emailSet: new RateLimiter(5, 3_600_000),
   keychainMove: new RateLimiter(20, 3_600_000),
+  approvalNudge: new RateLimiter(accountRules.approvalNudgeMaxPerHour, 3_600_000),
   voiceMedia: new RateLimiter(120, 3_600_000),
   keptMedia: new RateLimiter(120, 3_600_000),
   deletion: new RateLimiter(3, 3_600_000),
@@ -268,6 +270,8 @@ const deletions: DeletionDeps = {
   serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID],
 };
 console.log(`account deletion job: ${deletions.synapse ? "on" : "off (no SYNAPSE_ADMIN_TOKEN): requests wait"}`);
+const approvalNudge = { pushers: synapseAdmin ? (userId: string) => synapseAdmin.pushers(userId) : null, sygnalUrl: config.SYGNAL_URL ?? null };
+console.log(`approval nudge: ${approvalNudge.pushers && approvalNudge.sygnalUrl ? "on" : "off (no SYNAPSE_ADMIN_TOKEN or SYGNAL_URL)"}`);
 const deletionJob = () => void runDueDeletions(deletions).catch((e) => console.error(`deletion job failed: ${(e as Error).message}`));
 setInterval(deletionJob, DELETION_TICK_MS).unref();
 const pruneDeletionRecords = () =>
@@ -522,6 +526,15 @@ app.post("/v1/me/keychain-move", async (c) => {
   const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   limits.keychainMove.check(userId);
   await recordKeychainMove(db, userId, deviceId);
+  return c.body(null, 204);
+});
+
+// bipe#628: a new device waits for approval; push a nudge to the account's other Bipe Next devices.
+app.post("/v1/me/approval-nudge", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  if (!deviceId) throw new ApiError("bad_request", "device_required");
+  limits.approvalNudge.check(userId);
+  await sendApprovalNudge(approvalNudge, userId, deviceId);
   return c.body(null, 204);
 });
 
