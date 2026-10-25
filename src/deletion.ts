@@ -18,11 +18,14 @@ import { type StateEvent, type SynapseAdminApi, SynapseHttpError } from "./synap
 // Logs carry the request id, the step and an HTTP status, never a user ID, a room or a body.
 
 export interface DeletionDeps extends AccountDeps {
-  synapse: SynapseAdminApi;
+  /** Null without SYNAPSE_ADMIN_TOKEN: requests wait, the job runs none. */
+  synapse: SynapseAdminApi | null;
   bugReportsDir: string;
   /** Accounts that never get a room handed over (the support and news bots). */
   serviceUsers?: string[];
 }
+
+type Ready = DeletionDeps & { synapse: SynapseAdminApi };
 
 export interface AccountDeletion {
   id: string;
@@ -119,14 +122,14 @@ let busy = false;
 
 /** One tick: runs the due requests, oldest first. Returns how many finished. */
 export async function runDueDeletions(deps: DeletionDeps): Promise<number> {
-  if (busy) return 0;
+  if (busy || !deps.synapse) return 0;
   busy = true;
   let finished = 0;
   try {
     for (let i = 0; i < MAX_PER_TICK; i++) {
       const row = await claim(deps.db);
       if (!row) break;
-      if (await runOne(deps, row)) finished++;
+      if (await runOne({ ...deps, synapse: deps.synapse }, row)) finished++;
     }
   } finally {
     busy = false;
@@ -149,7 +152,7 @@ async function claim(db: Db): Promise<DeletionRow | null> {
 
 class Later extends Error {}
 
-async function runOne(deps: DeletionDeps, row: DeletionRow): Promise<boolean> {
+async function runOne(deps: Ready, row: DeletionRow): Promise<boolean> {
   let step: Step = STEPS[row.step ? STEPS.indexOf(row.step) + 1 : 0] ?? "rows";
   try {
     for (let i = STEPS.indexOf(step); i < STEPS.length; i++) {
@@ -186,7 +189,7 @@ async function runOne(deps: DeletionDeps, row: DeletionRow): Promise<boolean> {
   }
 }
 
-async function runStep(deps: DeletionDeps, row: DeletionRow, step: Step): Promise<void> {
+async function runStep(deps: Ready, row: DeletionRow, step: Step): Promise<void> {
   switch (step) {
     case "groups":
       await handOverRooms(deps, row);
@@ -214,7 +217,7 @@ function localpart(userId: string): string {
   return m[1]!;
 }
 
-async function handOverRooms(deps: DeletionDeps, row: DeletionRow): Promise<void> {
+async function handOverRooms(deps: Ready, row: DeletionRow): Promise<void> {
   const skip = new Set(deps.serviceUsers ?? []);
   let handed = 0;
   for (const roomId of await deps.synapse.joinedRooms(row.user_id)) {
@@ -226,7 +229,7 @@ async function handOverRooms(deps: DeletionDeps, row: DeletionRow): Promise<void
   if (handed > 0) console.log(`deletion: rooms handed over id=${row.id} count=${handed}`);
 }
 
-async function redact(deps: DeletionDeps, row: DeletionRow): Promise<void> {
+async function redact(deps: Ready, row: DeletionRow): Promise<void> {
   if (!row.redact_id) {
     const redactId = await deps.synapse.redactUser(row.user_id);
     await deps.db.query("UPDATE account_deletions SET redact_id = $2 WHERE id = $1", [row.id, redactId]);

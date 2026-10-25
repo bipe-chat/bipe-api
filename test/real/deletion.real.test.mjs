@@ -11,8 +11,8 @@ import { SynapseAdmin } from "../../dist/synapse-admin.js";
 import { isolatedDatabase } from "../helpers/database.mjs";
 
 // ADR 0140, bipe#528: account deletion against real MAS 1.26.0 and Synapse v1.162.0 on the disposable local stack
-// (test/real/up.sh). It checks what the stub tests assume: MAS gives the API client a urn:synapse:admin:* token,
-// Synapse takes it for make_room_admin, the user redaction and deactivate, and the account cannot sign in after.
+// (test/real/up.sh). It checks what the stub tests assume: a MAS compatibility token with Synapse admin rights (up.sh
+// issues one) works for make_room_admin, the user redaction and deactivate, and the account cannot sign in after.
 // Synthetic accounts only, on loopback. Never point this at a real server.
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -65,7 +65,9 @@ async function matrix(token, method, path, body) {
 
 test("a due deletion hands the group over, redacts, and the account cannot sign in", { timeout: 180000 }, async (t) => {
   const db = await isolatedDatabase(t);
-  const d = { db, config, pins, mas, mailer: new Mailer(config), synapse: new SynapseAdmin(config, mas), bugReportsDir: "/nonexistent-bipe-test" };
+  const adminToken = process.env.BIPE_REAL_SYNAPSE_ADMIN_TOKEN;
+  assert.ok(adminToken, "test/real/up.sh writes BIPE_REAL_SYNAPSE_ADMIN_TOKEN");
+  const d = { db, config, pins, mas, mailer: new Mailer(config), synapse: new SynapseAdmin(SYNAPSE, adminToken), bugReportsDir: "/nonexistent-bipe-test" };
   const owner = await account(d);
   const friend = await account(d);
   const ownerToken = (await login(owner.user_id, owner.password)).body.access_token;

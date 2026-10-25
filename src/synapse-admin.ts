@@ -1,8 +1,6 @@
-import type { Config } from "./config.js";
-import type { Mas } from "./mas.js";
-
-// Synapse admin API for account deletion (ADR 0140, bipe#528). The token comes from MAS (client_credentials, scope
-// urn:synapse:admin:*). Errors carry the path name and the HTTP status only: bodies can echo user IDs or room names.
+// Synapse admin API for account deletion (ADR 0140, bipe#528). The token is SYNAPSE_ADMIN_TOKEN, a MAS compatibility
+// token of a dedicated admin account. Errors carry the path name and the HTTP status only: bodies can echo user IDs or
+// room names.
 
 export interface StateEvent {
   type: string;
@@ -33,7 +31,7 @@ export class SynapseHttpError extends Error {
 }
 
 export class SynapseAdmin implements SynapseAdminApi {
-  constructor(private readonly config: Config, private readonly mas: Mas) {}
+  constructor(private readonly synapseUrl: string, private readonly token: string) {}
 
   async joinedRooms(userId: string): Promise<string[]> {
     const body = await this.call("joined_rooms", "GET", `/v1/users/${encodeURIComponent(userId)}/joined_rooms`);
@@ -67,16 +65,15 @@ export class SynapseAdmin implements SynapseAdminApi {
   }
 
   private async call(what: string, method: string, path: string, body?: unknown): Promise<any> {
-    const res = await fetch(`${this.config.SYNAPSE_URL.replace(/\/$/, "")}/_synapse/admin${path}`, {
+    const res = await fetch(`${this.synapseUrl.replace(/\/$/, "")}/_synapse/admin${path}`, {
       method,
       headers: {
-        authorization: `Bearer ${await this.mas.synapseAdminToken()}`,
+        authorization: `Bearer ${this.token}`,
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(30_000),
     });
-    if (res.status === 401) this.mas.dropSynapseAdminToken();
     if (!res.ok) throw new SynapseHttpError(what, res.status);
     return res.json();
   }

@@ -232,10 +232,11 @@ setInterval(prunePropostaJob, 24 * 3_600_000).unref();
 // Account deletion (ADR 0140): due requests run every minute; the kept verification records go after their retention.
 const deletions: DeletionDeps = {
   ...accounts,
-  synapse: new SynapseAdmin(config, mas),
+  synapse: config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null,
   bugReportsDir: config.BUG_REPORTS_DIR,
   serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID],
 };
+console.log(`account deletion job: ${deletions.synapse ? "on" : "off (no SYNAPSE_ADMIN_TOKEN): requests wait"}`);
 const deletionJob = () => void runDueDeletions(deletions).catch((e) => console.error(`deletion job failed: ${(e as Error).message}`));
 setInterval(deletionJob, DELETION_TICK_MS).unref();
 const pruneDeletionRecords = () =>

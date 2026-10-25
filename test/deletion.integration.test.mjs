@@ -100,10 +100,13 @@ test("any device of the account cancels until due_at; nobody else can", async (t
   assert.equal((await accountStatus(f.deps, f.user, 2, "PHONE")).deletion, undefined);
 });
 
-test("nothing runs before due_at", async (t) => {
+test("nothing runs before due_at, or without the Synapse admin token", async (t) => {
   const f = await fixture(t);
-  await requestDeletion(f.deps, f.user, "PHONE", GOOD_PIN, false);
+  const d = await requestDeletion(f.deps, f.user, "PHONE", GOOD_PIN, false);
   assert.equal(await runDueDeletions(f.deps), 0);
+  await due(f.db, d.id);
+  assert.equal(await runDueDeletions({ ...f.deps, synapse: null }), 0);
+  assert.equal((await f.db.query("SELECT state FROM account_deletions WHERE id = $1", [d.id])).rows[0].state, "waiting");
   assert.equal(f.synapse.calls.deactivated.length, 0);
   assert.equal(f.stub.deactivated, 0);
 });
