@@ -107,6 +107,9 @@ export const accountRules = reg.accounts as {
   maxPersonalAccounts: number;
 };
 
+/** Phone link rules (registries/phone-numbers.json): the yearly confirmation of a linked number (bipe#470). */
+export const phoneRules = reg.phones as { linkConfirmMonths: number; linkConfirmWarnDays: number };
+
 /** Terms and privacy accepted at sign-up (ADR 0113, registries/legal.json). */
 export const legalRules = reg.legal as {
   legalVersion: string;
