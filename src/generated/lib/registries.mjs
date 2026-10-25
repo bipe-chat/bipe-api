@@ -200,6 +200,10 @@ function validate(reg) {
   for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts", "webLinkCooldownSeconds"]) {
     if (!(Number.isInteger(ac[k]) && ac[k] > 0)) fail(`accounts: ${k}`);
   }
+  const rr = ac.recoveryReminder;
+  if (!(rr && Number.isInteger(rr.firstAfterDays) && rr.firstAfterDays >= 0)) fail("accounts: recoveryReminder.firstAfterDays");
+  // The card never stops for good while the account has no factor (bipe#531): at least one snooze, every one positive.
+  if (!(Array.isArray(rr.snoozeDays) && rr.snoozeDays.length > 0 && rr.snoozeDays.every((d) => Number.isInteger(d) && d > 0))) fail("accounts: recoveryReminder.snoozeDays");
   if (!(ac.pinDateYearMin >= 1000 && ac.pinDateYearMax <= 9999 && ac.pinDateYearMin <= ac.pinDateYearMax)) fail("accounts: pin date years");
   if (Object.keys(ac.recoveryDelayHours).sort().join() !== "cpf,email,guardian,token") fail("accounts: recoveryDelayHours must have cpf, email, guardian and token");
   for (const [k, v] of Object.entries(ac.recoveryDelayHours)) if (!(Number.isInteger(v) && v >= 0)) fail(`accounts: recoveryDelayHours.${k}`);
