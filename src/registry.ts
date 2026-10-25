@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from bipe-shared by `pnpm gen`. Never edit generated/.
-import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem } from "./generated/lib/registries.mjs";
+import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, workHoursProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
@@ -106,6 +106,18 @@ export const accountRules = reg.accounts as {
   recoveryClaimDays: number;
   maxPersonalAccounts: number;
 };
+
+/** Work side opening hours (registries/work-hours.json, bipe#511). */
+export const workHoursRules = reg.workHours as {
+  defaultTimeZone: string;
+  maxRangesPerDay: number;
+  defaultDays: { day: number; ranges: { start: string; end: string }[] }[];
+};
+
+/** null when the days pass the shared rule, else the problem id. */
+export function workHoursProblemOf(hours: { days: unknown }): string | null {
+  return workHoursProblem(hours, workHoursRules.maxRangesPerDay) as string | null;
+}
 
 /** Terms and privacy accepted at sign-up (ADR 0113, registries/legal.json). */
 export const legalRules = reg.legal as {

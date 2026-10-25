@@ -44,6 +44,7 @@ import { SupportBot } from "./support.js";
 import { NewsBot } from "./news.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
+import { getWorkHours, setWorkHours } from "./work-hours.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -124,6 +125,7 @@ const limits = {
   newsSwitch: new RateLimiter(20, 3_600_000),
   starlingsReply: new RateLimiter(600, 3_600_000),
   banner: new RateLimiter(120, 60_000),
+  workHours: new RateLimiter(30, 3_600_000),
   // gov.br signed challenge (bipe#543).
   govbrChallenge: new RateLimiter(10, 3_600_000),
   govbrDocument: new RateLimiter(20, 3_600_000),
@@ -231,6 +233,12 @@ const RedeemBody = z.object({ recovery_token: SecretField, pin: PinField });
 const RecoveryEmailBody = z.object({ email: z.email().max(254) });
 const ConfirmBody = z.object({ token: SecretField, pin: PinField.optional(), new_pin: PinField.optional() });
 const ClaimBody = z.object({ claim_secret: SecretField });
+const TimeField = z.string().max(5);
+const WorkHoursBody = z.object({
+  enabled: z.boolean(),
+  time_zone: z.string().min(1).max(64),
+  days: z.array(z.object({ day: z.number().int(), ranges: z.array(z.object({ start: TimeField, end: TimeField })).max(10) })).max(7),
+});
 const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
 const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
@@ -558,6 +566,18 @@ app.post("/v1/me/support", async (c) => {
 
 // Novidades do Bipe (ADR 0117, bipe#387): the Settings switch. GET reads it, PUT turns news on (a new room when the
 // user left the old one), DELETE turns it off (the app also leaves the room).
+// Work side opening hours (ADR 0138 rule 4, bipe#511). Company accounts only.
+app.get("/v1/me/work-hours", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await getWorkHours(db, userId));
+});
+
+app.put("/v1/me/work-hours", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.workHours.check(userId);
+  return c.json(await setWorkHours(db, userId, await parse(c, WorkHoursBody)));
+});
+
 app.get("/v1/me/news", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   return c.json(await news.state(userId));

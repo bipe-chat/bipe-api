@@ -355,6 +355,14 @@ const MIGRATIONS = [
      backfill_done_at timestamptz
    );
    INSERT INTO news_state (id) VALUES (1);`,
+  // Work side opening hours (ADR 0138 rule 4, bipe#511): one row per company account; days as the contract's WorkDay list.
+  `CREATE TABLE work_hours (
+     user_id text PRIMARY KEY,
+     enabled boolean NOT NULL,
+     time_zone text NOT NULL,
+     days jsonb NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
