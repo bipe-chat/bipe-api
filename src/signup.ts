@@ -262,6 +262,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
     sendVerification?.();
     // A replayed sign-up (ADR 0094) does not come here, so it does not count again.
     deps.growth?.record(userId, "signup_done");
+    deps.news?.welcome(userId);
     if (inviter) deps.growth?.record(inviter, "invite_redeemed");
     return {
       user_id: userId,

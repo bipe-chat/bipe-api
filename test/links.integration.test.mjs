@@ -105,6 +105,8 @@ test("a native Apple link, then a recovery with it: proof first, PIN last, 24-ho
 
   const status = await accountStatus(f.deps, ana);
   assert.deepEqual(status.links.map((l) => l.provider), ["apple"]);
+  // A linked Apple account never counts as independent of the Apple Team ID (bipe#531).
+  assert.equal(status.independent_recovery, false);
   assert.deepEqual(status.link_events.map((e) => [e.provider, e.change]), [["apple", "linked"]]);
   const stored = await f.db.query("SELECT subject_hash FROM account_links WHERE user_id = $1", [ana]);
   assert.match(stored.rows[0].subject_hash, /^[0-9a-f]{64}$/);
@@ -157,6 +159,8 @@ test("the Google web flow: state, PKCE and nonce at the API, single-use handoff 
   await linkAccount(f.deps, ana, "google", { flow_id: start.flow_id, handoff });
   await assert.rejects(linkAccount(f.deps, ana, "google", { flow_id: start.flow_id, handoff }), failsWith("recovery_invalid"));
   assert.deepEqual((await accountStatus(f.deps, ana)).links.map((l) => l.provider), ["google"]);
+  // bipe#531: a linked Google account is a recovery factor that does not depend on the Apple Team ID.
+  assert.equal((await accountStatus(f.deps, ana)).independent_recovery, true);
 
   await unlinkAccount(f.deps, ana, "google");
   await assert.rejects(unlinkAccount(f.deps, ana, "google"), failsWith("not_found"));

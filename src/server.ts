@@ -34,12 +34,14 @@ import { Visits } from "./visits.js";
 import { researchRoutes } from "./research/routes.js";
 import { finishWebLink, Geo } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
+import { recordKeychainMove } from "./transfer.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
 import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugReportFile, submitBugReport, type BugReportDeps } from "./bug-reports.js";
 import { Intake, verifyIntakeSignature } from "./intake.js";
 import { SupportBot } from "./support.js";
+import { NewsBot } from "./news.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
@@ -52,8 +54,9 @@ const auth = new MatrixAuth(config);
 const staff = new StaffGate(auth, mas);
 const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
-const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID] });
-const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth };
+const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID] });
+const news = new NewsBot(db, config);
+const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news };
 const linkDeps: LinkDeps = { ...accounts, links: new Links(config) };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
@@ -67,6 +70,7 @@ console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" 
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`support bot: ${support.enabled ? "on" : "off (no SUPPORT_ACCESS_TOKEN or SUPPORT_STORE_PASSPHRASE)"}`);
+console.log(`news bot: ${news.enabled ? "on" : "off (no NEWS_ACCESS_TOKEN or NEWS_STORE_PASSPHRASE)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 console.log(`linked recovery: ${JSON.stringify(linkDeps.links.providers().providers)}`);
 
@@ -104,6 +108,7 @@ const limits = {
   pinCheck: new RateLimiter(10, 3_600_000),
   credentials: new RateLimiter(5, 3_600_000),
   emailSet: new RateLimiter(5, 3_600_000),
+  keychainMove: new RateLimiter(20, 3_600_000),
   emailVerify: new RateLimiter(20, 3_600_000),
   recoveryToken: new RateLimiter(10, 3_600_000),
   recoveryTokenGlobal: new RateLimiter(300, 3_600_000),
@@ -126,6 +131,7 @@ const limits = {
   bugReportGlobal: new RateLimiter(500, 3_600_000),
   // Support DM (ADR 0114).
   supportRoom: new RateLimiter(30, 3_600_000),
+  newsSwitch: new RateLimiter(20, 3_600_000),
   starlingsReply: new RateLimiter(600, 3_600_000),
   banner: new RateLimiter(120, 60_000),
   // gov.br signed challenge (bipe#543).
@@ -176,6 +182,7 @@ const pruneWaitlistEntries = () =>
 pruneWaitlistEntries();
 setInterval(pruneWaitlistEntries, 24 * 3_600_000).unref();
 support.start();
+news.start();
 const pruneReports = () =>
   void pruneBugReports(db, config.BUG_REPORTS_DIR)
     .then((n) => n > 0 && console.log(`problem reports pruned: ${n}`))
@@ -393,6 +400,14 @@ app.post("/v1/me/recovery-token", async (c) => {
   limits.credentials.check(userId);
   c.header("cache-control", "no-store");
   return c.json(await rotateRecoveryToken(accounts, userId));
+});
+
+// bipe#531: an iPhone moved its keychain items into the app-group group. The device comes from the token.
+app.post("/v1/me/keychain-move", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  limits.keychainMove.check(userId);
+  await recordKeychainMove(db, userId, deviceId);
+  return c.body(null, 204);
 });
 
 app.put("/v1/me/email", async (c) => {
@@ -631,7 +646,8 @@ app.post("/internal/v1/may-invite", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
   const { inviter, invitee, shares_room } = await parse(c, MayInviteBody);
   // The support account (ADR 0114) opens one support room per user, whatever their policy.
-  if (inviter === config.SUPPORT_USER_ID) return c.json({ allow: true, policy: await policyOf(db, invitee) });
+  // So does the news account (ADR 0117): one read-only room per user.
+  if (inviter === config.SUPPORT_USER_ID || inviter === config.NEWS_USER_ID) return c.json({ allow: true, policy: await policyOf(db, invitee) });
   return c.json(await mayInvite(db, inviter, invitee, shares_room));
 });
 
@@ -640,6 +656,24 @@ app.post("/v1/me/support", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.supportRoom.check(userId);
   return c.json({ room_id: await support.roomFor(userId) });
+});
+
+// Novidades do Bipe (ADR 0117, bipe#387): the Settings switch. GET reads it, PUT turns news on (a new room when the
+// user left the old one), DELETE turns it off (the app also leaves the room).
+app.get("/v1/me/news", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await news.state(userId));
+});
+app.put("/v1/me/news", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.newsSwitch.check(userId);
+  return c.json(await news.subscribe(userId));
+});
+app.delete("/v1/me/news", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.newsSwitch.check(userId);
+  await news.unsubscribe(userId);
+  return c.json({ subscribed: false });
 });
 
 // A Starlings member's reply (envisioning/starlings#1176), signed with STARLINGS_APP_INTAKE_KEY.
@@ -939,6 +973,12 @@ staffGet("/v1/admin/experiments", () => experimentsReport(db));
 staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));
 staffGet("/v1/admin/retention", () => staffReports.retention());
+// bipe#531: share of active iOS accounts with a way back that survives the App Store transfer.
+staffGet("/v1/admin/transfer-readiness", (c) => {
+  const days = z.coerce.number().int().min(1).max(90).default(30).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return staffReports.transferReadiness(days.data);
+});
 // Problem reports (bipe#367). The Starlings intake line links to the single report.
 staffGet("/v1/admin/bug-reports", () => listBugReports(db));
 staffGet("/v1/admin/bug-reports/:id", (c) => getBugReport(db, c.req.param("id")!));
