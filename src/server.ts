@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono, type Context } from "hono";
+import pg from "pg";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
@@ -38,7 +39,7 @@ import { finishWebLink, Geo } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
-import { SynapseAdmin } from "./synapse-admin.js";
+import { deleteLocalMedia, SynapseAdmin } from "./synapse-admin.js";
 import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
@@ -50,6 +51,7 @@ import { NewsBot } from "./news.js";
 import { startCvmRefresh } from "./cvm.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
+import { MEDIA_ID, VoiceMedia } from "./voice-media.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
@@ -131,6 +133,8 @@ const limits = {
   credentials: new RateLimiter(5, 3_600_000),
   emailSet: new RateLimiter(5, 3_600_000),
   keychainMove: new RateLimiter(20, 3_600_000),
+  voiceMedia: new RateLimiter(120, 3_600_000),
+  keptMedia: new RateLimiter(120, 3_600_000),
   deletion: new RateLimiter(3, 3_600_000),
   deletionCancel: new RateLimiter(20, 3_600_000),
   emailVerify: new RateLimiter(20, 3_600_000),
@@ -256,9 +260,10 @@ const prunePropostaJob = () =>
 prunePropostaJob();
 setInterval(prunePropostaJob, 24 * 3_600_000).unref();
 // Account deletion (ADR 0140): due requests run every minute; the kept verification records go after their retention.
+const synapseAdmin = config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null;
 const deletions: DeletionDeps = {
   ...accounts,
-  synapse: config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null,
+  synapse: synapseAdmin,
   bugReportsDir: config.BUG_REPORTS_DIR,
   serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID],
 };
@@ -277,6 +282,20 @@ const propostaSummaryJob = () =>
     .then((n) => n > 0 && console.log(`strategic page summaries sent: ${n}`))
     .catch((e) => console.error(`strategic page summaries failed: ${(e as Error).message}`));
 setInterval(propostaSummaryJob, 5 * 60_000).unref();
+// Voice audio expiry (ADR 0164): due files go once a day, and once at start.
+const voiceMedia = new VoiceMedia(db, {
+  serverName: config.SERVER_NAME,
+  synapse: config.SYNAPSE_DATABASE_URL ? new pg.Pool({ connectionString: config.SYNAPSE_DATABASE_URL, max: 2 }) : null,
+  deleter: synapseAdmin ? { deleteMedia: (server, mediaId) => deleteLocalMedia(synapseAdmin, server, mediaId) } : null,
+});
+console.log(`voice audio expiry: ${voiceMedia.state}`);
+const purgeVoiceMedia = () =>
+  void voiceMedia
+    .purge()
+    .then((n) => n > 0 && console.log(`voice audio deleted: ${n}`))
+    .catch((e) => console.error(`voice audio purge failed: ${(e as Error).message}`));
+purgeVoiceMedia();
+setInterval(purgeVoiceMedia, 24 * 3_600_000).unref();
 const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
@@ -782,6 +801,47 @@ app.put("/v1/me/work-hours", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.workHours.check(userId);
   return c.json(await setWorkHours(db, userId, await parse(c, WorkHoursBody)));
+});
+
+// Voice audio expiry (ADR 0164, bipe#622). Path: the server name and media ID of the mxc URI.
+const VoiceMediaBody = z.object({ transcript: z.boolean() });
+const KeepBody = z.object({ reason: z.enum(["kept", "scam"]) });
+const mediaPath = (c: Context) => {
+  const server = c.req.param("server") ?? "";
+  const mediaId = c.req.param("mediaId") ?? "";
+  if (server.length > 255 || !MEDIA_ID.test(mediaId)) throw new ApiError("bad_request", "media_id");
+  return { server, mediaId };
+};
+
+app.put("/v1/me/voice-media/:server/:mediaId", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.voiceMedia.check(userId);
+  const { server, mediaId } = mediaPath(c);
+  const { transcript } = await parse(c, VoiceMediaBody);
+  await voiceMedia.register(userId, server, mediaId, transcript);
+  return c.body(null, 204);
+});
+
+app.get("/v1/me/kept-media", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await voiceMedia.kept(userId));
+});
+
+app.put("/v1/me/kept-media/:server/:mediaId", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.keptMedia.check(userId);
+  const { server, mediaId } = mediaPath(c);
+  const { reason } = await parse(c, KeepBody);
+  await voiceMedia.keep(userId, server, mediaId, reason);
+  return c.body(null, 204);
+});
+
+app.delete("/v1/me/kept-media/:server/:mediaId", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.keptMedia.check(userId);
+  const { server, mediaId } = mediaPath(c);
+  await voiceMedia.unkeep(userId, server, mediaId);
+  return c.body(null, 204);
 });
 
 app.get("/v1/me/news", async (c) => {

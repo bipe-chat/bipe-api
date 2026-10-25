@@ -147,6 +147,9 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       userId,
     ),
     brand_mark_events: await all(db, "SELECT mark_id, invite_id, action, at FROM brand_mark_events WHERE actor_user_id = $1 ORDER BY at", userId),
+    // Voice audio expiry (ADR 0164): the caller's registered uploads and the audio the caller keeps.
+    voice_media: await all(db, "SELECT media_id, transcript, uploaded_at, expires_at FROM voice_media WHERE user_id = $1 ORDER BY uploaded_at", userId),
+    kept_media: await all(db, "SELECT media_id, reason, kept_at FROM kept_media WHERE user_id = $1 ORDER BY kept_at", userId),
     business_bookings: await all(
       db,
       `SELECT id, service_id, agenda_id, start_at, end_at, status, source, created_at FROM bookings WHERE business_id = $1 ORDER BY start_at`,

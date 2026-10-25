@@ -334,6 +334,8 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q("DELETE FROM account_phones WHERE user_id = $1");
     await q("UPDATE theft_marks SET root_id = NULL WHERE root_id IN (SELECT id FROM theft_marks WHERE user_id = $1)");
     await q("DELETE FROM theft_marks WHERE user_id = $1");
+    // ADR 0164: the voice uploads stay registered without their owner, so the purge still deletes the files.
+    await q("UPDATE voice_media SET user_id = NULL WHERE user_id = $1");
     await q("UPDATE theft_marks SET marked_by = 'deleted' WHERE marked_by = $1");
     await q("UPDATE theft_marks SET cleared_by = 'deleted' WHERE cleared_by = $1");
     // Invites the user made stay for the people who joined with them, without the maker.
@@ -364,6 +366,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "work_hours",
       "profile_changes",
       "profile_snapshots",
+      "kept_media",
     ]) {
       await q(`DELETE FROM ${table} WHERE user_id = $1`);
     }
