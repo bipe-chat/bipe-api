@@ -38,6 +38,7 @@ export function loadRegistries(root) {
     dmPowerLevels: read("registries/dm-power-levels.json"),
     relationshipNames: read("registries/relationship-names.json"),
     photoMatch: read("registries/photo-match.json"),
+    workHours: read("registries/work-hours.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -66,6 +67,43 @@ export function validateDmPowerLevels(pl) {
   for (const type of ["m.room.message", "m.reaction", "m.room.redaction", "org.matrix.msc3401.call.member"]) {
     if (pl.events?.[type] !== undefined && pl.events[type] > pl.usersDefault) fail(`dm-power-levels: ${type} must stay open`);
   }
+}
+
+/** Throws unless `hours` is a valid WorkHours value (api/openapi.yaml, registries/work-hours.json). */
+export function workHoursProblem(hours, maxRangesPerDay) {
+  const time = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$/;
+  if (!hours || !Array.isArray(hours.days)) return "days";
+  const seen = new Set();
+  for (const d of hours.days) {
+    if (!Number.isInteger(d?.day) || d.day < 1 || d.day > 7 || seen.has(d.day)) return "day";
+    seen.add(d.day);
+    if (!Array.isArray(d.ranges) || d.ranges.length > maxRangesPerDay) return "ranges";
+    let last = -1;
+    for (const r of d.ranges) {
+      if (!time.test(r?.start ?? "") || !time.test(r?.end ?? "") || r.start === "24:00") return "time";
+      const start = minutesOf(r.start);
+      const end = minutesOf(r.end);
+      if (end <= start || start <= last) return "order";
+      last = end;
+    }
+  }
+  return null;
+}
+
+const minutesOf = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
+/**
+ * Work side opening hours (ADR 0138 rule 4, bipe-chat/bipe#511): true when `instant` (ms since the epoch) falls inside
+ * a range of its local weekday in `timeZone`. Ranges are half-open [start, end). Reference for the apps.
+ */
+export function isWithinWorkHours(days, timeZone, instant) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(instant)).map((p) => [p.type, p.value]));
+  const weekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(parts.weekday) + 1;
+  const minute = Number(parts.hour) * 60 + Number(parts.minute);
+  const day = days.find((d) => d.day === weekday);
+  return Boolean(day?.ranges.some((r) => minute >= minutesOf(r.start) && minute < minutesOf(r.end)));
 }
 
 export function validateLinkedRecovery(accounts) {
@@ -202,6 +240,11 @@ function validate(reg) {
   validateBadgeKeys(reg.badgeKeys);
   const ac = reg.accounts;
   validateLinkedRecovery(ac);
+  const wh = reg.workHours;
+  if (!Number.isInteger(wh.maxRangesPerDay) || wh.maxRangesPerDay < 1) fail("work hours: maxRangesPerDay");
+  try { new Intl.DateTimeFormat("en-US", { timeZone: wh.defaultTimeZone }); } catch { fail("work hours: defaultTimeZone"); }
+  const whProblem = workHoursProblem({ days: wh.defaultDays }, wh.maxRangesPerDay);
+  if (whProblem) fail(`work hours: defaultDays ${whProblem}`);
   // DDMMYYYY and YYYYMMDD need exactly 8 digits.
   if (ac.pinLength !== 8) fail("accounts: pinLength must be 8 (the date check reads DDMMYYYY and YYYYMMDD)");
   for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts", "webLinkCooldownSeconds"]) {

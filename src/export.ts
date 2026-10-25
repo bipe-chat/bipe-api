@@ -44,6 +44,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     ),
     // bipe#531: the iPhones that moved their keychain items before the App Store transfer.
     keychain_moves: await all(db, "SELECT device_id, moved_at FROM keychain_moves WHERE user_id = $1 ORDER BY moved_at", userId),
+    work_hours: await one(db, "SELECT enabled, time_zone, days, updated_at FROM work_hours WHERE user_id = $1", userId),
     // ADR 0096: the provider and the dates only. The subject hash is keyed and stays out.
     linked_accounts: await all(db, "SELECT provider, linked_at FROM account_links WHERE user_id = $1 ORDER BY provider", userId),
     link_events: await all(db, "SELECT provider, change, at FROM link_events WHERE user_id = $1 ORDER BY at", userId),
