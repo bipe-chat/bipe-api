@@ -91,7 +91,7 @@
           "title": "bipe_account_ways_back",
           "rows": [
             { "key": "email", "title": "bipe_email_title", "kind": "link", "adr": "0059" },
-            { "key": "linkedAccounts", "title": "bipe_linked_accounts_title", "kind": "link", "gate": "planned:307", "adr": "0096" },
+            { "key": "linkedAccounts", "title": "bipe_linked_accounts_title", "kind": "link", "adr": "0096" },
             { "key": "recoveryKey", "title": "bipe_account_recovery_key", "footer": "bipe_account_recovery_key_footer", "kind": "link", "adr": "0073" }
           ]
         },

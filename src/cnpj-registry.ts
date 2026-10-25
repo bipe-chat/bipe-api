@@ -15,7 +15,7 @@ import { createInflateRaw } from "node:zlib";
 /** Situação cadastral 02 = ativa. Other codes: 01 nula, 03 suspensa, 04 inapta, 08 baixada. */
 const ACTIVE = 2;
 
-export type Establishment = { cnpj: string; tradeName: string | null; statusCode: number; active: boolean };
+export type Establishment = { cnpj: string; tradeName: string | null; statusCode: number; active: boolean; cnaeMain: string | null; cnaeSecondary: string[] };
 export type Partner = { root: string; kind: number; name: string; doc: string; qualification: number };
 export type ScanResult = {
   month: string;
@@ -106,13 +106,16 @@ export async function scanRelease(release: { month: string; dir: string }, cnpjs
   const result: ScanResult = { month: release.month, establishments: new Map(), legalNames: new Map(), partners: new Map() };
   if (wanted.size === 0) return result;
 
-  // Estabelecimentos: 0 cnpj_basico, 1 cnpj_ordem, 2 cnpj_dv, 3 matriz/filial, 4 nome_fantasia, 5 situacao_cadastral
+  // Estabelecimentos: 0 cnpj_basico, 1 cnpj_ordem, 2 cnpj_dv, 3 matriz/filial, 4 nome_fantasia, 5 situacao_cadastral,
+  // 11 cnae_fiscal_principal, 12 cnae_fiscal_secundaria (comma-separated)
   await forEachRow(familyFiles(release.dir, "Estabelecimentos"), (c) => {
     if (!roots.has(c[0]!)) return;
     const cnpj = `${c[0]}${c[1]}${c[2]}`;
     if (!wanted.has(cnpj)) return;
     const statusCode = Number.parseInt(c[5] ?? "", 10);
-    result.establishments.set(cnpj, { cnpj, tradeName: c[4]?.trim() || null, statusCode, active: statusCode === ACTIVE });
+    const cnaeSecondary = (c[12] ?? "").split(",").map((v) => v.trim()).filter((v) => /^\d{7}$/.test(v));
+    const cnaeMain = /^\d{7}$/.test(c[11]?.trim() ?? "") ? c[11]!.trim() : null;
+    result.establishments.set(cnpj, { cnpj, tradeName: c[4]?.trim() || null, statusCode, active: statusCode === ACTIVE, cnaeMain, cnaeSecondary });
   });
   // Empresas: 0 cnpj_basico, 1 razao_social
   await forEachRow(familyFiles(release.dir, "Empresas"), (c) => {
