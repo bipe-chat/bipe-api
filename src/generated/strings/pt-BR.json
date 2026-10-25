@@ -764,6 +764,8 @@
     "bipe_account_new_personal_body": "Outra conta sua, com outro nome e outros contatos.",
     "bipe_account_new_company": "Conta da empresa",
     "bipe_account_new_company_body": "Você responde como a sua empresa. Ela fica fora do limite de contas pessoais.",
+    "bipe_account_company_owner": "Conta da empresa de %1$s",
+    "bipe_account_new_company_owner": "A conta da empresa fica junto com a sua conta %1$s neste celular.",
     "bipe_account_new_existing": "Entrar numa conta que já existe",
     "bipe_account_new_existing_body": "Uma conta que você criou em outro celular.",
     "bipe_account_new_invite_note": "O convite sai da conta %1$s.",

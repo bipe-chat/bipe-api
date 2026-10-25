@@ -764,6 +764,8 @@
     "bipe_account_new_personal_body": "Another account of yours, with another name and other contacts.",
     "bipe_account_new_company": "Company account",
     "bipe_account_new_company_body": "You answer as your company. It stays outside the personal account limit.",
+    "bipe_account_company_owner": "%1$s's company account",
+    "bipe_account_new_company_owner": "The company account stays with your account %1$s on this phone.",
     "bipe_account_new_existing": "Sign in to an existing account",
     "bipe_account_new_existing_body": "An account you made on another phone.",
     "bipe_account_new_invite_note": "The invite comes from %1$s.",
