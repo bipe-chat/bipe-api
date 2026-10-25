@@ -1,0 +1,31 @@
+{
+  "$comment": "ADR 0141, bipe-chat/bipe#532: the m.room.power_levels content of a new DM. Both people sit at usersDefault, so neither can invite, kick, ban, delete the other person's messages or change the room (name, photo, topic, power levels, join rules, history, encryption). Messages, reactions, deleting own messages and call membership stay at 0. Clients create the room with the user at createLevel and the other person at 0, so that the server can write the first state and the invite, then send this content. Old DMs keep their power levels.",
+  "version": 1,
+  "createLevel": 100,
+  "usersDefault": 0,
+  "eventsDefault": 0,
+  "stateDefault": 100,
+  "invite": 100,
+  "kick": 100,
+  "ban": 100,
+  "redact": 100,
+  "notifications": { "room": 100 },
+  "events": {
+    "m.room.avatar": 100,
+    "m.room.canonical_alias": 100,
+    "m.room.encryption": 100,
+    "m.room.history_visibility": 100,
+    "m.room.join_rules": 100,
+    "m.room.name": 100,
+    "m.room.pinned_events": 100,
+    "m.room.power_levels": 100,
+    "m.room.server_acl": 100,
+    "m.room.tombstone": 100,
+    "m.room.topic": 100,
+    "m.reaction": 0,
+    "m.room.message": 0,
+    "m.room.redaction": 0,
+    "m.call.member": 0,
+    "org.matrix.msc3401.call.member": 0
+  }
+}
