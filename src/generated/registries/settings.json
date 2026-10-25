@@ -113,7 +113,8 @@
         {
           "key": "leave",
           "rows": [
-            { "key": "signOut", "title": "bipe_account_sign_out", "kind": "destructive" }
+            { "key": "signOut", "title": "bipe_account_sign_out", "kind": "destructive" },
+            { "key": "delete", "title": "bipe_account_delete", "kind": "destructive", "adr": "0140" }
           ]
         }
       ]
