@@ -1,0 +1,14 @@
+{
+  "$comment": "Work side opening hours (ADR 0138 rule 4, bipe-chat/bipe#511). A company account sets the hours of its work side on the phone; the API keeps them (GET and PUT /v1/me/work-hours) so every device of the account reads the same. Outside the hours, the phone shows the account's pushes without sound and without a banner, and keeps them in the notification list. The personal side never goes quiet because of the work side. Reference: isWithinWorkHours() in tools/lib/registries.mjs, cases in test-vectors/work-hours.json. days: ISO weekdays 1 (Monday) to 7 (Sunday); a day without a range is closed. A range is half-open [start, end) in local time HH:MM; end 24:00 means midnight; a range never crosses midnight (two ranges cover a night). At most maxRangesPerDay ranges per day, sorted, not touching. defaultTimeZone is used when the account has none. defaultDays is what a new work account starts with.",
+  "version": 1,
+  "defaultTimeZone": "America/Sao_Paulo",
+  "maxRangesPerDay": 3,
+  "defaultDays": [
+    { "day": 1, "ranges": [{ "start": "08:00", "end": "18:00" }] },
+    { "day": 2, "ranges": [{ "start": "08:00", "end": "18:00" }] },
+    { "day": 3, "ranges": [{ "start": "08:00", "end": "18:00" }] },
+    { "day": 4, "ranges": [{ "start": "08:00", "end": "18:00" }] },
+    { "day": 5, "ranges": [{ "start": "08:00", "end": "18:00" }] },
+    { "day": 6, "ranges": [{ "start": "08:00", "end": "12:00" }] }
+  ]
+}
