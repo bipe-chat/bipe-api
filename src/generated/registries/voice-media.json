@@ -1,0 +1,7 @@
+{
+  "$comment": "Voice message audio expiry (ADR 0164, bipe-chat/bipe#622). After the upload, the sending app registers the media ID of a voice message with the API (PUT /v1/me/voice-media). The API deletes the file from the media repository transcriptDays after the upload when the message has a transcript, noTranscriptDays after it when it has none. The event and the transcript stay. Media that nobody registered never expires. Any account can keep a voice message's audio (PUT /v1/me/kept-media), up to maxKeptPerAccount; kept audio never expires while one account keeps it. The app keeps an incoming voice message with a scam warning by itself (reason scam). maxKeptPerAccount 200 is a default (about 36 MB of one-minute 24 kbit/s audio per account); MZ can overrule it.",
+  "version": 1,
+  "transcriptDays": 30,
+  "noTranscriptDays": 90,
+  "maxKeptPerAccount": 200
+}
