@@ -27,7 +27,8 @@ export function newChallenge(): string {
   return challenge;
 }
 
-function takeChallenge(challenge: string): boolean {
+/** Shared by App Attest and Android Key Attestation: one challenge, one sign-up try. */
+export function takeChallenge(challenge: string): boolean {
   const exp = challenges.get(challenge);
   challenges.delete(challenge);
   return exp !== undefined && exp > Date.now();

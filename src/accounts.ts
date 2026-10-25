@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Growth } from "./growth.js";
+import type { KeyAttestationVerifier } from "./key-attest.js";
 import type pg from "pg";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
@@ -26,6 +27,8 @@ export interface AccountDeps {
   mailer: Mailer;
   /** Growth events (ADR 0098). Absent in the admin CLI. */
   growth?: Growth;
+  /** Android Key Attestation (bipe#92). Absent: Google's pinned roots. Only synthetic tests set it. */
+  verifyKeyAttestation?: KeyAttestationVerifier;
 }
 
 type Queryable = Db | pg.PoolClient;
