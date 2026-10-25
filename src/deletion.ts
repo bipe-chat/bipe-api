@@ -354,6 +354,8 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "link_nonces",
       "link_flows",
       "work_hours",
+      "profile_changes",
+      "profile_snapshots",
     ]) {
       await q(`DELETE FROM ${table} WHERE user_id = $1`);
     }

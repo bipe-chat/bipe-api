@@ -40,6 +40,7 @@ export function loadRegistries(root) {
     dmPowerLevels: read("registries/dm-power-levels.json"),
     relationshipNames: read("registries/relationship-names.json"),
     photoMatch: read("registries/photo-match.json"),
+    profileFacts: read("registries/profile-facts.json"),
     workHours: read("registries/work-hours.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -216,6 +217,11 @@ function validate(reg) {
   const pm = reg.photoMatch;
   if (pm.method !== "dhash" || pm.width !== 9 || pm.height !== 8) fail("photo-match: only dhash on a 9 x 8 grid (64 bits) is supported");
   if (!(Number.isInteger(pm.maxDistance) && pm.maxDistance >= 0 && pm.maxDistance < 32)) fail("photo-match: maxDistance must be an integer from 0 to 31");
+  const pf = reg.profileFacts;
+  for (const k of ["windowDays", "newAccountDays", "noticePairHours", "noticeDays"]) {
+    if (!(Number.isInteger(pf[k]) && pf[k] > 0)) fail(`profile-facts: ${k} must be a positive integer`);
+  }
+  if (pf.noticeDays > pf.windowDays) fail("profile-facts: noticeDays must not exceed windowDays");
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   if (!(Number.isInteger(h.ownerMinLength) && h.ownerMinLength >= 1 && h.ownerMinLength <= h.minLength)) fail("handles: ownerMinLength");
@@ -736,3 +742,30 @@ export function relationshipNameWarning(savedName, verifiedName, nicknameConfirm
 export function chatArchived(marker, incoming) {
   return Number.isSafeInteger(marker) && marker >= 0 && !(Number.isSafeInteger(incoming) && incoming > marker);
 }
+
+// ADR 0049 profile change facts (registries/profile-facts.json). facts: { created_at?, name_changes: [iso], photo_changes:
+// [iso] } as POST /v1/profile-facts returns them; nowMs: Unix ms. Returns { lines, notice }: lines in the order created,
+// photo, name; each { fact, at } (created: the creation time) or { fact, count, at } (at: the newest change in the
+// window). notice: a name change and a photo change at most noticePairHours apart, the later one younger than noticeDays.
+export function profileFactLines(facts, nowMs, reg) {
+  const r = reg.profileFacts;
+  const day = 86_400_000;
+  const inWindow = (list) => (list ?? []).map((t) => Date.parse(t)).filter((t) => Number.isFinite(t) && t <= nowMs && nowMs - t < r.windowDays * day).sort((a, b) => a - b);
+  const names = inWindow(facts.name_changes);
+  const photos = inWindow(facts.photo_changes);
+  const lines = [];
+  const created = facts.created_at ? Date.parse(facts.created_at) : NaN;
+  if (Number.isFinite(created) && created <= nowMs && nowMs - created < r.newAccountDays * day) {
+    lines.push({ fact: "created", at: new Date(created).toISOString() });
+  }
+  if (photos.length) lines.push({ fact: "photo", count: photos.length, at: new Date(photos.at(-1)).toISOString() });
+  if (names.length) lines.push({ fact: "name", count: names.length, at: new Date(names.at(-1)).toISOString() });
+  let notice = false;
+  for (const n of names) {
+    for (const p of photos) {
+      if (Math.abs(n - p) <= r.noticePairHours * 3_600_000 && nowMs - Math.max(n, p) < r.noticeDays * day) notice = true;
+    }
+  }
+  return { lines, notice };
+}
+

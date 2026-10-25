@@ -1,0 +1,8 @@
+{
+  "$comment": "Account age and profile change facts, ADR 0049 (bipe/docs/adr, security.md rule 15, bipe-chat/bipe#598). The API keeps the dates of display-name and photo changes (Matrix profile and public profile) for windowDays and serves them with the account creation time (POST /v1/profile-facts). The apps show the lines of profileFactLines() (tools/lib/registries.mjs, test-vectors/profile-facts.json) on chat-request and person-profile: the account age only when the account is younger than newAccountDays; per kind, one change shows its age, more changes show their count in windowDays. Nothing when nothing applies. noticePairHours and noticeDays: a contact whose name change and photo change lie at most noticePairHours apart gets the amber notice in the chat while the later of the two is younger than noticeDays.",
+  "version": 1,
+  "windowDays": 30,
+  "newAccountDays": 30,
+  "noticePairHours": 24,
+  "noticeDays": 7
+}

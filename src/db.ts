@@ -676,6 +676,22 @@ const MIGRATIONS = [
      at timestamptz NOT NULL DEFAULT now()
    );
    CREATE INDEX brand_mark_events_actor ON brand_mark_events (actor_user_id, at);`,
+  // Profile change facts (ADR 0049, bipe#598): dates only. The snapshot keeps HMAC digests of the current Synapse display
+  // name and avatar URL to notice a change; never the name, the URL or an image.
+  `CREATE TABLE profile_changes (
+     id bigserial PRIMARY KEY,
+     user_id text NOT NULL,
+     kind text NOT NULL CHECK (kind IN ('name', 'photo')),
+     source text NOT NULL CHECK (source IN ('matrix', 'public')),
+     changed_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX profile_changes_user ON profile_changes (user_id, changed_at);
+   CREATE TABLE profile_snapshots (
+     user_id text PRIMARY KEY,
+     name_digest text NOT NULL,
+     photo_digest text NOT NULL,
+     seen_at timestamptz NOT NULL DEFAULT now()
+   );`,
   // Account deletion (ADR 0140, bipe#528): one open request per account, the 72-hour wait and the job's progress.
   // waiting: cancellable until due_at. running: the job started (step = last finished step). done: the account is gone;
   // the row keeps only user_id and the times, for the verification-record retention. A cancel deletes the row.
