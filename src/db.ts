@@ -635,6 +635,14 @@ const MIGRATIONS = [
    );
    ALTER TABLE recoveries DROP CONSTRAINT recoveries_method_check;
    ALTER TABLE recoveries ADD CONSTRAINT recoveries_method_check CHECK (method IN ('token', 'email', 'guardian', 'cpf', 'apple', 'google'));`,
+  // Work side opening hours (ADR 0138 rule 4, bipe#511): one row per company account; days as the contract's WorkDay list.
+  `CREATE TABLE work_hours (
+     user_id text PRIMARY KEY,
+     enabled boolean NOT NULL,
+     time_zone text NOT NULL,
+     days jsonb NOT NULL,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );`,
   // Account deletion (ADR 0140, bipe#528): one open request per account, the 72-hour wait and the job's progress.
   // waiting: cancellable until due_at. running: the job started (step = last finished step). done: the account is gone;
   // the row keeps only user_id and the times, for the verification-record retention. A cancel deletes the row.

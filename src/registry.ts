@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from bipe-shared by `pnpm gen`. Never edit generated/.
-import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem } from "./generated/lib/registries.mjs";
+import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, workHoursProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
@@ -108,6 +108,21 @@ export const accountRules = reg.accounts as {
   deletionCooldownHours: number;
   deletionVerificationKeepDays: number;
 };
+
+/** Work side opening hours (registries/work-hours.json, bipe#511). */
+export const workHoursRules = reg.workHours as {
+  defaultTimeZone: string;
+  maxRangesPerDay: number;
+  defaultDays: { day: number; ranges: { start: string; end: string }[] }[];
+};
+
+/** null when the days pass the shared rule, else the problem id. */
+export function workHoursProblemOf(hours: { days: unknown }): string | null {
+  return workHoursProblem(hours, workHoursRules.maxRangesPerDay) as string | null;
+}
+
+/** Phone link rules (registries/phone-numbers.json): the yearly confirmation of a linked number (bipe#470). */
+export const phoneRules = reg.phones as { linkConfirmMonths: number; linkConfirmWarnDays: number };
 
 /** Linked Apple or Google account for recovery (ADR 0096, registries/accounts.json linkedRecovery). */
 export const linkedRecoveryRules = (reg.accounts as { linkedRecovery: { delayHours: number; flowMinutes: number } }).linkedRecovery;
