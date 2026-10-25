@@ -27,10 +27,11 @@ async function openShop(db) {
   return { service: state.services[0], agendaId };
 }
 
-const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+// Two days ahead: the first slot of tomorrow is inside the 120-minute cancellation window late in the UTC day.
+const bookingDay = () => new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
 
 async function firstSlot(db, serviceId) {
-  const day = tomorrow();
+  const day = bookingDay();
   const result = await agenda.slots(db, shop, { service_id: serviceId, agenda_id: "any", date_from: day, date_to: day });
   return result.days[0].slots[0].start;
 }
@@ -82,7 +83,7 @@ test("a customer holds a free time, confirms it, and sees it in their bookings",
   assert.equal(held.status, "held");
   assert.ok(held.hold_expires_at);
   assert.deepEqual(held.customer, { user_id: ana });
-  const after = await agenda.slots(db, shop, { service_id: service.id, agenda_id: "any", date_from: tomorrow(), date_to: tomorrow() });
+  const after = await agenda.slots(db, shop, { service_id: service.id, agenda_id: "any", date_from: bookingDay(), date_to: bookingDay() });
   assert.ok(!after.days[0].slots.some((s) => s.start === start), "a held time is not free");
   const confirmed = await agenda.confirm(db, shop, ana, held.id);
   assert.equal(confirmed.status, "confirmed");
@@ -136,7 +137,7 @@ test("an expired hold cannot be confirmed and frees the time", async (t) => {
 test("open bookings per customer are capped, and notice and horizon are enforced", async (t) => {
   const db = await setup(t);
   const { service } = await openShop(db);
-  const day = await agenda.slots(db, shop, { service_id: service.id, agenda_id: "any", date_from: tomorrow(), date_to: tomorrow() });
+  const day = await agenda.slots(db, shop, { service_id: service.id, agenda_id: "any", date_from: bookingDay(), date_to: bookingDay() });
   const [a, b, c] = day.days[0].slots.filter((_, i) => i % 8 === 0);
   await agenda.hold(db, shop, ana, { service_id: service.id, agenda_id: "any", start: a.start });
   await agenda.hold(db, shop, ana, { service_id: service.id, agenda_id: "any", start: b.start });
@@ -157,7 +158,7 @@ test("unpublished agendas take no bookings", async (t) => {
 test("cancel and move follow the cancellation window; a failed move keeps the booking", async (t) => {
   const db = await setup(t);
   const { service } = await openShop(db);
-  const day = await agenda.slots(db, shop, { service_id: service.id, agenda_id: "any", date_from: tomorrow(), date_to: tomorrow() });
+  const day = await agenda.slots(db, shop, { service_id: service.id, agenda_id: "any", date_from: bookingDay(), date_to: bookingDay() });
   const [first, second] = [day.days[0].slots[0], day.days[0].slots[8]];
   const mine = await agenda.confirm(db, shop, ana, (await agenda.hold(db, shop, ana, { service_id: service.id, agenda_id: "any", start: first.start })).id);
   const theirs = await agenda.confirm(db, shop, bia, (await agenda.hold(db, shop, bia, { service_id: service.id, agenda_id: "any", start: second.start })).id);
@@ -193,7 +194,7 @@ test("owner: encaixe by name, move, cancel, and the owner day list", async (t) =
 test("block subtracts a time from one day; close day closes it; overlapping overrides are refused", async (t) => {
   const db = await setup(t);
   const { service, agendaId } = await openShop(db);
-  const day = tomorrow();
+  const day = bookingDay();
   const blocked = await agenda.block(db, shop, { agenda_ids: [agendaId], start: `${day}T12:00:00.000Z`, end: `${day}T13:00:00.000Z` });
   assert.deepEqual(blocked.ranges, [{ start: "00:00", end: "12:00" }, { start: "13:00", end: "23:45" }]);
   const slots = await agenda.slots(db, shop, { service_id: service.id, agenda_id: "any", date_from: day, date_to: day });
