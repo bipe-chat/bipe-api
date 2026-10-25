@@ -346,6 +346,8 @@
     "bipe_email_confirmed": "Email confirmed.",
     "bipe_email_remove": "Remove email",
     "bipe_email_link_invalid": "This link no longer works. Ask for a new one in the app.",
+    "bipe_email_send": "Send link",
+    "bipe_email_change_reason": "Confirm it's you to change the recovery email.",
     "bipe_error_email_unavailable": "We cannot send email right now. Try again later.",
     "bipe_recovery_title": "Get back into your account",
     "bipe_recovery_qr": "I have my old phone",
