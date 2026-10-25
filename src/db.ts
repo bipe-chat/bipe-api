@@ -751,6 +751,26 @@ const MIGRATIONS = [
      sent_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (visitor_id, started_at)
    );`,
+  // Voice audio expiry (ADR 0164, bipe#622). voice_media: the uploads the apps registered, deleted when the file goes.
+  // user_id is NULL after the account is deleted, so the purge still deletes its files. kept_media: per account.
+  `CREATE TABLE voice_media (
+     media_id text PRIMARY KEY,
+     user_id text,
+     transcript boolean NOT NULL,
+     uploaded_at timestamptz NOT NULL,
+     expires_at timestamptz NOT NULL,
+     registered_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX voice_media_due ON voice_media (expires_at);
+   CREATE INDEX voice_media_user ON voice_media (user_id);
+   CREATE TABLE kept_media (
+     user_id text NOT NULL,
+     media_id text NOT NULL,
+     reason text NOT NULL CHECK (reason IN ('kept', 'scam')),
+     kept_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, media_id)
+   );
+   CREATE INDEX kept_media_media ON kept_media (media_id);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

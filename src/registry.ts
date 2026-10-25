@@ -18,6 +18,9 @@ export const growthRules = reg.growth as {
 /** Brand marks for resellers (ADR 0162, registries/brand-marks.json). */
 export const brandMarkRules = reg.brandMarks as { labels: string[]; maxPerAccount: number; inviteDays: number; recheckMinutes: number };
 
+/** Voice message audio expiry (ADR 0164, registries/voice-media.json). */
+export const voiceMediaRules = reg.voiceMedia as { transcriptDays: number; noTranscriptDays: number; maxKeptPerAccount: number };
+
 /** Profile change facts (ADR 0049, registries/profile-facts.json). */
 export const profileFactRules = reg.profileFacts as { windowDays: number; newAccountDays: number; noticePairHours: number; noticeDays: number };
 
