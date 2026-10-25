@@ -1,0 +1,7 @@
+{
+  "$comment": "Data use (bipe-chat/bipe#242). On most prepaid plans data for some messaging apps is free and data for Bipe is not, so Bipe keeps a budget for a normal day and light defaults. budgetMegabytesPerDay is an estimate from the sizes below (UNVERIFIED until MZ measures a normal day on an iPhone and an Android phone, 25 Oct 2026): text and sync about 2.5 MB (200 messages, receipts, typing, one group), 10 voice messages sent or received (30 s Opus at 32 kbit/s, about 120 kB each: 1.2 MB), 5 photos sent at standard quality (2048 px JPEG, about 450 kB each: 2.25 MB), 10 photos received as thumbnails (about 40 kB each: 0.4 MB) and 5 of them opened full size (2.25 MB): about 8.6 MB, rounded up to 10. Defaults: videos and voice messages download only on a tap or play; a received photo shows its thumbnail and loads the full file only in the viewer; photos and videos are sent at standard quality (upload-preview). dataSaver (the switch bipe_data_use_saver, and also the system Low Data Mode on iOS or Data Saver on Android): on mobile data, photo and sticker thumbnails wait for a tap. The counters of data-use count only media Bipe sent or downloaded on the phone, split by mobile data and Wi-Fi; they stay on the phone and roll over each calendar month.",
+  "version": 1,
+  "budgetMegabytesPerDay": 10,
+  "normalDay": { "textMessages": 200, "voiceMessages": 10, "photos": 10, "groups": 1 },
+  "dataSaverDefault": false
+}
