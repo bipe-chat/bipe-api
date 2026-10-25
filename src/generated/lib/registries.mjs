@@ -33,6 +33,7 @@ export function loadRegistries(root) {
     clearedChats: read("registries/cleared-chats.json"),
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
+    dmPowerLevels: read("registries/dm-power-levels.json"),
     relationshipNames: read("registries/relationship-names.json"),
     photoMatch: read("registries/photo-match.json"),
     strings: read("strings/pt-BR.json"),
@@ -44,6 +45,25 @@ export function loadRegistries(root) {
 
 function fail(msg) {
   throw new Error(`registry validation failed: ${msg}`);
+}
+
+// ADR 0141: in a new DM nobody reaches a locked level, and the everyday events stay open to both people.
+export function validateDmPowerLevels(pl) {
+  const level = (v) => Number.isInteger(v) && v >= 0 && v <= 100;
+  const locked = [pl.stateDefault, pl.invite, pl.kick, pl.ban, pl.redact, pl.notifications?.room];
+  if (![pl.createLevel, pl.usersDefault, pl.eventsDefault, ...locked].every(level)) fail("dm-power-levels: levels must be integers from 0 to 100");
+  if (!locked.every((v) => v > pl.usersDefault)) fail("dm-power-levels: invite, kick, ban, redact, @room and room state must be above usersDefault");
+  if (pl.createLevel < Math.max(pl.stateDefault, pl.invite)) fail("dm-power-levels: createLevel must write the first state and the invite");
+  if (pl.eventsDefault > pl.usersDefault) fail("dm-power-levels: messages must stay open to both people");
+  for (const [type, v] of Object.entries(pl.events ?? {})) {
+    if (!level(v) || !/^[a-z0-9._]+$/.test(type)) fail(`dm-power-levels: event ${type}`);
+  }
+  for (const type of ["m.room.name", "m.room.avatar", "m.room.topic", "m.room.power_levels", "m.room.join_rules", "m.room.history_visibility", "m.room.encryption"]) {
+    if (!(pl.events?.[type] > pl.usersDefault)) fail(`dm-power-levels: ${type} must be locked`);
+  }
+  for (const type of ["m.room.message", "m.reaction", "m.room.redaction", "org.matrix.msc3401.call.member"]) {
+    if (pl.events?.[type] !== undefined && pl.events[type] > pl.usersDefault) fail(`dm-power-levels: ${type} must stay open`);
+  }
 }
 
 export function validateLinkedRecovery(accounts) {
@@ -95,6 +115,7 @@ function validate(reg) {
   const dm = reg.dmSelection;
   if (dm.order !== "latest-event-descending" || dm.missingActivity !== "last" || dm.tieBreak !== "room-id-ascending"
       || dm.eligibility !== "joined-dm-with-peer" || dm.clearedRooms !== "hide-before-selection" || dm.allClearedStartChat !== "reuse-newest-existing" || dm.filterOrder !== "select-before-unread-or-name") fail("dm-selection: unsupported ADR 0141 policy");
+  validateDmPowerLevels(reg.dmPowerLevels);
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
