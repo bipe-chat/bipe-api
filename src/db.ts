@@ -692,6 +692,27 @@ const MIGRATIONS = [
      photo_digest text NOT NULL,
      seen_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Account deletion (ADR 0140, bipe#528): one open request per account, the 72-hour wait and the job's progress.
+  // waiting: cancellable until due_at. running: the job started (step = last finished step). done: the account is gone;
+  // the row keeps only user_id and the times, for the verification-record retention. A cancel deletes the row.
+  // last_error holds a step name and an HTTP status, never a body.
+  `CREATE TABLE account_deletions (
+     id text PRIMARY KEY,
+     user_id text NOT NULL,
+     device_id text,
+     redact_messages boolean NOT NULL,
+     state text NOT NULL CHECK (state IN ('waiting', 'running', 'done')),
+     created_at timestamptz NOT NULL DEFAULT now(),
+     due_at timestamptz NOT NULL,
+     step text,
+     redact_id text,
+     tries integer NOT NULL DEFAULT 0,
+     next_try_at timestamptz,
+     last_error text,
+     done_at timestamptz
+   );
+   CREATE UNIQUE INDEX account_deletions_one_open ON account_deletions (user_id) WHERE state IN ('waiting', 'running');
+   CREATE INDEX account_deletions_due ON account_deletions (due_at) WHERE state IN ('waiting', 'running');`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
