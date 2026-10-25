@@ -311,6 +311,93 @@ const MIGRATIONS = [
      device_key text NOT NULL,
      verified_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Catálogo (ADR 0104) and Agenda (ADRs 0099 to 0103, docs/scheduling.md). One item table holds products and
+  // services; a service has scheduling fields only when the Agenda uses it. Bookings keep no customer text (ADR 0102).
+  // No two active bookings of one agenda overlap, buffers included: the exclusion constraint uses the agenda's
+  // bigint key as a one-point range, so it needs no btree_gist extension.
+  `CREATE TABLE catalog_items (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     kind text NOT NULL CHECK (kind IN ('service', 'product')),
+     name text NOT NULL,
+     price jsonb NOT NULL,
+     description text,
+     category text,
+     active boolean NOT NULL,
+     sort integer NOT NULL CHECK (sort >= 0),
+     sold_out_on date,
+     duration_minutes integer CHECK (duration_minutes >= 1),
+     buffer_before_minutes integer CHECK (buffer_before_minutes >= 0),
+     buffer_after_minutes integer CHECK (buffer_after_minutes >= 0),
+     agenda_ids text[],
+     photo bytea,
+     photo_version text,
+     archived_at timestamptz,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX catalog_items_business ON catalog_items (business_id, sort, id) WHERE archived_at IS NULL;
+   CREATE TABLE agenda_settings (
+     business_id text PRIMARY KEY,
+     published boolean NOT NULL DEFAULT false,
+     time_zone text NOT NULL,
+     min_notice_minutes integer NOT NULL,
+     horizon_days integer NOT NULL,
+     slot_step_minutes integer NOT NULL,
+     cancel_window_minutes integer NOT NULL,
+     confirm_mode text NOT NULL CHECK (confirm_mode IN ('auto', 'request')),
+     max_open_bookings integer NOT NULL,
+     reminder_minutes integer[] NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE agendas (
+     id text PRIMARY KEY,
+     seq bigserial UNIQUE,
+     business_id text NOT NULL,
+     name text NOT NULL,
+     photo text,
+     active boolean NOT NULL,
+     sort integer NOT NULL CHECK (sort >= 0),
+     availability jsonb NOT NULL DEFAULT '[]',
+     deleted_at timestamptz
+   );
+   CREATE INDEX agendas_business ON agendas (business_id);
+   CREATE TABLE agenda_overrides (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     agenda_id text NOT NULL REFERENCES agendas(id),
+     date_from date NOT NULL,
+     date_to date NOT NULL CHECK (date_to >= date_from),
+     closed boolean NOT NULL,
+     ranges jsonb NOT NULL
+   );
+   CREATE INDEX agenda_overrides_agenda ON agenda_overrides (agenda_id, date_from);
+   CREATE TABLE bookings (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     service_id text NOT NULL REFERENCES catalog_items(id),
+     agenda_id text NOT NULL REFERENCES agendas(id),
+     agenda_seq bigint NOT NULL,
+     start_at timestamptz NOT NULL,
+     end_at timestamptz NOT NULL CHECK (end_at > start_at),
+     busy_start timestamptz NOT NULL,
+     busy_end timestamptz NOT NULL CHECK (busy_end > busy_start),
+     buffer_before_minutes integer NOT NULL,
+     buffer_after_minutes integer NOT NULL,
+     status text NOT NULL CHECK (status IN ('held', 'requested', 'confirmed', 'done', 'cancelled', 'no_show')),
+     customer_id text,
+     customer_name text,
+     CHECK ((customer_id IS NULL) <> (customer_name IS NULL)),
+     source text NOT NULL CHECK (source IN ('customer', 'owner')),
+     hold_expires_at timestamptz,
+     ended_reason text,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now(),
+     EXCLUDE USING gist (int8range(agenda_seq, agenda_seq, '[]') WITH =, tstzrange(busy_start, busy_end) WITH &&)
+       WHERE (status IN ('held', 'requested', 'confirmed'))
+   );
+   CREATE INDEX bookings_business ON bookings (business_id, start_at);
+   CREATE INDEX bookings_customer ON bookings (customer_id, start_at) WHERE customer_id IS NOT NULL;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

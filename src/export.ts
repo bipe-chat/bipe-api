@@ -98,5 +98,21 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     problem_reports: await bugReportsOf(db, userId),
     // Support DM (ADR 0114): the room ID only. The messages are in the room; the bot keeps no copy.
     support_room: await one(db, "SELECT room_id, created_at FROM support_rooms WHERE user_id = $1", userId),
+    // Agenda (ADR 0102): bookings the caller made as a customer. A company's own records come with its catálogo.
+    bookings: await all(
+      db,
+      `SELECT id, business_id, service_id, start_at, end_at, status, source, created_at FROM bookings WHERE customer_id = $1 ORDER BY start_at`,
+      userId,
+    ),
+    catalog_items: await all(
+      db,
+      `SELECT id, kind, name, price, description, category, active, archived_at, created_at FROM catalog_items WHERE business_id = $1 ORDER BY sort, id`,
+      userId,
+    ),
+    business_bookings: await all(
+      db,
+      `SELECT id, service_id, agenda_id, start_at, end_at, status, source, created_at FROM bookings WHERE business_id = $1 ORDER BY start_at`,
+      userId,
+    ),
   };
 }
