@@ -52,7 +52,7 @@ import { queueHousekeeping } from "./queue.js";
 import { quoteHousekeeping } from "./quotes.js";
 import { businessRoutes, CATALOG_PHOTO_PATH } from "./business-routes.js";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { login, logout, pageOf, PROPOSTA_COOKIE, PROPOSTA_COOKIE_PATH, PropostaBeaconBody, PropostaLoginBody, propostaReport, prunePropostaLog, recordVisit, referrerOrigin, sessionVisitor, SESSION_DAYS } from "./proposta.js";
+import { login, logout, pageOf, PROPOSTA_COOKIE, PROPOSTA_COOKIE_PATH, PropostaBeaconBody, PropostaLoginBody, propostaReport, prunePropostaLog, recordVisit, referrerOrigin, sendSummaries, sessionVisitor, SESSION_DAYS } from "./proposta.js";
 
 const config = loadConfig();
 const db = openDb(config.DATABASE_URL);
@@ -81,6 +81,7 @@ console.log(`support bot: ${support.enabled ? "on" : "off (no SUPPORT_ACCESS_TOK
 console.log(`news bot: ${news.enabled ? "on" : "off (no NEWS_ACCESS_TOKEN or NEWS_STORE_PASSPHRASE)"}`);
 console.log(`cvm register: ${config.CVM_REFRESH ? "daily refresh on" : "off (CVM_REFRESH=false)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
+console.log(`strategic page summaries: ${config.PROPOSTA_NOTIFY_EMAIL && accounts.mailer.enabled ? "on" : "off (no PROPOSTA_NOTIFY_EMAIL or no email)"}`);
 console.log(`linked recovery: ${JSON.stringify(linkDeps.links.providers().providers)}`);
 
 const limits = {
@@ -225,6 +226,12 @@ const prunePropostaJob = () =>
     .catch((e) => console.error(`strategic page prune failed: ${(e as Error).message}`));
 prunePropostaJob();
 setInterval(prunePropostaJob, 24 * 3_600_000).unref();
+// ADR 0160: one summary email per finished sitting to PROPOSTA_NOTIFY_EMAIL. Never log the address or the email.
+const propostaSummaryJob = () =>
+  void sendSummaries(db, accounts.mailer, config.PROPOSTA_NOTIFY_EMAIL)
+    .then((n) => n > 0 && console.log(`strategic page summaries sent: ${n}`))
+    .catch((e) => console.error(`strategic page summaries failed: ${(e as Error).message}`));
+setInterval(propostaSummaryJob, 5 * 60_000).unref();
 const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
@@ -1023,7 +1030,7 @@ app.get("/v1/proposta/check", async (c) => {
   }
   return c.body(null, 204);
 });
-// The deck sends the slide on screen with sendBeacon (text/plain JSON).
+// The pages send the slide on screen, and a leave event when the tab is hidden or closed (sendBeacon, text/plain JSON).
 app.post("/v1/proposta/beacon", async (c) => {
   limits.propostaBeacon.check(clientIp(c));
   const visitor = await sessionVisitor(db, getCookie(c, PROPOSTA_COOKIE));
@@ -1036,7 +1043,8 @@ app.post("/v1/proposta/beacon", async (c) => {
   }
   const body = PropostaBeaconBody.safeParse(json);
   if (!body.success) throw new ApiError("bad_request", body.error.issues[0]?.path.join("."));
-  await recordVisit(db, visitor, { kind: "slide", path: body.data.path, slide: body.data.slide, place: placeOf(clientIp(c)) });
+  const b = body.data;
+  await recordVisit(db, visitor, { kind: b.event, path: b.path, slide: b.event === "slide" ? b.slide : undefined, title: b.event === "slide" ? b.title : undefined, place: placeOf(clientIp(c)) });
   return c.body(null, 204);
 });
 

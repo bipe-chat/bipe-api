@@ -97,6 +97,8 @@ const Env = z.object({
   BIPE_SMTP_PORT: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.coerce.number().int().min(1).max(65535).default(587)),
   BIPE_SMTP_USER: emptyAsUnset(z.string()),
   BIPE_SMTP_PASSWORD: emptyAsUnset(z.string()),
+  // Strategic pages (bipe ADR 0160): one summary email per sitting goes to this operator mailbox. Empty: off.
+  PROPOSTA_NOTIFY_EMAIL: emptyAsUnset(z.email()),
   // Problem reports (bipe#367): files on disk, 90 days. Starlings app intake: text and metadata only.
   // Without STARLINGS_APP_INTAKE_KEY reports are stored but not relayed.
   BUG_REPORTS_DIR: z.string().default("/data/bug-reports"),
