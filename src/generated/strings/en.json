@@ -605,6 +605,7 @@
     "bipe_linked_account_unlinked": "Account unlinked.",
     "bipe_linked_account_error": "Could not link this account. Try again.",
     "bipe_linked_account_unlink_error": "Could not unlink this account. Try again.",
+    "bipe_linked_account_taken": "This account is already linked to another Bipe account.",
     "bipe_recovery_apple": "With my Apple account",
     "bipe_recovery_google": "With my Google account",
     "bipe_recovery_linked_body": "Use the account you linked to Bipe. Then enter your 8-digit PIN and wait %1$s hours.",
