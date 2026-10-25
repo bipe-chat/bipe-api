@@ -34,7 +34,20 @@ export type ErrorId =
   | "outside_notice"
   | "outside_horizon"
   | "agenda_not_published"
-  | "cancellation_window_closed";
+  | "cancellation_window_closed"
+  | "queue_closed"
+  | "already_in_queue"
+  | "place_not_active"
+  | "quote_expired"
+  | "quote_version_changed"
+  | "quote_not_open"
+  | "order_already_open"
+  | "order_not_open"
+  | "item_unavailable"
+  | "price_not_fixed"
+  | "orders_closed"
+  | "payment_requires_verified_business"
+  | "pix_charge_unavailable";
 
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503> = {
   bad_request: 400,
@@ -71,6 +84,19 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   outside_horizon: 422,
   agenda_not_published: 422,
   cancellation_window_closed: 422,
+  queue_closed: 422,
+  already_in_queue: 409,
+  place_not_active: 409,
+  quote_expired: 422,
+  quote_version_changed: 409,
+  quote_not_open: 409,
+  order_already_open: 409,
+  order_not_open: 409,
+  item_unavailable: 422,
+  price_not_fixed: 422,
+  orders_closed: 422,
+  payment_requires_verified_business: 422,
+  pix_charge_unavailable: 422,
 };
 
 export class ApiError extends Error {

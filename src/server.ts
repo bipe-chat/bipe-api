@@ -45,6 +45,9 @@ import { NewsBot } from "./news.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
 import { agendaHousekeeping } from "./agenda.js";
+import { orderHousekeeping } from "./orders.js";
+import { queueHousekeeping } from "./queue.js";
+import { quoteHousekeeping } from "./quotes.js";
 import { businessRoutes, CATALOG_PHOTO_PATH } from "./business-routes.js";
 
 const config = loadConfig();
@@ -187,6 +190,13 @@ const agendaJob = () =>
     .catch((e) => console.error(`agenda housekeeping failed: ${(e as Error).message}`));
 agendaJob();
 setInterval(agendaJob, 5 * 60_000).unref();
+// Fila virtual, Orçamento, Pedidos: stale queue places end, records go after their retention (ADRs 0105 to 0107).
+const toolsJob = () =>
+  void Promise.all([queueHousekeeping(db), quoteHousekeeping(db), orderHousekeeping(db)])
+    .then(([q, qt, o]) => q.pruned + qt.pruned + o.pruned > 0 && console.log(`business records pruned: ${q.pruned + qt.pruned + o.pruned}`))
+    .catch((e) => console.error(`business housekeeping failed: ${(e as Error).message}`));
+toolsJob();
+setInterval(toolsJob, 60 * 60_000).unref();
 const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
@@ -905,7 +915,7 @@ staffGet("/v1/admin/reports", (c) => {
   return staffReports.reports(days.data);
 });
 
-// Business tools: Catálogo and Agenda (ADRs 0099 to 0104).
+// Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
 app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, clientIp }));
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
