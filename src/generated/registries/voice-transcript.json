@@ -1,0 +1,8 @@
+{
+  "$comment": "Paragraphs in a voice message transcript (bipe/docs/audio.md, ADR 0023). The recogniser gives one long run of text. The phone splits it into paragraphs before the sender sees it, on both platforms, with the rule in product/screens/voice-recording.json notes. pauseSeconds: a silence this long between two words starts a new paragraph when the paragraph has at least minCharacters and the text before the silence ends a sentence; a silence of twice pauseSeconds starts one also without a sentence end. maxCharacters: a paragraph this long ends at its next sentence end, with or without a silence. The values are first guesses (UNVERIFIED, 25 Oct 2026): MZ checks them by hand on real áudios.",
+  "version": 1,
+  "pauseSeconds": 1.2,
+  "minCharacters": 120,
+  "maxCharacters": 360,
+  "separator": "\n\n"
+}
