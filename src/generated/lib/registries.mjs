@@ -36,6 +36,7 @@ export function loadRegistries(root) {
     dataUse: read("registries/data-use.json"),
     brandMarks: read("registries/brand-marks.json"),
     voiceMedia: read("registries/voice-media.json"),
+    maps: read("registries/maps.json"),
     voiceTranscript: read("registries/voice-transcript.json"),
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
@@ -171,6 +172,15 @@ function validate(reg) {
   if (typeof vt.pauseSeconds !== "number" || vt.pauseSeconds <= 0 || vt.pauseSeconds > 10) fail("voice-transcript: pauseSeconds must be a number from 0 to 10");
   if (!Number.isInteger(vt.minCharacters) || !Number.isInteger(vt.maxCharacters) || vt.minCharacters < 1 || vt.maxCharacters <= vt.minCharacters) fail("voice-transcript: minCharacters and maxCharacters must be positive integers, max above min");
   if (typeof vt.separator !== "string" || !/^\n+$/.test(vt.separator)) fail("voice-transcript: separator must be one or more line breaks");
+  const mp = reg.maps;
+  // ADR 0131: maps come only from our server in Brazil. Fail closed on any other host.
+  if (mp.baseUrl !== "https://maps.bipe.net.br") fail("maps: baseUrl must be https://maps.bipe.net.br (ADR 0131)");
+  if (JSON.stringify(mp.styles) !== '{"light":"light","dark":"dark"}') fail("maps: styles must be light and dark");
+  for (const t of ["{style}", "{lon}", "{lat}", "{zoom}", "{width}", "{height}"]) if (!mp.staticPath.startsWith("/styles/") || !mp.staticPath.includes(t)) fail(`maps: staticPath must start with /styles/ and contain ${t}`);
+  if (mp.attribution !== "© OpenStreetMap") fail("maps: attribution must be © OpenStreetMap (ODbL)");
+  if (![mp.minZoom, mp.defaultZoom, mp.maxZoom].every(Number.isInteger) || !(0 <= mp.minZoom && mp.minZoom <= mp.defaultZoom && mp.defaultZoom <= mp.maxZoom && mp.maxZoom <= 22)) fail("maps: zoom levels must be integers, 0 <= minZoom <= defaultZoom <= maxZoom <= 22");
+  if (!Number.isInteger(mp.maxStaticSize) || mp.maxStaticSize < 256 || mp.maxStaticSize > 1024) fail("maps: maxStaticSize must be an integer from 256 to 1024");
+  if (!Number.isInteger(mp.coordinateDecimals) || mp.coordinateDecimals < 4 || mp.coordinateDecimals > 8) fail("maps: coordinateDecimals must be an integer from 4 to 8");
   const vm = reg.voiceMedia;
   if (![vm.transcriptDays, vm.noTranscriptDays, vm.maxKeptPerAccount].every((n) => Number.isInteger(n) && n >= 1) || vm.noTranscriptDays < vm.transcriptDays) fail("voice-media: transcriptDays, noTranscriptDays and maxKeptPerAccount must be positive integers, noTranscriptDays at least transcriptDays");
   const pxm = reg.pixMarks;

@@ -1,0 +1,13 @@
+{
+  "$comment": "Maps for location sharing (ADR 0131, bipe-chat/bipe#768). Every map request goes to baseUrl, our tile server in Brazil; no other map service and no API key. staticPath is the tileserver-gl static map: the app replaces {style}, {lon}, {lat}, {zoom}, {width} and {height} (points; the server renders @2x). width and height stay at or under maxStaticSize. The server draws the attribution into each image. defaultZoom: a new pin and a received location without zoom_level. coordinateDecimals: digits after the point in the geo URI (6 is about 0.1 m).",
+  "version": 1,
+  "baseUrl": "https://maps.bipe.net.br",
+  "styles": { "light": "light", "dark": "dark" },
+  "staticPath": "/styles/{style}/static/{lon},{lat},{zoom}/{width}x{height}@2x.png",
+  "attribution": "© OpenStreetMap",
+  "defaultZoom": 15,
+  "minZoom": 3,
+  "maxZoom": 18,
+  "maxStaticSize": 1024,
+  "coordinateDecimals": 6
+}
