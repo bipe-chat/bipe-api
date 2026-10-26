@@ -4,14 +4,26 @@ import { bugReportsOf } from "./bug-reports.js";
 import type { Db } from "./db.js";
 import type { Growth } from "./growth.js";
 import { inviteConnections } from "./invites.js";
+import type { PhoneHasher } from "./phones.js";
 
 const one = async <T extends Record<string, unknown>>(db: Db, sql: string, userId: string): Promise<T | null> =>
   (await db.query<T>(sql, [userId])).rows[0] ?? null;
 
+async function phoneLink(db: Db, userId: string, phones: PhoneHasher | undefined) {
+  const row = await one<{ method: string; linked_at: Date; confirmed_at: Date; number_enc: Buffer | null }>(
+    db,
+    "SELECT method, linked_at, confirmed_at, number_enc FROM phone_links WHERE user_id = $1",
+    userId,
+  );
+  if (!row) return null;
+  const { number_enc, ...rest } = row;
+  return { ...rest, number: phones?.open(number_enc) ?? null };
+}
+
 const all = async <T extends Record<string, unknown>>(db: Db, sql: string, userId: string): Promise<T[]> =>
   (await db.query<T>(sql, [userId])).rows;
 
-export async function exportData(db: Db, growth: Growth, userId: string, now = new Date()) {
+export async function exportData(db: Db, growth: Growth, userId: string, now = new Date(), phones?: PhoneHasher) {
   const profile = await one<{ enabled: boolean; name: string; bio: string; photo: Buffer | null; updated_at: Date }>(
     db,
     "SELECT enabled, name, bio, photo, updated_at FROM public_profiles WHERE user_id = $1",
@@ -72,8 +84,8 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     },
     messaging: await one(db, "SELECT policy AS who_can_message, updated_at FROM messaging_policies WHERE user_id = $1", userId),
     discovery: await one(db, "SELECT by_phone FROM discovery_settings WHERE user_id = $1", userId),
-    // The number itself is never stored, only a keyed hash (docs/phone-link.md), so it is not in the file.
-    phone_link: await one(db, "SELECT method, linked_at, confirmed_at FROM phone_links WHERE user_id = $1", userId),
+    // The owner's own number, opened from number_enc (ADR 0191); null for a link made before. The HMAC stays out.
+    phone_link: await phoneLink(db, userId, phones),
     invites_created: await all(
       db,
       "SELECT id, uses_left, expires_at, created_at, revoked_at FROM invites WHERE created_by = $1 ORDER BY created_at",

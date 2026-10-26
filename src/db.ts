@@ -771,6 +771,8 @@ const MIGRATIONS = [
      PRIMARY KEY (user_id, media_id)
    );
    CREATE INDEX kept_media_media ON kept_media (media_id);`,
+  // The owner's own linked number, encrypted (ADR 0191, bipe#787). NULL for links made before. Goes with the row.
+  `ALTER TABLE phone_links ADD COLUMN number_enc bytea;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
