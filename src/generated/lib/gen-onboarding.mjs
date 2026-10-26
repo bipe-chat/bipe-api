@@ -251,10 +251,10 @@ ${list.map((s) => `    ${snake(s.key)}(${res(s.title)}, ${optRes(s.body)}, ${but
     ;
 `;
   return `${header}
-package io.element.android.libraries.bipe.generated
+package chat.bipe.shared.generated
 
 import androidx.annotation.StringRes
-import io.element.android.libraries.bipe.R
+import chat.bipe.shared.R
 
 // First run (bipe-chat/bipe#415). Source: bipe-shared/registries/onboarding.json.
 
