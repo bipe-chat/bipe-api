@@ -1760,6 +1760,19 @@
     "bipe_deletion_customer_name": "Conta apagada",
     "bipe_mail_notice_deletion_started": "Alguém pediu para apagar sua conta do Bipe. Se ninguém cancelar, a conta é apagada em %1$s.\n\nSe não foi você, abra o Bipe num dos seus aparelhos e cancele.",
     "bipe_mail_notice_deletion_cancelled": "O pedido para apagar sua conta do Bipe foi cancelado. A conta continua como estava.\n\nSe não foi você, abra o Bipe num dos seus aparelhos e confira.",
-    "bipe_a11y_switch_account": "Trocar de conta"
+    "bipe_a11y_switch_account": "Trocar de conta",
+    "bipe_bring_people_title": "Quem da sua família devia estar aqui?",
+    "bipe_bring_people_body": "Escolha até 4 pessoas. Cada uma recebe um convite só dela, pelo WhatsApp ou como você preferir.",
+    "bipe_bring_people_slot_empty": "Adicionar pessoa",
+    "bipe_bring_people_name_placeholder": "Nome, como Mãe ou Tio Zé",
+    "bipe_bring_people_sent": "Convite enviado",
+    "bipe_bring_people_joined": "Já está no Bipe",
+    "bipe_bring_people_expired": "O convite venceu",
+    "bipe_bring_people_resend": "Mandar de novo",
+    "bipe_bring_people_expired_action": "Mandar um novo",
+    "bipe_bring_people_done": "Pronto",
+    "bipe_bring_people_reminder_title": "%1$s ainda não entrou no Bipe",
+    "bipe_bring_people_reminder_pending": "O convite ainda vale. Quer mandar de novo?",
+    "bipe_bring_people_reminder_expired": "O convite venceu. Quer mandar um novo?"
   }
 }
