@@ -28,8 +28,8 @@ test("each item ends with the line that points to Suporte Bipe", () => {
 });
 
 test("the room is read-only for the user", () => {
-  const pl = newsPowerLevels("@bipe:example.test", "@ana:example.test");
-  assert.equal(pl.users["@bipe:example.test"], 100);
+  const pl = newsPowerLevels("@ana:example.test");
+  assert.deepEqual(Object.keys(pl.users), ["@ana:example.test"], "the creator (the bot) is not listed in a version 12 room");
   assert.equal(pl.users["@ana:example.test"], 0);
   assert.equal(pl.users_default, 0);
   assert.ok(pl.events_default > pl.users["@ana:example.test"], "the user cannot send messages");

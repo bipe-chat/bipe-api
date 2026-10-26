@@ -50,7 +50,8 @@ test("sign-up makes one read-only room with the welcome item; a second welcome m
   const req = created[0].body;
   assert.equal(req.is_direct, true);
   assert.deepEqual(req.invite, ["@ana:example.test"]);
-  assert.equal(req.power_level_content_override.users[BOT], 100);
+  assert.equal(req.room_version, "12");
+  assert.equal(req.power_level_content_override.users[BOT], undefined);
   assert.equal(req.power_level_content_override.users["@ana:example.test"], 0);
   assert.equal(req.power_level_content_override.events_default, 50);
   assert.equal(req.initial_state[0].type, "m.room.encryption");
