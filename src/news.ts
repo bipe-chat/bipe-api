@@ -32,10 +32,13 @@ export function newsBody(item: { body: string; link: string | null }): string {
   return [item.body, item.link, appString("pt", "bipe_news_support_line")].filter(Boolean).join("\n\n");
 }
 
-/** The room's power levels: only the bot writes (ADR 0117). */
-export function newsPowerLevels(botId: string, userId: string) {
+/**
+ * The room's power levels: only the bot writes (ADR 0117). The room is version 12 (NEWS_ROOM_VERSION): the bot, as the
+ * creator, has the top power level without an entry, and Synapse refuses a createRoom that lists the creator in `users`.
+ */
+export function newsPowerLevels(userId: string) {
   return {
-    users: { [botId]: 100, [userId]: 0 },
+    users: { [userId]: 0 },
     users_default: 0,
     events_default: 50,
     state_default: 100,
@@ -45,6 +48,9 @@ export function newsPowerLevels(botId: string, userId: string) {
     redact: 100,
   };
 }
+
+/** Fixed, so that newsPowerLevels() is correct whatever the homeserver default is. */
+export const NEWS_ROOM_VERSION = "12";
 
 export class NewsBot extends EncryptedBot {
   private timer: NodeJS.Timeout | null = null;
@@ -140,11 +146,12 @@ export class NewsBot extends EncryptedBot {
   private async createRoom(userId: string): Promise<string> {
     const created = await this.matrix<{ room_id: string }>("POST", "/createRoom", {
       preset: "private_chat",
+      room_version: NEWS_ROOM_VERSION,
       is_direct: true,
       invite: [userId],
       name: appString("pt", "bipe_news_room_name"),
       topic: appString("pt", "bipe_news_room_topic"),
-      power_level_content_override: newsPowerLevels(this.userId, userId),
+      power_level_content_override: newsPowerLevels(userId),
       initial_state: [{ type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } }],
     });
     await this.sendText(created.room_id, appString("pt", "bipe_news_welcome"), "m.notice");
