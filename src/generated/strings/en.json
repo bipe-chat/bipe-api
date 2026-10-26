@@ -1760,6 +1760,19 @@
     "bipe_deletion_customer_name": "Deleted account",
     "bipe_mail_notice_deletion_started": "Someone asked to delete your Bipe account. If nobody cancels, the account is deleted on %1$s.\n\nIf it was not you, open Bipe on one of your devices and cancel.",
     "bipe_mail_notice_deletion_cancelled": "The request to delete your Bipe account was cancelled. The account stays as it was.\n\nIf it was not you, open Bipe on one of your devices and check.",
-    "bipe_a11y_switch_account": "Switch account"
+    "bipe_a11y_switch_account": "Switch account",
+    "bipe_bring_people_title": "Who in your family should be here?",
+    "bipe_bring_people_body": "Pick up to 4 people. Each one gets an invite of their own, on WhatsApp or any way you like.",
+    "bipe_bring_people_slot_empty": "Add a person",
+    "bipe_bring_people_name_placeholder": "Name, like Mom or Uncle Zé",
+    "bipe_bring_people_sent": "Invite sent",
+    "bipe_bring_people_joined": "On Bipe now",
+    "bipe_bring_people_expired": "The invite expired",
+    "bipe_bring_people_resend": "Send again",
+    "bipe_bring_people_expired_action": "Send a new one",
+    "bipe_bring_people_done": "Done",
+    "bipe_bring_people_reminder_title": "%1$s hasn't joined Bipe yet",
+    "bipe_bring_people_reminder_pending": "The invite still works. Send it again?",
+    "bipe_bring_people_reminder_expired": "The invite expired. Send a new one?"
   }
 }
