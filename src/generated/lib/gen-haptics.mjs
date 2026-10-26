@@ -86,7 +86,7 @@ ${haptics.map((h) => `        case .${h.id}: [${h.uses.map(quote).join(", ")}]`)
   }
   const constants = (h) => h.android.map((c) => `HapticConstant(HapticFeedbackConstants.${c.constant}, ${c.minSdk})`).join(", ");
   return `${header}
-package io.element.android.libraries.bipe.generated
+package chat.bipe.shared.generated
 
 import android.annotation.SuppressLint
 import android.view.HapticFeedbackConstants

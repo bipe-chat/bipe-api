@@ -153,10 +153,10 @@ ${rows.filter(({ r }) => r.url).map(({ r, id }) => `        case .${id}: URL(str
   const res = (key) => `R.string.${key}`;
   const optRes = (key) => (key ? res(key) : "null");
   return `${header}
-package io.element.android.libraries.bipe.generated
+package chat.bipe.shared.generated
 
 import androidx.annotation.StringRes
-import io.element.android.libraries.bipe.R
+import chat.bipe.shared.R
 
 /** Settings structure (ADR 0112). Source: bipe-shared/registries/settings.json. */
 enum class BipeSettingsRowKind { ${KINDS.map((k) => k.toUpperCase()).join(", ")} }

@@ -72,7 +72,7 @@ ${t.availability.map((r) => `            .init(weekday: ${r.weekday}, start: ${q
 }
 `;
   if (platform === "kotlin") return `${header}
-package io.element.android.libraries.bipe.generated
+package chat.bipe.shared.generated
 
 data class BipeAgendaTemplateService(val id: String, val nameKey: String, val durationMinutes: Int, val bufferBeforeMinutes: Int, val bufferAfterMinutes: Int)
 data class BipeAgendaTemplateHours(val weekday: Int, val start: String, val end: String)
