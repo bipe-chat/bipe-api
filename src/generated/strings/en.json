@@ -276,6 +276,7 @@
     "bipe_invites_status_expired": "Expired",
     "bipe_invites_status_revoked": "Cancelled",
     "bipe_invites_revoke": "Cancel invite",
+    "bipe_invites_actions": "Invite actions",
     "bipe_invites_qr_action": "QR code",
     "bipe_invites_qr_title": "Invite as a QR code",
     "bipe_invites_qr_footer": "The other person points their phone camera at the code. After installing Bipe, they scan it again and the app opens with the invite filled in.",
