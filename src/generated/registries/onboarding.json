@@ -68,7 +68,7 @@
     { "key": "apple", "title": "bipe_recovery_apple", "body": "bipe_recovery_linked_body" },
     { "key": "google", "title": "bipe_recovery_google", "body": "bipe_recovery_linked_body" },
     { "key": "email", "title": "bipe_recovery_email", "body": "bipe_recovery_email_body" },
-    { "key": "beta", "title": "bipe_recovery_beta", "body": "bipe_recovery_beta_body", "gate": "flag:developer" }
+    { "key": "beta", "title": "bipe_recovery_beta", "body": "bipe_recovery_beta_body" }
   ],
   "prompts": [
     {
