@@ -21,6 +21,7 @@ export function loadRegistries(root) {
     profiles: read("registries/profiles.json"),
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
+    bipeServers: read("registries/bipe-servers.json"),
     accounts: read("registries/accounts.json"),
     legal: read("registries/legal.json"),
     agendaTemplates: read("registries/agenda-templates.json"),
@@ -196,6 +197,9 @@ function validate(reg) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
   validateOfficialAccounts(reg);
+  const bs = reg.bipeServers.servers;
+  if (!(Array.isArray(bs) && bs.length > 0 && bs.every((s) => typeof s === "string" && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(s)))) fail("bipe servers: servers must be lower-case host names");
+  if (new Set(bs).size !== bs.length) fail("bipe servers: duplicate server");
   for (const [cat, names] of Object.entries(reg.reserved.categories)) {
     if (!/^[a-z]+$/.test(cat)) fail(`reserved category id "${cat}"`);
     // Entries must already be in normalised form so lookups are exact.
@@ -435,6 +439,15 @@ export function extractInviteCode(text, reg) {
   const ic = reg.inviteCodes;
   const m = new RegExp(ic.pattern).exec(text.slice(0, ic.maxInputLength).toUpperCase());
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+// ADR 0168, bipe-chat/bipe#680: a Bipe user is a user ID whose server name (everything after the first ':') is in
+// registries/bipe-servers.json, exactly. The localpart must not be empty.
+export function isBipeUserID(userId, reg) {
+  if (typeof userId !== "string" || !userId.startsWith("@")) return false;
+  const colon = userId.indexOf(":");
+  if (colon < 2) return false;
+  return reg.bipeServers.servers.includes(userId.slice(colon + 1));
 }
 
 // A phone number in E.164 from an address-book entry, or null: Brazilian mobiles in any local format,

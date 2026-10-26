@@ -1,0 +1,5 @@
+{
+  "$comment": "Bipe homeservers (ADR 0168, bipe-chat/bipe#680). A Bipe user is a Matrix user ID whose server name is in servers: '@' + a non-empty localpart + ':' + a server name that equals an entry exactly. The server name is everything after the first ':' (a port stays part of it, so 'bipe.net.br:8448' is another server). Entries are lower case. Rule: isBipeUserID in tools/lib/registries.mjs; cases: test-vectors/bipe-servers.json. The signed operator list replaces this bundled list in bipe-chat/bipe#682.",
+  "version": 1,
+  "servers": ["bipe.net.br"]
+}
