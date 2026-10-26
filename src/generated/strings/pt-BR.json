@@ -1774,6 +1774,13 @@
     "bipe_bring_people_done": "Pronto",
     "bipe_bring_people_reminder_title": "%1$s ainda não entrou no Bipe",
     "bipe_bring_people_reminder_pending": "O convite ainda vale. Quer mandar de novo?",
-    "bipe_bring_people_reminder_expired": "O convite venceu. Quer mandar um novo?"
+    "bipe_bring_people_reminder_expired": "O convite venceu. Quer mandar um novo?",
+    "bipe_share_send_to_chat": "Enviar para uma conversa",
+    "bipe_share_title": "Enviar para",
+    "bipe_share_message_placeholder": "Mensagem (opcional)",
+    "bipe_share_handed_off": "Abra o Bipe para escolher a conversa e enviar.",
+    "bipe_share_signed_out": "Sua conta ainda não está neste celular. Abra o Bipe, entre na conta e compartilhe de novo.",
+    "bipe_share_too_many": "Dá para enviar até 10 de cada vez, então vão só os 10 primeiros.",
+    "bipe_share_nothing": "Não deu para ler o que você compartilhou. Tente de novo."
   }
 }

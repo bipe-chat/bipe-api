@@ -1774,6 +1774,13 @@
     "bipe_bring_people_done": "Done",
     "bipe_bring_people_reminder_title": "%1$s hasn't joined Bipe yet",
     "bipe_bring_people_reminder_pending": "The invite still works. Send it again?",
-    "bipe_bring_people_reminder_expired": "The invite expired. Send a new one?"
+    "bipe_bring_people_reminder_expired": "The invite expired. Send a new one?",
+    "bipe_share_send_to_chat": "Send to a chat",
+    "bipe_share_title": "Send to",
+    "bipe_share_message_placeholder": "Message (optional)",
+    "bipe_share_handed_off": "Open Bipe to pick the chat and send.",
+    "bipe_share_signed_out": "Your account isn't on this phone yet. Open Bipe, sign in and share again.",
+    "bipe_share_too_many": "You can send up to 10 at a time, so only the first 10 will go.",
+    "bipe_share_nothing": "Bipe couldn't read what you shared. Try again."
   }
 }
