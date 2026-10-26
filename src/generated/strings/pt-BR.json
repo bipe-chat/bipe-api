@@ -1824,6 +1824,18 @@
     "bipe_call_channel_ongoing": "Chamadas em andamento",
     "bipe_call_microphone_usage": "O Bipe usa o microfone nas chamadas e quando você grava uma mensagem de voz ou um vídeo.",
     "bipe_call_camera_usage": "O Bipe usa a câmera nas chamadas de vídeo, para fotos e vídeos nas conversas e para ler QR codes, como o do computador ou de um convite.",
-    "bipe_call_minimise": "Voltar à conversa"
+    "bipe_call_minimise": "Voltar à conversa",
+    "bipe_call_incoming_voice": "Chamada de voz de %1$s",
+    "bipe_call_incoming_video": "Chamada de vídeo de %1$s",
+    "bipe_call_answer": "Atender",
+    "bipe_call_decline": "Recusar",
+    "bipe_call_declined": "Chamada recusada",
+    "bipe_call_no_answer": "Ninguém atendeu",
+    "bipe_call_missed": "Chamada perdida",
+    "bipe_call_joined": "%1$s entrou na chamada",
+    "bipe_call_duration": "%1$s min",
+    "bipe_call_channel_incoming": "Chamadas recebidas",
+    "bipe_call_channel_missed": "Chamadas perdidas",
+    "bipe_call_answered_elsewhere": "Atendida em outro aparelho"
   }
 }

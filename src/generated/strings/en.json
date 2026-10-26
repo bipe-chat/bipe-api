@@ -1824,6 +1824,18 @@
     "bipe_call_channel_ongoing": "Ongoing calls",
     "bipe_call_microphone_usage": "Bipe uses the microphone in calls and when you record a voice message or a video.",
     "bipe_call_camera_usage": "Bipe uses the camera in video calls, for photos and videos in chats, and to read QR codes, like the one on your computer or on an invite.",
-    "bipe_call_minimise": "Back to the chat"
+    "bipe_call_minimise": "Back to the chat",
+    "bipe_call_incoming_voice": "Voice call from %1$s",
+    "bipe_call_incoming_video": "Video call from %1$s",
+    "bipe_call_answer": "Answer",
+    "bipe_call_decline": "Decline",
+    "bipe_call_declined": "Call declined",
+    "bipe_call_no_answer": "No answer",
+    "bipe_call_missed": "Missed call",
+    "bipe_call_joined": "%1$s joined the call",
+    "bipe_call_duration": "%1$s min",
+    "bipe_call_channel_incoming": "Incoming calls",
+    "bipe_call_channel_missed": "Missed calls",
+    "bipe_call_answered_elsewhere": "Answered on another device"
   }
 }
