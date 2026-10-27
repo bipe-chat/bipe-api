@@ -144,7 +144,7 @@
             { "key": "mediaQuality", "title": "bipe_chats_media_quality", "kind": "link" },
             { "key": "showMedia", "title": "bipe_chats_show_media", "kind": "choice" },
             { "key": "dataUse", "title": "bipe_chats_data_use", "kind": "link" },
-            { "key": "liveLocation", "title": "bipe_chats_live_location", "footer": "bipe_chats_live_location_footer", "kind": "link", "gate": "planned:768" }
+            { "key": "liveLocation", "title": "bipe_chats_live_location", "footer": "bipe_chats_live_location_footer", "kind": "link" }
           ]
         }
       ]
