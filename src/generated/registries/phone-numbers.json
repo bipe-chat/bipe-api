@@ -1,5 +1,5 @@
 {
-  "$comment": "Phone numbers for contact discovery (bipe/docs/usernames.md layer 5). normalizePhone(text): drop every '(0)' (the European trunk notation '+31 (0)6 ...'); keep a leading '+' and the digits of the first maxInputLength characters; '00' at the start means '+'. With '+' and countryCode: the rest must be a Brazilian mobile (below). With '+' and another country code: accepted as written when the digits are internationalMinDigits to internationalMaxDigits long and do not start with 0 (E.164; no per-country check). Without '+': Brazilian only. Drop a trunk prefix '0' plus a two-digit carrier code (0 + carrier + area + subscriber), or a bare trunk '0', or a leading countryCode, to reach area code + subscriber. Brazilian mobile: the area code must be in areaCodes; the subscriber must be mobileLength digits starting with mobilePrefix. Result: '+' and the digits, or null. Brazilian landlines and numbers without a country or area code are null. Cases: test-vectors/phone-numbers.json. Yearly confirmation (bipe-chat/bipe#470, bipe/docs/phone-link.md): a linked number stays findable for linkConfirmMonths after its last proof (confirmed_at); lookup skips it after that. The apps warn linkConfirmWarnDays before confirm_by.",
+  "$comment": "Phone numbers for contact discovery (bipe/docs/usernames.md layer 5). normalizePhone(text): drop every '(0)' (the European trunk notation '+31 (0)6 ...'); keep a leading '+' and the digits of the first maxInputLength characters; '00' at the start means '+'. With '+' and countryCode: the rest must be a Brazilian mobile (below). With '+' and another country code: accepted as written when the digits are internationalMinDigits to internationalMaxDigits long and do not start with 0 (E.164; no per-country check). Without '+': Brazilian only. Drop a trunk prefix '0' plus a two-digit carrier code (0 + carrier + area + subscriber), or a bare trunk '0', or a leading countryCode, to reach area code + subscriber. Brazilian mobile: the area code must be in areaCodes; the subscriber must be mobileLength digits starting with mobilePrefix. Result: '+' and the digits, or null. Brazilian landlines and numbers without a country or area code are null. Cases: test-vectors/phone-numbers.json. Yearly confirmation (bipe-chat/bipe#470, bipe/docs/phone-link.md): a linked number stays findable for linkConfirmMonths after its last proof (confirmed_at); lookup skips it after that. The apps warn linkConfirmWarnDays before confirm_by. displayPhone(e164) (ADR 0191, bipe-chat/bipe#787, #788): formats an E.164 number for reading. The first display entry whose countryCode starts the digits, whose prefix (may be empty) starts the rest, and whose pattern has one # per digit of the rest gives '+' countryCode, a space, then the rest put into the pattern. No entry fits: the E.164 number as it is. Any other text comes back unchanged. Cases: test-vectors/phone-numbers.json display.",
   "version": 1,
   "countryCode": "55",
   "areaCodes": [
@@ -77,5 +77,14 @@
   "internationalMinDigits": 8,
   "internationalMaxDigits": 15,
   "linkConfirmMonths": 12,
-  "linkConfirmWarnDays": 30
+  "linkConfirmWarnDays": 30,
+  "display": [
+    { "countryCode": "55", "prefix": "", "pattern": "## #####-####" },
+    { "countryCode": "1", "prefix": "", "pattern": "### ###-####" },
+    { "countryCode": "31", "prefix": "6", "pattern": "# #### ####" },
+    { "countryCode": "351", "prefix": "", "pattern": "### ### ###" },
+    { "countryCode": "44", "prefix": "7", "pattern": "#### ######" },
+    { "countryCode": "34", "prefix": "", "pattern": "### ## ## ##" },
+    { "countryCode": "33", "prefix": "", "pattern": "# ## ## ## ##" }
+  ]
 }

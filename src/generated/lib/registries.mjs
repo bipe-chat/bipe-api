@@ -286,6 +286,14 @@ function validate(reg) {
   if (!(Number.isInteger(ph.maxInputLength) && ph.maxInputLength > 0)) fail("phones: maxInputLength");
   if (!(Number.isInteger(ph.internationalMinDigits) && ph.internationalMinDigits > 0 && ph.internationalMaxDigits >= ph.internationalMinDigits)) fail("phones: international digit range");
   if (!(Number.isInteger(ph.linkConfirmMonths) && ph.linkConfirmMonths >= 1 && ph.linkConfirmMonths <= 24)) fail("phones: linkConfirmMonths");
+  if (!(Array.isArray(ph.display) && ph.display.length > 0)) fail("phones: display");
+  for (const d of ph.display) {
+    if (!/^[1-9][0-9]{0,2}$/.test(d.countryCode)) fail(`phones: display countryCode ${d.countryCode}`);
+    if (!/^[0-9]*$/.test(d.prefix)) fail(`phones: display prefix ${d.countryCode}`);
+    if (!/^#[# -]*#$/.test(d.pattern)) fail(`phones: display pattern ${d.countryCode}`);
+    const n = d.countryCode.length + [...d.pattern].filter((c) => c === "#").length;
+    if (n < ph.internationalMinDigits || n > ph.internationalMaxDigits) fail(`phones: display pattern length ${d.countryCode}`);
+  }
   if (!(Number.isInteger(ph.linkConfirmWarnDays) && ph.linkConfirmWarnDays >= 1 && ph.linkConfirmWarnDays < ph.linkConfirmMonths * 28)) fail("phones: linkConfirmWarnDays");
   validateBadgeKeys(reg.badgeKeys);
   const ac = reg.accounts;
@@ -488,6 +496,24 @@ export function normalizePhone(text, reg) {
   const subscriber = digits.slice(2);
   if (!ph.areaCodes.includes(area) || !subscriber.startsWith(ph.mobilePrefix)) return null;
   return `+${ph.countryCode}${area}${subscriber}`;
+}
+
+// An E.164 number formatted for reading (ADR 0191): "+5511987654321" -> "+55 11 98765-4321". The first display
+// entry that fits (countryCode, prefix, one # per digit) wins; else the E.164 number as it is. Other text unchanged.
+// Rule in registries/phone-numbers.json.
+export function displayPhone(e164, reg) {
+  if (!/^\+[0-9]+$/.test(e164)) return e164;
+  const digits = e164.slice(1);
+  for (const d of reg.phones.display) {
+    if (!digits.startsWith(d.countryCode)) continue;
+    const rest = digits.slice(d.countryCode.length);
+    if (!rest.startsWith(d.prefix)) continue;
+    if ([...d.pattern].filter((c) => c === "#").length !== rest.length) continue;
+    let i = 0;
+    const body = [...d.pattern].map((c) => (c === "#" ? rest[i++] : c)).join("");
+    return `+${d.countryCode} ${body}`;
+  }
+  return e164;
 }
 
 // NFKD, strip combining marks, lowercase, fold homoglyphs, collapse whitespace.
