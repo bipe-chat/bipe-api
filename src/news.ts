@@ -147,7 +147,7 @@ export class NewsBot extends EncryptedBot {
     const created = await this.matrix<{ room_id: string }>("POST", "/createRoom", {
       preset: "private_chat",
       room_version: NEWS_ROOM_VERSION,
-      is_direct: true,
+      // Not a DM (bipe#809): the room has a name, and a DM shows the other person's name (ADR 0141).
       invite: [userId],
       name: appString("pt", "bipe_news_room_name"),
       topic: appString("pt", "bipe_news_room_topic"),
