@@ -103,6 +103,10 @@ const limits = {
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
+  // Per device (bipe-chat/bipe#646, security.md O7): one device cannot use the whole budget of its user.
+  lookupDevice: new RateLimiter(20, 60_000),
+  resolveDevice: new RateLimiter(80, 60_000),
+  contactsLookupDevice: new RateLimiter(20, 3_600_000),
   handleChanges: new RateLimiter(60, 60_000),
   profileFacts: new RateLimiter(60, 60_000),
   theftMarks: new RateLimiter(120, 60_000),
@@ -407,6 +411,16 @@ app.use("*", (c, next) => {
   if (GOVBR_DOCUMENT_PATH.test(c.req.path)) return govbrBody(c, next);
   return smallBody(c, next);
 });
+
+/** Core routes (ADR 0168, bipe-chat/bipe#646): a token of this homeserver, or an OpenID token with X-Matrix-Server-Name. */
+function coreSession(c: Context): Promise<{ userId: string; deviceId: string | null }> {
+  return auth.coreSession(c.req.header("authorization"), c.req.header("x-matrix-server-name"));
+}
+
+/** The per-device limit key. An OpenID token names no device: its limit is the user's. */
+function deviceKey(userId: string, deviceId: string | null): string {
+  return deviceId === null ? userId : `${userId}\n${deviceId}`;
+}
 
 app.get("/healthz", (c) => c.text("ok"));
 
@@ -918,8 +932,9 @@ app.delete("/v1/me/invites/:id", async (c) => {
 });
 
 app.post("/v1/contacts/lookup", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const { userId, deviceId } = await coreSession(c);
   limits.contactsLookup.check(userId);
+  limits.contactsLookupDevice.check(deviceKey(userId, deviceId));
   return c.json(await lookupContacts(db, phoneHasher, userId, (await parse(c, LookupBody)).phones));
 });
 
@@ -950,14 +965,15 @@ app.get("/v1/handles/:handle/availability", async (c) => {
 });
 
 app.post("/v1/handles/resolve", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const { userId, deviceId } = await coreSession(c);
   limits.resolve.check(userId);
+  limits.resolveDevice.check(deviceKey(userId, deviceId));
   return c.json(await resolve(db, (await parse(c, ResolveBody)).user_ids));
 });
 
 // ADR 0066: the app sends the Matrix IDs it shares rooms with. No membership check here, like resolve.
 app.post("/v1/handle-changes", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await auth.coreUserId(c.req.header("authorization"), c.req.header("x-matrix-server-name"));
   limits.handleChanges.check(userId);
   const body = await parse(c, HandleChangesBody);
   return c.json(await handleChanges(db, body.user_ids, body.since ? new Date(body.since) : undefined));
@@ -997,7 +1013,7 @@ app.post("/v1/theft/:userId/clear", async (c) => {
 });
 
 app.post("/v1/theft-marks", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await auth.coreUserId(c.req.header("authorization"), c.req.header("x-matrix-server-name"));
   limits.theftMarks.check(userId);
   const body = await parse(c, TheftMarksBody);
   return c.json(await theft.statements(body.user_ids));
@@ -1005,15 +1021,16 @@ app.post("/v1/theft-marks", async (c) => {
 
 // Account age and profile change dates (ADR 0049, bipe#598).
 app.post("/v1/profile-facts", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await auth.coreUserId(c.req.header("authorization"), c.req.header("x-matrix-server-name"));
   limits.profileFacts.check(userId);
   const body = await parse(c, ProfileFactsBody);
   return c.json(await profileFacts.facts(body.user_ids));
 });
 
 app.get("/v1/handles/:handle", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const { userId, deviceId } = await coreSession(c);
   limits.lookup.check(userId);
+  limits.lookupDevice.check(deviceKey(userId, deviceId));
   return c.json(await lookup(db, c.req.param("handle")));
 });
 
@@ -1144,7 +1161,7 @@ app.delete(PHOTO_PATH, async (c) => {
 });
 
 app.get("/v1/me/handle", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await auth.coreUserId(c.req.header("authorization"), c.req.header("x-matrix-server-name"));
   return c.json(await myHandle(db, userId));
 });
 
