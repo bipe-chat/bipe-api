@@ -141,6 +141,7 @@
           "key": "main",
           "rows": [
             { "key": "appearance", "title": "bipe_chats_appearance", "kind": "choice" },
+            { "key": "colors", "title": "bipe_chats_colors", "footer": "bipe_chats_colors_footer", "kind": "link" },
             { "key": "language", "title": "bipe_settings_language", "footer": "bipe_settings_language_footer", "kind": "action", "gate": "ios" },
             { "key": "mediaQuality", "title": "bipe_chats_media_quality", "kind": "link" },
             { "key": "showMedia", "title": "bipe_chats_show_media", "kind": "choice" },
