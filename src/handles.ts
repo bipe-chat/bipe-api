@@ -201,3 +201,33 @@ export async function resolve(db: Db, userIds: string[]) {
   );
   return { handles: Object.fromEntries(rows.map((r) => [r.user_id, r.handle])) };
 }
+
+/**
+ * A staff CLI argument as a Matrix user ID: a full ID on this server, or an @handle. Refuses an ID with no live MAS
+ * account, so a handle typed as a full ID never writes rows for an account that does not exist.
+ */
+export async function existingAccount(
+  db: Db,
+  mas: { userState(username: string): Promise<{ deactivated: boolean } | null> },
+  serverName: string,
+  raw: string,
+): Promise<string> {
+  const arg = raw.trim();
+  let userId: string;
+  if (arg.includes(":")) {
+    if (!/^@[^:]+:.+$/.test(arg)) throw new Error(`${arg} is not a Matrix user ID`);
+    if (!arg.endsWith(`:${serverName}`)) throw new Error(`${arg} is not a user on ${serverName}`);
+    userId = arg;
+  } else {
+    try {
+      userId = (await lookup(db, arg)).user_id;
+    } catch (e) {
+      if (e instanceof ApiError && e.id === "not_found") throw new Error(`no account has the handle ${arg}`);
+      throw e;
+    }
+  }
+  const state = await mas.userState(userId.slice(1, userId.indexOf(":")));
+  if (!state) throw new Error(`${userId} has no account`);
+  if (state.deactivated) throw new Error(`${userId} is deactivated`);
+  return userId;
+}

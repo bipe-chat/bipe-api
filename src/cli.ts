@@ -5,7 +5,7 @@
 //   node dist/cli.js invite grant <user_id> <n>      (n extra personal invites)
 //   node dist/cli.js invite revoke-user <user_id>    (all pending invites of a user)
 //   node dist/cli.js invite top [--limit 50]         (inviters: sent, joined, rate, downstream tree)
-//   node dist/cli.js phone link <user_id> <number> [--force]   (phase 0: no proof yet; never prints the number)
+//   node dist/cli.js phone link <user_id|@handle> <number> [--force]   (phase 0: no proof yet; never prints the number; refuses an ID with no account)
 //   node dist/cli.js phone unlink <user_id>
 //   node dist/cli.js waitlist count
 //   node dist/cli.js waitlist export <platform>      (CSV email,lang for the launch email)
@@ -51,7 +51,7 @@ import { linkPhone, PhoneHasher, unlinkPhone } from "./phones.js";
 import { experimentReport } from "./experiments.js";
 import { Growth, growthReport } from "./growth.js";
 import { ApiError } from "./errors.js";
-import { setHandle } from "./handles.js";
+import { existingAccount, setHandle } from "./handles.js";
 import { createClaim, revokeByStaff, runScan, verifyByStaff } from "./business.js";
 import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import { type Config, loadMailConfig } from "./config.js";
@@ -295,8 +295,10 @@ try {
       await synapse.end();
     }
   } else if (group === "phone" && command === "link" && arg?.startsWith("@") && arg2) {
-    await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), arg, arg2, values.force === true);
-    console.log(`linked a number to ${arg}`);
+    const config = loadConfig();
+    const userId = await existingAccount(db, new Mas(config), config.SERVER_NAME, arg);
+    await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), userId, arg2, values.force === true);
+    console.log(`linked a number to ${userId}`);
   } else if (group === "phone" && command === "unlink" && arg?.startsWith("@")) {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
