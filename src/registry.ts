@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from bipe-shared by `pnpm gen`. Never edit generated/.
-import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, workHoursProblem } from "./generated/lib/registries.mjs";
+import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, isBipeUserID, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, workHoursProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
@@ -54,6 +54,11 @@ export function skeletonOf(handle: string): string {
 /** The invite code in anything a user pasted or typed: a code, an invite link or a whole message. Null when none. */
 export function extractInviteCode(text: string): string | null {
   return extractInviteCodeWith(text, reg) as string | null;
+}
+
+/** A Bipe homeserver (registries/bipe-servers.json, ADR 0168): the allowlist of the core routes (bipe-chat/bipe#646). */
+export function isBipeServer(serverName: string): boolean {
+  return isBipeUserID(`@x:${serverName}`, reg) as boolean;
 }
 
 /** A Brazilian mobile number in E.164 from an address-book entry, or null (registries/phone-numbers.json). */

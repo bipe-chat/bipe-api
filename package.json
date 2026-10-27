@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p .",
-    "test:attest": "pnpm build && node --test test/attest.test.mjs test/key-attest.test.mjs test/config.test.mjs test/signup-quota.test.mjs test/weblink.test.mjs test/support.test.mjs test/govbr.test.mjs test/transfer.test.mjs test/news.test.mjs test/cvm.test.mjs test/deletion.test.mjs",
+    "test:attest": "pnpm build && node --test test/attest.test.mjs test/key-attest.test.mjs test/config.test.mjs test/signup-quota.test.mjs test/weblink.test.mjs test/support.test.mjs test/govbr.test.mjs test/transfer.test.mjs test/news.test.mjs test/cvm.test.mjs test/deletion.test.mjs test/openid.test.mjs",
     "test:integration": "pnpm build && node --test --test-concurrency=1 test/*.test.mjs",
     "test:scheduling": "pnpm build && node --test test/scheduling.test.mjs",
     "test:real": "pnpm build && node --env-file=test/real/.stack/env --test --test-concurrency=1 test/real/*.test.mjs",
