@@ -193,6 +193,9 @@ function validate(reg) {
   if (![mp.minZoom, mp.defaultZoom, mp.maxZoom].every(Number.isInteger) || !(0 <= mp.minZoom && mp.minZoom <= mp.defaultZoom && mp.defaultZoom <= mp.maxZoom && mp.maxZoom <= 22)) fail("maps: zoom levels must be integers, 0 <= minZoom <= defaultZoom <= maxZoom <= 22");
   if (!Number.isInteger(mp.maxStaticSize) || mp.maxStaticSize < 256 || mp.maxStaticSize > 1024) fail("maps: maxStaticSize must be an integer from 256 to 1024");
   if (!Number.isInteger(mp.coordinateDecimals) || mp.coordinateDecimals < 4 || mp.coordinateDecimals > 8) fail("maps: coordinateDecimals must be an integer from 4 to 8");
+  const db = mp.detailBounds;
+  if (![db?.west, db?.south, db?.east, db?.north].every(Number.isFinite) || !(-180 <= db.west && db.west < db.east && db.east <= 180 && -90 <= db.south && db.south < db.north && db.north <= 90)) fail("maps: detailBounds must be west < east and south < north, in degrees");
+  if (!Number.isInteger(mp.outsideMaxZoom) || !(mp.minZoom <= mp.outsideMaxZoom && mp.outsideMaxZoom <= mp.maxZoom)) fail("maps: outsideMaxZoom must be an integer from minZoom to maxZoom");
   const lv = mp.live ?? {};
   const ints = (a) => Array.isArray(a) && a.length > 0 && a.every((n) => Number.isInteger(n) && n > 0) && a.every((n, i) => i === 0 || n > a[i - 1]);
   if (!ints(lv.durationsMinutes) || lv.durationsMinutes.at(-1) > 24 * 60) fail("maps: live.durationsMinutes must be rising positive integers, at most 1440");
