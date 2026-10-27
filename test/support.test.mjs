@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import * as sdk from "@matrix-org/matrix-sdk-crypto-nodejs";
-import { signatureUploadBody } from "../dist/support.js";
+import { SupportBot, signatureUploadBody } from "../dist/support.js";
 
 // The support bot's cross-signing requests (ADR 0114) against a real OlmMachine. No homeserver.
 
@@ -48,4 +48,40 @@ test("bootstrap without reset keeps the keys and signs the device with the self-
   const ssk = Object.keys(keys(again, "self_signing_key"))[0];
   const device = JSON.parse(signatureUploadBody(again.uploadSignaturesReq.body))["@suporte:example.test"].SUPPORTBOT;
   assert.ok(device.signatures["@suporte:example.test"][ssk], "the self-signing key signed the device");
+});
+
+// The support DM shows the account's display name (ADR 0141, bipe#809). The homeserver is a stub that keeps one name.
+function stubSupport(initial) {
+  const config = {
+    SUPPORT_USER_ID: "@suporte:example.test", SUPPORT_ACCESS_TOKEN: "test-only-token-0000", SUPPORT_STORE_DIR: "/nonexistent",
+    SUPPORT_STORE_PASSPHRASE: "test-only-passphrase-0000000000000000", SYNAPSE_URL: "http://127.0.0.1:9", SERVER_NAME: "example.test",
+  };
+  const bot = new SupportBot(null, config, null);
+  const state = { name: initial, puts: [] };
+  bot.matrix = async (method, path, body) => {
+    assert.equal(path, "/profile/%40suporte%3Aexample.test/displayname");
+    if (method === "GET") {
+      if (state.name === undefined) throw new Error("matrix GET /profile: HTTP 404 M_NOT_FOUND");
+      return { displayname: state.name };
+    }
+    if (method === "PUT") { state.puts.push(body); state.name = body.displayname; return {}; }
+    throw new Error(`unexpected ${method} ${path}`);
+  };
+  return { bot, state };
+}
+
+test("the support bot sets its display name to Suporte Bipe once", async () => {
+  for (const initial of [undefined, "suporte", "Bipe Support"]) {
+    const { bot, state } = stubSupport(initial);
+    assert.equal(await bot.ensureDisplayName(), true, String(initial));
+    assert.deepEqual(state.puts, [{ displayname: "Suporte Bipe" }]);
+    assert.equal(await bot.ensureDisplayName(), false, "a second start writes nothing");
+    assert.equal(state.puts.length, 1);
+  }
+});
+
+test("the support bot does not write a name that is already right", async () => {
+  const { bot, state } = stubSupport("Suporte Bipe");
+  assert.equal(await bot.ensureDisplayName(), false);
+  assert.equal(state.puts.length, 0);
 });
