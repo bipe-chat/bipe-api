@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
+import type { Mailer } from "./mailer.js";
 import { hashPassword, newSecret, SECRET_PATTERN, secretHash, verifyPassword } from "./secrets.js";
 import type { Place } from "./weblink.js";
 
@@ -249,13 +250,11 @@ export function summaryMail(s: Sitting): { subject: string; text: string } {
   return { subject: `Proposta: ${s.email} read ${pages.join(" and ")}, ${minutes} min`, text: lines.join("\n") };
 }
 
-type SummaryMailer = { readonly enabled: boolean; send(to: string, subject: string, text: string): Promise<void> };
-
 /**
  * Sends one summary per sitting that ended 30 minutes to 24 hours ago (ADR 0160). The row goes in first, so a
  * sitting gets at most one email; a failed send deletes the row, and the next run tries again within the 24 hours.
  */
-export async function sendSummaries(db: Db, mailer: SummaryMailer, to: string | undefined): Promise<number> {
+export async function sendSummaries(db: Db, mailer: Pick<Mailer, "enabled" | "send">, to: string | undefined): Promise<number> {
   if (!to || !mailer.enabled) return 0;
   const now = Date.now();
   let sent = 0;
