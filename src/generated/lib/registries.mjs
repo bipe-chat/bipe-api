@@ -43,6 +43,7 @@ export function loadRegistries(root) {
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
     relationshipNames: read("registries/relationship-names.json"),
+    messageFormatting: read("registries/message-formatting.json"),
     photoMatch: read("registries/photo-match.json"),
     profileFacts: read("registries/profile-facts.json"),
     theft: read("registries/theft-protection.json"),
@@ -150,7 +151,17 @@ export function validateBadgeKeys(b) {
   if (!(Number.isInteger(b.renewDaysBeforeExpiry) && b.renewDaysBeforeExpiry > 0 && b.renewDaysBeforeExpiry < b.lifeDays)) fail("badge-keys: renewDaysBeforeExpiry must be below lifeDays");
 }
 
+export function validateMessageFormatting(formatting) {
+  for (const key of ["safeSchemes", "dropContentTags", "boldTags", "italicTags", "strikeTags", "codeTags", "blockTags"]) {
+    if (!Array.isArray(formatting[key]) || !formatting[key].length || formatting[key].some(v => !/^[a-z-]+$/.test(v))) fail(`message-formatting: ${key}`);
+  }
+  for (const key of ["linkPattern", "phonePattern"]) new RegExp(formatting[key], "i");
+  if (formatting.maxHtmlLength !== 131072 || formatting.maxDepth !== 64) fail("message-formatting: parser limits");
+  if (formatting.safeSchemes.some(scheme => !["https", "http", "mailto", "tel", "matrix"].includes(scheme))) fail("message-formatting: unsafe scheme");
+}
+
 function validate(reg) {
+  validateMessageFormatting(reg.messageFormatting);
   validateTrustRegistry(reg.trust);
   validateAgendaTemplates(reg);
   validateSettings(reg);
