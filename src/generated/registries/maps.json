@@ -1,5 +1,5 @@
 {
-  "$comment": "Maps for location sharing (ADR 0131, bipe-chat/bipe#768). Every map request goes to baseUrl, our tile server in Brazil; no other map service and no API key. staticPath is the tileserver-gl static map: the app replaces {style}, {lon}, {lat}, {zoom}, {width} and {height} (points; the server renders @2x). width and height stay at or under maxStaticSize. The server draws the attribution into each image. defaultZoom: a new pin and a received location without zoom_level. coordinateDecimals: digits after the point in the geo URI (6 is about 0.1 m).",
+  "$comment": "Maps for location sharing (ADR 0131, bipe-chat/bipe#768). Every map request goes to baseUrl, our tile server in Brazil; no other map service and no API key. staticPath is the tileserver-gl static map: the app replaces {style}, {lon}, {lat}, {zoom}, {width} and {height} (points; the server renders @2x). width and height stay at or under maxStaticSize. The server draws the attribution into each image. defaultZoom: a new pin and a received location without zoom_level. coordinateDecimals: digits after the point in the geo URI (6 is about 0.1 m). live (MSC3489 live location): durationsMinutes are the choices of the send screen (under 60 shown as minutes, else hours). The app sends a new position when the phone moved at least the chosen distance (distancesMetres, setting chats.liveLocation, default defaultDistanceMetres), at most every minIntervalSeconds, and while it moves at least every maxIntervalSeconds.",
   "version": 1,
   "baseUrl": "https://maps.bipe.net.br",
   "styles": { "light": "light", "dark": "dark" },
@@ -9,5 +9,6 @@
   "minZoom": 3,
   "maxZoom": 18,
   "maxStaticSize": 1024,
-  "coordinateDecimals": 6
+  "coordinateDecimals": 6,
+  "live": { "durationsMinutes": [15, 60, 480], "distancesMetres": [10, 50, 100], "defaultDistanceMetres": 50, "minIntervalSeconds": 10, "maxIntervalSeconds": 120 }
 }

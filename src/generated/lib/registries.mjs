@@ -182,6 +182,12 @@ function validate(reg) {
   if (![mp.minZoom, mp.defaultZoom, mp.maxZoom].every(Number.isInteger) || !(0 <= mp.minZoom && mp.minZoom <= mp.defaultZoom && mp.defaultZoom <= mp.maxZoom && mp.maxZoom <= 22)) fail("maps: zoom levels must be integers, 0 <= minZoom <= defaultZoom <= maxZoom <= 22");
   if (!Number.isInteger(mp.maxStaticSize) || mp.maxStaticSize < 256 || mp.maxStaticSize > 1024) fail("maps: maxStaticSize must be an integer from 256 to 1024");
   if (!Number.isInteger(mp.coordinateDecimals) || mp.coordinateDecimals < 4 || mp.coordinateDecimals > 8) fail("maps: coordinateDecimals must be an integer from 4 to 8");
+  const lv = mp.live ?? {};
+  const ints = (a) => Array.isArray(a) && a.length > 0 && a.every((n) => Number.isInteger(n) && n > 0) && a.every((n, i) => i === 0 || n > a[i - 1]);
+  if (!ints(lv.durationsMinutes) || lv.durationsMinutes.at(-1) > 24 * 60) fail("maps: live.durationsMinutes must be rising positive integers, at most 1440");
+  if (!lv.durationsMinutes.every((m) => m < 60 || m % 60 === 0)) fail("maps: live.durationsMinutes under 60 are minutes, the others whole hours");
+  if (!ints(lv.distancesMetres) || !lv.distancesMetres.includes(lv.defaultDistanceMetres)) fail("maps: live.distancesMetres must be rising positive integers and contain defaultDistanceMetres");
+  if (!Number.isInteger(lv.minIntervalSeconds) || !Number.isInteger(lv.maxIntervalSeconds) || !(5 <= lv.minIntervalSeconds && lv.minIntervalSeconds < lv.maxIntervalSeconds && lv.maxIntervalSeconds <= 600)) fail("maps: live intervals must be integers, 5 <= minIntervalSeconds < maxIntervalSeconds <= 600");
   const vm = reg.voiceMedia;
   if (![vm.transcriptDays, vm.noTranscriptDays, vm.maxKeptPerAccount].every((n) => Number.isInteger(n) && n >= 1) || vm.noTranscriptDays < vm.transcriptDays) fail("voice-media: transcriptDays, noTranscriptDays and maxKeptPerAccount must be positive integers, noTranscriptDays at least transcriptDays");
   const pxm = reg.pixMarks;
