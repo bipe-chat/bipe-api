@@ -1612,6 +1612,8 @@
     "bipe_app_person_message": "Mandar mensagem",
     "bipe_app_person_new_group": "Novo grupo com esta pessoa",
     "bipe_app_person_blocked": "Você bloqueou esta pessoa.",
+    "bipe_person_number": "Número",
+    "bipe_person_number_footer": "Vem dos seus contatos. O Bipe só mostra o número para quem já salvou esse número.",
     "bipe_app_person_not_found": "Não deu para abrir este perfil. Tente de novo.",
     "bipe_app_block_title": "Bloquear %1$s?",
     "bipe_app_block_confirm": "Bloquear",
