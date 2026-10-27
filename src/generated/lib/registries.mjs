@@ -37,6 +37,7 @@ export function loadRegistries(root) {
     dataUse: read("registries/data-use.json"),
     brandMarks: read("registries/brand-marks.json"),
     voiceMedia: read("registries/voice-media.json"),
+    stickers: read("registries/stickers.json"),
     maps: read("registries/maps.json"),
     voiceTranscript: read("registries/voice-transcript.json"),
     chatArchive: read("registries/chat-archive.json"),
@@ -57,6 +58,33 @@ export function loadRegistries(root) {
 
 function fail(msg) {
   throw new Error(`registry validation failed: ${msg}`);
+}
+
+// ADR 0205 (bipe-chat/bipe#837): sticker limits, account data names and the on-device search words.
+export function validateStickers(st) {
+  const positive = (n) => Number.isInteger(n) && n > 0;
+  if (st.version !== 1) fail("stickers: version must be 1");
+  if (![st.importMaxBytes, st.importMaxPixels, st.madePixels, st.madeAnimatedMaxMilliseconds, st.recentsMax, st.favouritesMax, st.prefixMinLength].every(positive)) fail("stickers: limits must be positive integers");
+  if (st.madePixels > st.importMaxPixels) fail("stickers: madePixels must fit importMaxPixels");
+  if (JSON.stringify(st.importTypes) !== '["image/webp","image/png"]') fail("stickers: importTypes must be image/webp and image/png");
+  for (const key of ["recentsEventType", "favouritesEventType", "tagsField", "packField"]) {
+    if (!/^chat\.bipe\.[a-z_]+$/.test(st[key] ?? "")) fail(`stickers: ${key} must be chat.bipe.<name>`);
+  }
+  if (!/^https:\/\/[a-z0-9.-]+\/[a-z]+\/$/.test(st.packLinkBase ?? "")) fail("stickers: packLinkBase must be an https URL ending in /");
+  const tags = new Set(st.tags);
+  if (!Array.isArray(st.tags) || !st.tags.length || tags.size !== st.tags.length || st.tags.some((t) => !/^[a-z]+(-[a-z]+)*$/.test(t))) fail("stickers: tags must be unique kebab-case ids");
+  const tagList = (where, list) => {
+    if (!Array.isArray(list) || !list.length || new Set(list).size !== list.length || list.some((t) => !tags.has(t))) fail(`stickers: ${where} must list known tags once each`);
+  };
+  for (const [word, list] of Object.entries(st.words ?? {})) {
+    if (!word || stickerSearchFold(word) !== word) fail(`stickers: word "${word}" must be folded`);
+    if (tags.has(word.replace(/ /g, "-"))) fail(`stickers: word "${word}" is a tag id already`);
+    tagList(`word "${word}"`, list);
+  }
+  for (const [emoji, list] of Object.entries(st.emoji ?? {})) {
+    if (!emoji || stickerEmojiKey(emoji) !== emoji || stickerSearchFold(emoji) !== "") fail(`stickers: emoji "${emoji}" must have no variation selector, skin tone, letter or digit`);
+    tagList(`emoji "${emoji}"`, list);
+  }
 }
 
 // ADR 0141: in a new DM nobody reaches a locked level, and the everyday events stay open to both people.
@@ -204,6 +232,7 @@ function validate(reg) {
   if (!Number.isInteger(lv.minIntervalSeconds) || !Number.isInteger(lv.maxIntervalSeconds) || !(5 <= lv.minIntervalSeconds && lv.minIntervalSeconds < lv.maxIntervalSeconds && lv.maxIntervalSeconds <= 600)) fail("maps: live intervals must be integers, 5 <= minIntervalSeconds < maxIntervalSeconds <= 600");
   const vm = reg.voiceMedia;
   if (![vm.transcriptDays, vm.noTranscriptDays, vm.maxKeptPerAccount].every((n) => Number.isInteger(n) && n >= 1) || vm.noTranscriptDays < vm.transcriptDays) fail("voice-media: transcriptDays, noTranscriptDays and maxKeptPerAccount must be positive integers, noTranscriptDays at least transcriptDays");
+  validateStickers(reg.stickers);
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }
@@ -876,3 +905,42 @@ export function profileFactLines(facts, nowMs, reg) {
   return { lines, notice };
 }
 
+
+// Sticker search (ADR 0205; registries/stickers.json; test-vectors/sticker-search.json). On the phone only.
+// Fold: NFKD, no marks, lower case, every character that is not a letter or a digit is a space, every run of one
+// repeated letter is one letter (kkkk is k), spaces collapsed and trimmed.
+export function stickerSearchFold(text) {
+  return String(text ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ").replace(/(\p{L})\1+/gu, "$1").replace(/ +/g, " ").trim();
+}
+
+// An emoji query without variation selectors (U+FE0F) and skin tones (U+1F3FB to U+1F3FF), trimmed.
+export function stickerEmojiKey(text) {
+  return String(text ?? "").replace(/[\uFE0F\u{1F3FB}-\u{1F3FF}]/gu, "").trim();
+}
+
+// The tag ids a query asks for, in the order of the registry's tags. An emoji query maps through `emoji`. A word query
+// maps through `words` and the tag ids (a tag id matches as its words: bom-dia is "bom dia"): equal, or a prefix when
+// the folded query has at least prefixMinLength characters.
+export function stickerQueryTags(query, reg) {
+  const st = reg.stickers;
+  const emoji = st.emoji[stickerEmojiKey(query)];
+  const found = new Set(emoji ?? []);
+  const q = stickerSearchFold(query);
+  if (!emoji && q) {
+    const hits = (word) => word === q || (q.length >= st.prefixMinLength && word.startsWith(q));
+    for (const [word, list] of Object.entries(st.words)) if (hits(word)) list.forEach((t) => found.add(t));
+    for (const tag of st.tags) if (hits(stickerSearchFold(tag))) found.add(tag);
+  }
+  return st.tags.filter((t) => found.has(t));
+}
+
+// Does a sticker match the query? sticker: { body, tags, pack } (pack: the pack's display name). A match is a shared
+// tag, or the folded query at the start of a word of the folded body or pack name.
+export function stickerMatches(query, sticker, reg) {
+  const wanted = stickerQueryTags(query, reg);
+  if ((sticker.tags ?? []).some((t) => wanted.includes(t))) return true;
+  const q = stickerSearchFold(query);
+  if (!q) return false;
+  return [sticker.body, sticker.pack].some((text) => ` ${stickerSearchFold(text)}`.includes(` ${q}`));
+}
