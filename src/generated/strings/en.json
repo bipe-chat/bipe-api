@@ -1050,6 +1050,7 @@
     "bipe_privacy_who_can_find": "Who can find you",
     "bipe_privacy_number": "Your number",
     "bipe_privacy_number_linked": "Your number is linked to your account",
+    "bipe_privacy_number_value": "%1$s · %2$s",
     "bipe_privacy_number_not_linked": "Your number isn't linked to your account",
     "bipe_privacy_what_others_see": "What others see",
     "bipe_privacy_presence": "Online and typing",

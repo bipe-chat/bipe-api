@@ -1,10 +1,11 @@
-import { createHmac } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from "node:crypto";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { normalizePhone, phoneRules } from "./registry.js";
 
-// Phone-number discovery, phase 0 (bipe/docs/phone-link.md). Numbers are stored only as
-// HMAC-SHA256 with a server secret; clear numbers are never stored and never logged.
+// Phone-number discovery, phase 0 (bipe/docs/phone-link.md). Lookup compares HMAC-SHA256 with a server secret.
+// The linked number itself is stored only encrypted (number_enc, ADR 0191) and goes back only to its owner in
+// GET /v1/me/phone and the data export. Numbers are never logged.
 // Linking from the apps needs a proof (Pix phone key or SMS code, phases 1 and 2); until then
 // only the admin CLI links numbers.
 
@@ -25,6 +26,37 @@ export class PhoneHasher {
       throw new ApiError("internal");
     }
     return createHmac("sha256", this.secret).update(e164).digest("hex");
+  }
+
+  // ADR 0191: AES-256-GCM under HKDF-SHA256(PHONE_HMAC_SECRET, info "bipe phone number at rest v1").
+  // Layout: 12-byte IV, 16-byte tag, ciphertext. A rotation of the secret must re-encrypt number_enc with the HMACs.
+  private sealKey(): Buffer {
+    if (!this.secret) {
+      console.error("phones: PHONE_HMAC_SECRET is not set");
+      throw new ApiError("internal");
+    }
+    return Buffer.from(hkdfSync("sha256", Buffer.from(this.secret, "utf8"), Buffer.alloc(0), "bipe phone number at rest v1", 32));
+  }
+
+  seal(e164: string): Buffer {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", this.sealKey(), iv);
+    const body = Buffer.concat([cipher.update(e164, "utf8"), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), body]);
+  }
+
+  /** The E.164 number, or null when there is none, no secret, or the value does not open. Never throws. */
+  open(sealed: Buffer | null | undefined): string | null {
+    if (!sealed || sealed.length < 29 || !this.secret) return null;
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", this.sealKey(), sealed.subarray(0, 12));
+      decipher.setAuthTag(sealed.subarray(12, 28));
+      const e164 = Buffer.concat([decipher.update(sealed.subarray(28)), decipher.final()]).toString("utf8");
+      return /^\+[0-9]{8,15}$/.test(e164) ? e164 : null;
+    } catch {
+      console.error("phones: a stored number did not open");
+      return null;
+    }
   }
 }
 
@@ -71,9 +103,10 @@ export async function lookupContacts(db: Db, hasher: PhoneHasher, userId: string
   return { matches: rows.map((r) => ({ phone: byHash.get(r.phone_hmac)!, user_id: r.user_id })) };
 }
 
-export async function myPhone(db: Db, userId: string) {
-  const { rows } = await db.query<{ method: string; linked_at: Date; confirmed_at: Date }>(
-    "SELECT method, linked_at, confirmed_at FROM phone_links WHERE user_id = $1",
+/** GET /v1/me/phone: the caller's own link. `number` is the caller's own number only (ADR 0191); null for older links. */
+export async function myPhone(db: Db, hasher: PhoneHasher, userId: string) {
+  const { rows } = await db.query<{ method: string; linked_at: Date; confirmed_at: Date; number_enc: Buffer | null }>(
+    "SELECT method, linked_at, confirmed_at, number_enc FROM phone_links WHERE user_id = $1",
     [userId],
   );
   const discoverable = await discoverableByPhone(db, userId);
@@ -86,6 +119,7 @@ export async function myPhone(db: Db, userId: string) {
     method: link.method,
     linked_at: link.linked_at.toISOString(),
     confirm_by: confirmBy.toISOString(),
+    number: hasher.open(link.number_enc),
     discoverable_by_phone: discoverable,
   };
 }
@@ -120,6 +154,7 @@ export async function linkPhone(db: Db, hasher: PhoneHasher, userId: string, raw
   const e164 = normalizePhone(raw);
   if (!e164) throw new Error("not a Brazilian mobile number");
   const hash = hasher.hash(e164);
+  const sealed = hasher.seal(e164);
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -130,9 +165,10 @@ export async function linkPhone(db: Db, hasher: PhoneHasher, userId: string, raw
       await client.query("DELETE FROM phone_links WHERE phone_hmac = $1", [hash]);
     }
     await client.query(
-      `INSERT INTO phone_links (user_id, phone_hmac, method) VALUES ($1, $2, 'admin')
-       ON CONFLICT (user_id) DO UPDATE SET phone_hmac = EXCLUDED.phone_hmac, method = 'admin', linked_at = now(), confirmed_at = now()`,
-      [userId, hash],
+      `INSERT INTO phone_links (user_id, phone_hmac, method, number_enc) VALUES ($1, $2, 'admin', $3)
+       ON CONFLICT (user_id) DO UPDATE SET phone_hmac = EXCLUDED.phone_hmac, method = 'admin', number_enc = EXCLUDED.number_enc,
+         linked_at = now(), confirmed_at = now()`,
+      [userId, hash, sealed],
     );
     await client.query("COMMIT");
     return e164;

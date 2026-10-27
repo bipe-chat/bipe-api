@@ -781,7 +781,7 @@ app.get("/v1/me/export", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.dataExport.check(userId);
   const now = new Date();
-  const body = await exportData(db, growth, userId, now);
+  const body = await exportData(db, growth, userId, now, phoneHasher);
   c.header("cache-control", "no-store");
   c.header("content-disposition", `attachment; filename="bipe-dados-${now.toISOString().slice(0, 10)}.json"`);
   return c.json(body);
@@ -940,7 +940,7 @@ app.post("/v1/contacts/lookup", async (c) => {
 
 app.get("/v1/me/phone", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
-  return c.json(await myPhone(db, userId));
+  return c.json(await myPhone(db, phoneHasher, userId));
 });
 
 app.delete("/v1/me/phone", async (c) => {
