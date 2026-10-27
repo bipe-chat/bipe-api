@@ -1687,6 +1687,7 @@
     "bipe_app_sticker_make_failed": "Couldn't make a sticker from this photo. Try another one.",
     "bipe_archived_empty": "No archived chats.",
     "bipe_archive_error": "Could not save archived chats. Try again.",
+    "bipe_chat_list_own_preview": "You: %1$s",
     "bipe_chat_list_more": "Load more chats",
     "bipe_chat_actions": "Chat actions",
     "bipe_message_actions": "Message actions",
