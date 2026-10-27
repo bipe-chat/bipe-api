@@ -106,6 +106,7 @@
           "key": "devices",
           "title": "bipe_account_devices",
           "rows": [
+            { "key": "oldMessages", "title": "bipe_account_old_messages", "footer": "bipe_account_old_messages_footer", "kind": "link", "adr": "0073" },
             { "key": "thisDevice", "title": "bipe_account_this_device", "kind": "info" },
             { "key": "linkedDevices", "title": "bipe_linked_devices_title", "kind": "link", "adr": "0116" }
           ]

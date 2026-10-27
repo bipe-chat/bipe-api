@@ -932,6 +932,8 @@
     "bipe_account_recovery_key_missing": "Not saved",
     "bipe_account_recovery_key_footer": "Without a device that already has your messages, you need this key to see your history. Bipe will never ask for the key.",
     "bipe_account_devices": "Devices",
+    "bipe_account_old_messages": "Old messages",
+    "bipe_account_old_messages_footer": "Approve this phone to see your old chats here.",
     "bipe_account_this_device": "This phone",
     "bipe_linked_devices_title": "Linked devices",
     "bipe_linked_devices_link_computer": "Link a computer",
