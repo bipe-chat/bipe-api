@@ -48,7 +48,8 @@ test("sign-up makes one read-only room with the welcome item; a second welcome m
   await flush();
   assert.equal(created.length, 1);
   const req = created[0].body;
-  assert.equal(req.is_direct, true);
+  assert.equal(req.is_direct, undefined, "the news room is a named room, not a DM (bipe#809)");
+  assert.equal(req.name, "Novidades do Bipe");
   assert.deepEqual(req.invite, ["@ana:example.test"]);
   assert.equal(req.room_version, "12");
   assert.equal(req.power_level_content_override.users[BOT], undefined);
