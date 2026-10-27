@@ -1,10 +1,12 @@
 {
   "version": 1,
-  "storage": "device-per-account",
+  "storage": "matrix-lowpriority-per-account",
   "restore": "newer-incoming-message",
   "timestamp": "latest-known-event-ms",
   "missingActivity": 0,
   "history": "preserve",
   "membership": "preserve",
-  "badges": "unchanged"
+  "badges": "unchanged",
+  "tag": "m.lowpriority",
+  "echoGraceMs": 20000
 }

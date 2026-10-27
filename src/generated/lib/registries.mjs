@@ -168,7 +168,7 @@ function validate(reg) {
   validateOnboarding(reg);
   validateHaptics(reg.haptics);
   const archive = reg.chatArchive;
-  if (archive.storage !== "device-per-account" || archive.restore !== "newer-incoming-message" || archive.timestamp !== "latest-known-event-ms" || archive.missingActivity !== 0 || archive.history !== "preserve" || archive.membership !== "preserve" || archive.badges !== "unchanged") fail("chat-archive: unsupported archive policy");
+  if (archive.storage !== "matrix-lowpriority-per-account" || archive.tag !== "m.lowpriority" || archive.echoGraceMs !== 20000 || archive.restore !== "newer-incoming-message" || archive.timestamp !== "latest-known-event-ms" || archive.missingActivity !== 0 || archive.history !== "preserve" || archive.membership !== "preserve" || archive.badges !== "unchanged") fail("chat-archive: unsupported archive policy");
   const rn = reg.relationshipNames;
   if (rn.comparison !== "normalised-exact" || rn.fullNameMinimumWords !== 2 || rn.familyTerms !== "whole-words" || rn.confirmation !== "saved-label-and-verified-name") fail("relationship-names: unsupported ADR 0018 policy");
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
@@ -821,6 +821,18 @@ export function relationshipNameWarning(savedName, verifiedName, nicknameConfirm
 /** Archive is separate from cleared history. Only a strictly newer incoming message restores it. */
 export function chatArchived(marker, incoming) {
   return Number.isSafeInteger(marker) && marker >= 0 && !(Number.isSafeInteger(incoming) && incoming > marker);
+}
+
+/** Reconcile Matrix archive tags with a local incoming-message baseline and one-time migration. */
+export function chatArchiveSync(marker, synced, serverArchived, activity, incoming) {
+  const valid = value => Number.isSafeInteger(value) && value >= 0;
+  if (valid(marker)) {
+    if (synced && !serverArchived) return {marker: null, synced: false, tagWrite: null};
+    if (!chatArchived(marker, incoming)) return {marker: null, synced: false, tagWrite: serverArchived ? false : null};
+    return {marker, synced: serverArchived, tagWrite: serverArchived ? null : true};
+  }
+  return serverArchived ? {marker: Math.max(valid(activity) ? activity : 0, valid(incoming) ? incoming : 0), synced: true, tagWrite: null}
+    : {marker: null, synced: false, tagWrite: null};
 }
 
 // Onboarding schedules (bipe-chat/bipe#202).
