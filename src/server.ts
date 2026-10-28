@@ -11,6 +11,7 @@ import { ApiError } from "./errors.js";
 import { availability, handleChanges, lookup, myHandle, pruneHandleChanges, removeHandle, resolve, setHandle } from "./handles.js";
 import { createPersonalInvite, inviteConnections, inviterReport, myInvites, nameInvite, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
+import { betaLogin } from "./beta-login.js";
 import { RateLimiter } from "./ratelimit.js";
 import { SignupLimits } from "./signup-limits.js";
 import { newChallenge } from "./attest.js";
@@ -148,6 +149,8 @@ const limits = {
   recoveryTokenGlobal: new RateLimiter(300, 3_600_000),
   recoveryEmail: new RateLimiter(5, 3_600_000),
   recoveryEmailAddress: new RateLimiter(3, 3_600_000),
+  betaLogin: new RateLimiter(10, 3_600_000),
+  betaLoginAddress: new RateLimiter(5, 3_600_000),
   recoveryConfirm: new RateLimiter(10, 3_600_000),
   recoveryClaim: new RateLimiter(120, 3_600_000),
   // Linked Apple or Google account (ADR 0096).
@@ -356,6 +359,7 @@ const EmailBody = z.object({ email: z.email().max(254), lang: Lang.default("pt")
 const TokenBody = z.object({ token: SecretField });
 const RedeemBody = z.object({ recovery_token: SecretField, pin: PinField });
 const RecoveryEmailBody = z.object({ email: z.email().max(254) });
+const BetaLoginBody = z.object({ email: z.email().max(254), password: z.string().min(1).max(512) });
 const ConfirmBody = z.object({ token: SecretField, pin: PinField.optional(), new_pin: PinField.optional() });
 const ClaimBody = z.object({ claim_secret: SecretField });
 const TimeField = z.string().max(5);
@@ -611,6 +615,15 @@ app.post("/v1/recovery/email", async (c) => {
   limits.recoveryEmailAddress.check(secretHash(email.trim().toLowerCase()));
   await requestRecoveryEmail(accounts, email);
   return c.body(null, 202);
+});
+
+// Beta sign-in with an email (bipe#627): the Matrix ID for m.login.password. Never log the email or the password.
+app.post("/v1/beta/login", async (c) => {
+  limits.betaLogin.check(clientIp(c));
+  const { email, password } = await parse(c, BetaLoginBody);
+  limits.betaLoginAddress.check(secretHash(email.trim().toLowerCase()));
+  c.header("cache-control", "no-store");
+  return c.json(await betaLogin({ config, mas }, email, password));
 });
 
 app.post("/v1/recovery/email/confirm", async (c) => {

@@ -57,6 +57,48 @@ export class Mas {
     return data[0]?.attributes.user_id ?? null;
   }
 
+  /** The username (Matrix localpart) of a MAS user id, or null when unknown. */
+  async usernameOf(userId: string): Promise<string | null> {
+    const res = await this.call("GET", `/users/${encodeURIComponent(userId)}`);
+    if (res.status === 404) return null;
+    return (await this.json(res)).data.attributes.username ?? null;
+  }
+
+  /**
+   * True when MAS accepts the password for the localpart (bipe#627). One compat login (m.login.password), then the
+   * session ends at once with its own token. MAS counts the try against its per-account limit. Never logs the input.
+   */
+  async passwordMatches(localpart: string, password: string): Promise<boolean> {
+    const base = this.config.MAS_URL.replace(/\/$/, "");
+    const res = await fetch(`${base}/_matrix/client/v3/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "m.login.password",
+        identifier: { type: "m.id.user", user: localpart },
+        password,
+        initial_device_display_name: "Bipe beta check",
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status === 429) throw new ApiError("rate_limited");
+    if (res.status === 401 || res.status === 403) return false;
+    if (!res.ok) {
+      console.error(`mas compat login: HTTP ${res.status}`);
+      throw new ApiError("internal");
+    }
+    const { access_token: token } = (await res.json()) as { access_token?: string };
+    if (token) {
+      const out = await fetch(`${base}/_matrix/client/v3/logout`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => null);
+      if (!out?.ok) console.error(`mas compat logout: HTTP ${out?.status ?? "error"}`);
+    }
+    return true;
+  }
+
   /** Returns false when the address is already attached to a user. */
   async addEmail(userId: string, email: string): Promise<boolean> {
     const res = await this.call("POST", "/user-emails", { user_id: userId, email });
