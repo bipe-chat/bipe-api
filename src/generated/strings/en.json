@@ -1980,6 +1980,11 @@
     "bipe_pinned_banner_title": "Pinned message",
     "bipe_pinned_banner_count": "Pinned %1$s of %2$s",
     "bipe_pinned_list_title": "Pinned messages",
-    "bipe_pinned_view_all": "View all"
+    "bipe_pinned_view_all": "View all",
+    "bipe_poll_edit": "Edit poll",
+    "bipe_poll_history": "Polls",
+    "bipe_poll_history_empty": "No polls in this group yet.",
+    "bipe_poll_state_open": "Open",
+    "bipe_poll_state_ended": "Ended"
   }
 }

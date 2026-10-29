@@ -1980,6 +1980,11 @@
     "bipe_pinned_banner_title": "Mensagem fixada",
     "bipe_pinned_banner_count": "Fixada %1$s de %2$s",
     "bipe_pinned_list_title": "Mensagens fixadas",
-    "bipe_pinned_view_all": "Ver todas"
+    "bipe_pinned_view_all": "Ver todas",
+    "bipe_poll_edit": "Editar enquete",
+    "bipe_poll_history": "Enquetes",
+    "bipe_poll_history_empty": "Nenhuma enquete neste grupo ainda.",
+    "bipe_poll_state_open": "Aberta",
+    "bipe_poll_state_ended": "Encerrada"
   }
 }
