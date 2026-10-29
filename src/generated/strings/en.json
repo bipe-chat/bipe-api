@@ -1931,6 +1931,8 @@
     "bipe_call_duration": "%1$s min",
     "bipe_call_channel_incoming": "Incoming calls",
     "bipe_call_channel_missed": "Missed calls",
-    "bipe_call_answered_elsewhere": "Answered on another device"
+    "bipe_call_answered_elsewhere": "Answered on another device",
+    "bipe_voice_speed": "%1$s×",
+    "bipe_voice_speed_label": "Speed: %1$s times"
   }
 }
