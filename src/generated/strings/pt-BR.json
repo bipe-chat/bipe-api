@@ -2001,6 +2001,9 @@
     "bipe_group_privacy_history_footer": "A mudança vale para as mensagens enviadas daqui em diante.",
     "bipe_group_requests": "Pedidos para entrar",
     "bipe_group_request_accept": "Aceitar",
-    "bipe_group_request_decline": "Recusar"
+    "bipe_group_request_decline": "Recusar",
+    "bipe_thread_reply_action": "Responder em conversa",
+    "bipe_thread_title": "Conversa",
+    "bipe_thread_replies": "Respostas: %1$s"
   }
 }
