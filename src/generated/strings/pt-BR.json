@@ -1931,6 +1931,21 @@
     "bipe_call_duration": "%1$s min",
     "bipe_call_channel_incoming": "Chamadas recebidas",
     "bipe_call_channel_missed": "Chamadas perdidas",
-    "bipe_call_answered_elsewhere": "Atendida em outro aparelho"
+    "bipe_call_answered_elsewhere": "Atendida em outro aparelho",
+    "bipe_app_notification_checkup_title": "Verificar notificações",
+    "bipe_app_notification_checkup_intro": "O Bipe confere se este celular recebe as mensagens na hora.",
+    "bipe_app_notification_checkup_permission": "Permissão de notificações",
+    "bipe_app_notification_checkup_channel": "Avisos de mensagens",
+    "bipe_app_notification_checkup_battery": "Bateria sem restrição para o Bipe",
+    "bipe_app_notification_checkup_pusher": "Celular cadastrado para receber avisos",
+    "bipe_app_notification_checkup_ok": "Tudo certo",
+    "bipe_app_notification_checkup_fix": "Corrigir",
+    "bipe_app_notification_checkup_last_push": "Último aviso recebido: %1$s",
+    "bipe_app_notification_checkup_last_push_none": "Este celular ainda não recebeu nenhum aviso.",
+    "bipe_app_notification_checkup_banner": "As mensagens podem chegar atrasadas neste celular.",
+    "bipe_app_notification_checkup_help_xiaomi": "No Xiaomi, ative a inicialização automática do Bipe nas configurações do app.",
+    "bipe_app_notification_checkup_help_samsung": "No Samsung, tire o Bipe da lista de apps em suspensão, nas configurações de bateria.",
+    "bipe_app_notification_checkup_help_motorola": "No Motorola, deixe o uso de bateria do Bipe sem restrição nas configurações do app.",
+    "bipe_app_notification_checkup_open_app_settings": "Abrir configurações do app"
   }
 }
