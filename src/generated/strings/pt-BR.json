@@ -1948,6 +1948,11 @@
     "bipe_app_notification_checkup_help_motorola": "No Motorola, deixe o uso de bateria do Bipe sem restrição nas configurações do app.",
     "bipe_app_notification_checkup_open_app_settings": "Abrir configurações do app",
     "bipe_voice_speed": "%1$s×",
-    "bipe_voice_speed_label": "Velocidade: %1$s vezes"
+    "bipe_voice_speed_label": "Velocidade: %1$s vezes",
+    "bipe_poll_edit": "Editar enquete",
+    "bipe_poll_history": "Enquetes",
+    "bipe_poll_history_empty": "Nenhuma enquete neste grupo ainda.",
+    "bipe_poll_state_open": "Aberta",
+    "bipe_poll_state_ended": "Encerrada"
   }
 }

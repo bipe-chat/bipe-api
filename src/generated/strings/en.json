@@ -1948,6 +1948,11 @@
     "bipe_app_notification_checkup_help_motorola": "On Motorola, set Bipe's battery use to unrestricted in the app settings.",
     "bipe_app_notification_checkup_open_app_settings": "Open app settings",
     "bipe_voice_speed": "%1$s×",
-    "bipe_voice_speed_label": "Speed: %1$s times"
+    "bipe_voice_speed_label": "Speed: %1$s times",
+    "bipe_poll_edit": "Edit poll",
+    "bipe_poll_history": "Polls",
+    "bipe_poll_history_empty": "No polls in this group yet.",
+    "bipe_poll_state_open": "Open",
+    "bipe_poll_state_ended": "Ended"
   }
 }
