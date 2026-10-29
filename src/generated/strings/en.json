@@ -2004,6 +2004,13 @@
     "bipe_group_request_decline": "Decline",
     "bipe_thread_reply_action": "Reply in thread",
     "bipe_thread_title": "Thread",
-    "bipe_thread_replies": "Replies: %1$s"
+    "bipe_thread_replies": "Replies: %1$s",
+    "bipe_select_action": "Select",
+    "bipe_select_count": "Selected: %1$s",
+    "bipe_select_limit": "Pick up to %1$s messages.",
+    "bipe_select_forward_done": "Messages forwarded",
+    "bipe_select_delete_title": "Delete your messages?",
+    "bipe_select_delete_body": "Your selected messages disappear for everyone in the chat. Messages from other people stay.",
+    "bipe_select_delete_failed": "Couldn't delete the messages. Try again."
   }
 }
