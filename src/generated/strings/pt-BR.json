@@ -1971,6 +1971,9 @@
     "bipe_search_recent_clear": "Limpar",
     "bipe_app_group_members_banned": "Banidos do grupo",
     "bipe_app_group_member_unban": "Tirar o banimento",
-    "bipe_app_group_member_unban_body": "%1$s pode entrar no grupo de novo com um convite."
+    "bipe_app_group_member_unban_body": "%1$s pode entrar no grupo de novo com um convite.",
+    "bipe_caption_add": "Adicionar legenda",
+    "bipe_caption_edit": "Editar legenda",
+    "bipe_caption_remove": "Remover legenda"
   }
 }

@@ -1971,6 +1971,9 @@
     "bipe_search_recent_clear": "Clear",
     "bipe_app_group_members_banned": "Banned from the group",
     "bipe_app_group_member_unban": "Lift the ban",
-    "bipe_app_group_member_unban_body": "%1$s can join the group again with an invite."
+    "bipe_app_group_member_unban_body": "%1$s can join the group again with an invite.",
+    "bipe_caption_add": "Add caption",
+    "bipe_caption_edit": "Edit caption",
+    "bipe_caption_remove": "Remove caption"
   }
 }
