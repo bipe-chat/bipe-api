@@ -120,8 +120,8 @@ const Env = z.object({
   // <user> --yes-i-want-to-grant-synapse-admin-privileges); MAS gives no Synapse admin scope to client_credentials.
   // Unset: requests are taken and wait; the job runs none until it is set. Never log it.
   SYNAPSE_ADMIN_TOKEN: emptyAsUnset(z.string().min(16)),
-  // Approval nudge (bipe-chat/bipe#628): the push gateway, inside the cluster (http://bipe-sygnal:5000). Unset, or no
-  // SYNAPSE_ADMIN_TOKEN: POST /v1/me/approval-nudge answers 204 and sends nothing.
+  // Device pushes (approval nudge bipe-chat/bipe#628, recovery alerts bipe-chat/bipe#171, src/device-push.ts): the
+  // push gateway, inside the cluster (http://bipe-sygnal:5000). Unset, or no SYNAPSE_ADMIN_TOKEN: nothing is pushed.
   SYGNAL_URL: emptyAsUnset(z.url()),
   // CVM register check (ADR 0077): the daily download from dados.cvm.gov.br. "false" turns it off (no CVM lines).
   CVM_REFRESH: z.string().default("true").transform((v) => v !== "false"),
