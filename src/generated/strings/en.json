@@ -1931,6 +1931,13 @@
     "bipe_call_duration": "%1$s min",
     "bipe_call_channel_incoming": "Incoming calls",
     "bipe_call_channel_missed": "Missed calls",
-    "bipe_call_answered_elsewhere": "Answered on another device"
+    "bipe_call_answered_elsewhere": "Answered on another device",
+    "bipe_identity_change_body": "%1$s's account security changed. If you did not expect this, check with them another way.",
+    "bipe_identity_change_verified_body": "%1$s's account is no longer verified. Check with them another way before you send messages.",
+    "bipe_identity_change_more": "And %1$s more",
+    "bipe_identity_change_ok": "Got it",
+    "bipe_identity_change_learn_more": "Learn more",
+    "bipe_identity_change_help": "This happens when the person signs in to Bipe on a new phone without the old one, or sets up account recovery again. It can also be someone pretending to be them. If the change is a surprise, call them or talk in person before you send money, codes or documents.",
+    "bipe_identity_change_send_anyway": "Send anyway"
   }
 }

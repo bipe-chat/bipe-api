@@ -1931,6 +1931,13 @@
     "bipe_call_duration": "%1$s min",
     "bipe_call_channel_incoming": "Chamadas recebidas",
     "bipe_call_channel_missed": "Chamadas perdidas",
-    "bipe_call_answered_elsewhere": "Atendida em outro aparelho"
+    "bipe_call_answered_elsewhere": "Atendida em outro aparelho",
+    "bipe_identity_change_body": "A segurança da conta de %1$s mudou. Se você não esperava isso, confirme com a pessoa por outro meio.",
+    "bipe_identity_change_verified_body": "A conta de %1$s não está mais verificada. Confirme com a pessoa por outro meio antes de mandar mensagens.",
+    "bipe_identity_change_more": "E mais %1$s",
+    "bipe_identity_change_ok": "Entendi",
+    "bipe_identity_change_learn_more": "Saiba mais",
+    "bipe_identity_change_help": "Isso acontece quando a pessoa entra no Bipe num celular novo sem o antigo, ou faz a recuperação da conta de novo. Também pode ser alguém tentando se passar por ela. Se a mudança for uma surpresa, ligue ou fale com a pessoa pessoalmente antes de mandar dinheiro, códigos ou documentos.",
+    "bipe_identity_change_send_anyway": "Enviar mesmo assim"
   }
 }
