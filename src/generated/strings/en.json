@@ -1948,6 +1948,13 @@
     "bipe_app_notification_checkup_help_motorola": "On Motorola, set Bipe's battery use to unrestricted in the app settings.",
     "bipe_app_notification_checkup_open_app_settings": "Open app settings",
     "bipe_voice_speed": "%1$s×",
-    "bipe_voice_speed_label": "Speed: %1$s times"
+    "bipe_voice_speed_label": "Speed: %1$s times",
+    "bipe_identity_change_body": "%1$s's account security changed. If you did not expect this, check with them another way.",
+    "bipe_identity_change_verified_body": "%1$s's account is no longer verified. Check with them another way before you send messages.",
+    "bipe_identity_change_more": "And %1$s more",
+    "bipe_identity_change_ok": "Got it",
+    "bipe_identity_change_learn_more": "Learn more",
+    "bipe_identity_change_help": "This happens when the person signs in to Bipe on a new phone without the old one, or sets up account recovery again. It can also be someone pretending to be them. If the change is a surprise, call them or talk in person before you send money, codes or documents.",
+    "bipe_identity_change_send_anyway": "Send anyway"
   }
 }
