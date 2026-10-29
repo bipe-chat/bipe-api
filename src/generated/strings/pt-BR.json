@@ -1948,6 +1948,9 @@
     "bipe_app_notification_checkup_help_motorola": "No Motorola, deixe o uso de bateria do Bipe sem restrição nas configurações do app.",
     "bipe_app_notification_checkup_open_app_settings": "Abrir configurações do app",
     "bipe_voice_speed": "%1$s×",
-    "bipe_voice_speed_label": "Velocidade: %1$s vezes"
+    "bipe_voice_speed_label": "Velocidade: %1$s vezes",
+    "bipe_room_upgrade_replaced": "Este grupo foi trocado por um grupo novo. As mensagens novas ficam lá.",
+    "bipe_room_upgrade_go": "Ir para o grupo novo",
+    "bipe_room_upgrade_continues": "Continuação de %1$s. Toque para ver as mensagens antigas."
   }
 }
