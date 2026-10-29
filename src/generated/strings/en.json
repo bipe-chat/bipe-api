@@ -1974,6 +1974,12 @@
     "bipe_app_group_member_unban_body": "%1$s can join the group again with an invite.",
     "bipe_caption_add": "Add caption",
     "bipe_caption_edit": "Edit caption",
-    "bipe_caption_remove": "Remove caption"
+    "bipe_caption_remove": "Remove caption",
+    "bipe_pin_action": "Pin",
+    "bipe_unpin_action": "Unpin",
+    "bipe_pinned_banner_title": "Pinned message",
+    "bipe_pinned_banner_count": "Pinned %1$s of %2$s",
+    "bipe_pinned_list_title": "Pinned messages",
+    "bipe_pinned_view_all": "View all"
   }
 }

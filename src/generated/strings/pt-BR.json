@@ -1974,6 +1974,12 @@
     "bipe_app_group_member_unban_body": "%1$s pode entrar no grupo de novo com um convite.",
     "bipe_caption_add": "Adicionar legenda",
     "bipe_caption_edit": "Editar legenda",
-    "bipe_caption_remove": "Remover legenda"
+    "bipe_caption_remove": "Remover legenda",
+    "bipe_pin_action": "Fixar",
+    "bipe_unpin_action": "Desafixar",
+    "bipe_pinned_banner_title": "Mensagem fixada",
+    "bipe_pinned_banner_count": "Fixada %1$s de %2$s",
+    "bipe_pinned_list_title": "Mensagens fixadas",
+    "bipe_pinned_view_all": "Ver todas"
   }
 }
