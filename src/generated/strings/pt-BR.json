@@ -1965,6 +1965,15 @@
     "bipe_gallery_media": "Mídia",
     "bipe_gallery_files": "Arquivos",
     "bipe_gallery_empty_media": "Nenhuma foto ou vídeo nesta conversa ainda.",
-    "bipe_gallery_empty_files": "Nenhum arquivo nesta conversa ainda."
+    "bipe_gallery_empty_files": "Nenhum arquivo nesta conversa ainda.",
+    "bipe_search_messages": "Mensagens",
+    "bipe_search_recent": "Buscas recentes",
+    "bipe_search_recent_clear": "Limpar",
+    "bipe_voice_source_forwarded": "Encaminhado",
+    "bipe_voice_source_forwarded_many": "Encaminhado muitas vezes",
+    "bipe_voice_source_recorded": "Gravado no app",
+    "bipe_voice_source_file": "Arquivo de áudio",
+    "bipe_voice_source_title": "Sobre esta marca",
+    "bipe_voice_source_body": "O app de quem enviou coloca esta marca, e um app alterado pode falsificar. Para saber quem mandou, veja se a conta é verificada."
   }
 }

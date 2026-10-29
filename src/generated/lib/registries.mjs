@@ -232,6 +232,7 @@ function validate(reg) {
   if (!Number.isInteger(lv.minIntervalSeconds) || !Number.isInteger(lv.maxIntervalSeconds) || !(5 <= lv.minIntervalSeconds && lv.minIntervalSeconds < lv.maxIntervalSeconds && lv.maxIntervalSeconds <= 600)) fail("maps: live intervals must be integers, 5 <= minIntervalSeconds < maxIntervalSeconds <= 600");
   const vm = reg.voiceMedia;
   if (![vm.transcriptDays, vm.noTranscriptDays, vm.maxKeptPerAccount].every((n) => Number.isInteger(n) && n >= 1) || vm.noTranscriptDays < vm.transcriptDays) fail("voice-media: transcriptDays, noTranscriptDays and maxKeptPerAccount must be positive integers, noTranscriptDays at least transcriptDays");
+  if (!/^chat\.bipe\.[a-z_]+$/.test(vm.forwardKey) || !Number.isInteger(vm.forwardedManyTimes) || vm.forwardedManyTimes < 2) fail("voice-media: forwardKey must be chat.bipe.<name> and forwardedManyTimes an integer of 2 or more");
   validateStickers(reg.stickers);
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
@@ -943,4 +944,37 @@ export function stickerMatches(query, sticker, reg) {
   const q = stickerSearchFold(query);
   if (!q) return false;
   return [sticker.body, sticker.pack].some((text) => ` ${stickerSearchFold(text)}`.includes(` ${q}`));
+}
+
+// --- Forward marks (bipe-chat/bipe#83; registries/voice-media.json) ---------------------------------------------------
+
+/** The largest forward count an app keeps. A larger count reads as this one. */
+export const FORWARD_COUNT_MAX = 2147483647;
+
+/** The forward count of message content: content[forwardKey].count when it is an integer of 1 or more, else 0. */
+export function forwardCount(content, reg) {
+  const mark = content?.[reg.voiceMedia.forwardKey];
+  if (!mark || typeof mark !== "object" || Array.isArray(mark)) return 0;
+  const n = mark.count;
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, FORWARD_COUNT_MAX) : 0;
+}
+
+/**
+ * The content a forward sends: newContent (the m.new_content of the latest edit) or else the original content, without
+ * m.relates_to, m.new_content and m.mentions, with forwardKey set to { count: forwardCount(original) + 1 }.
+ */
+export function forwardedContent(original, newContent, reg) {
+  const base = { ...(newContent ?? original) };
+  delete base["m.relates_to"];
+  delete base["m.new_content"];
+  delete base["m.mentions"];
+  base[reg.voiceMedia.forwardKey] = { count: Math.min(forwardCount(original, reg) + 1, FORWARD_COUNT_MAX) };
+  return base;
+}
+
+/** The source line of a voice message or audio file: forwarded, forwardedManyTimes, recorded (voice marker) or file. */
+export function voiceSource(isVoice, count, reg) {
+  if (count >= reg.voiceMedia.forwardedManyTimes) return "forwardedManyTimes";
+  if (count >= 1) return "forwarded";
+  return isVoice ? "recorded" : "file";
 }
