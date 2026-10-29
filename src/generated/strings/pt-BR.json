@@ -1985,6 +1985,11 @@
     "bipe_poll_history": "Enquetes",
     "bipe_poll_history_empty": "Nenhuma enquete neste grupo ainda.",
     "bipe_poll_state_open": "Aberta",
-    "bipe_poll_state_ended": "Encerrada"
+    "bipe_poll_state_ended": "Encerrada",
+    "bipe_chats_media_quality_standard": "Padrão, arquivos menores",
+    "bipe_chats_media_quality_high": "Alta, como foram tiradas",
+    "bipe_room_upgrade_replaced": "Este grupo foi trocado por um grupo novo. As mensagens novas ficam lá.",
+    "bipe_room_upgrade_go": "Ir para o grupo novo",
+    "bipe_room_upgrade_continues": "Continuação de %1$s. Toque para ver as mensagens antigas."
   }
 }

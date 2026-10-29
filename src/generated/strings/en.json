@@ -1985,6 +1985,11 @@
     "bipe_poll_history": "Polls",
     "bipe_poll_history_empty": "No polls in this group yet.",
     "bipe_poll_state_open": "Open",
-    "bipe_poll_state_ended": "Ended"
+    "bipe_poll_state_ended": "Ended",
+    "bipe_chats_media_quality_standard": "Standard, smaller files",
+    "bipe_chats_media_quality_high": "High, as they were taken",
+    "bipe_room_upgrade_replaced": "This group was replaced by a new group. New messages go there.",
+    "bipe_room_upgrade_go": "Go to the new group",
+    "bipe_room_upgrade_continues": "Continues %1$s. Tap to see the older messages."
   }
 }
