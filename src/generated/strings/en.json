@@ -1960,6 +1960,11 @@
     "bipe_forward_title": "Forward to",
     "bipe_forward_limit": "Pick up to %1$s chats.",
     "bipe_forward_done": "Message forwarded",
-    "bipe_forward_failed": "Could not forward to %1$s."
+    "bipe_forward_failed": "Could not forward to %1$s.",
+    "bipe_gallery_title": "Media and files",
+    "bipe_gallery_media": "Media",
+    "bipe_gallery_files": "Files",
+    "bipe_gallery_empty_media": "No photos or videos in this chat yet.",
+    "bipe_gallery_empty_files": "No files in this chat yet."
   }
 }
