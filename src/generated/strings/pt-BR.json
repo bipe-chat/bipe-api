@@ -1990,6 +1990,17 @@
     "bipe_chats_media_quality_high": "Alta, como foram tiradas",
     "bipe_room_upgrade_replaced": "Este grupo foi trocado por um grupo novo. As mensagens novas ficam lá.",
     "bipe_room_upgrade_go": "Ir para o grupo novo",
-    "bipe_room_upgrade_continues": "Continuação de %1$s. Toque para ver as mensagens antigas."
+    "bipe_room_upgrade_continues": "Continuação de %1$s. Toque para ver as mensagens antigas.",
+    "bipe_group_privacy_title": "Privacidade do grupo",
+    "bipe_group_privacy_join": "Quem pode entrar",
+    "bipe_group_privacy_join_invite": "Só quem for convidado",
+    "bipe_group_privacy_join_knock": "Quem tem o link pode pedir para entrar",
+    "bipe_group_privacy_history": "Mensagens antigas para quem entra",
+    "bipe_group_privacy_history_joined": "Só a partir da entrada",
+    "bipe_group_privacy_history_shared": "Todas as mensagens do grupo",
+    "bipe_group_privacy_history_footer": "A mudança vale para as mensagens enviadas daqui em diante.",
+    "bipe_group_requests": "Pedidos para entrar",
+    "bipe_group_request_accept": "Aceitar",
+    "bipe_group_request_decline": "Recusar"
   }
 }

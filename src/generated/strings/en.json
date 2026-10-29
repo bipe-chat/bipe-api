@@ -1990,6 +1990,17 @@
     "bipe_chats_media_quality_high": "High, as they were taken",
     "bipe_room_upgrade_replaced": "This group was replaced by a new group. New messages go there.",
     "bipe_room_upgrade_go": "Go to the new group",
-    "bipe_room_upgrade_continues": "Continues %1$s. Tap to see the older messages."
+    "bipe_room_upgrade_continues": "Continues %1$s. Tap to see the older messages.",
+    "bipe_group_privacy_title": "Group privacy",
+    "bipe_group_privacy_join": "Who can join",
+    "bipe_group_privacy_join_invite": "Only invited people",
+    "bipe_group_privacy_join_knock": "People with the link can ask to join",
+    "bipe_group_privacy_history": "Older messages for new members",
+    "bipe_group_privacy_history_joined": "Only from when they join",
+    "bipe_group_privacy_history_shared": "All messages of the group",
+    "bipe_group_privacy_history_footer": "The change applies to messages sent from now on.",
+    "bipe_group_requests": "Requests to join",
+    "bipe_group_request_accept": "Accept",
+    "bipe_group_request_decline": "Decline"
   }
 }
