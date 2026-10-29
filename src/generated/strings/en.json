@@ -1948,6 +1948,8 @@
     "bipe_app_notification_checkup_help_motorola": "On Motorola, set Bipe's battery use to unrestricted in the app settings.",
     "bipe_app_notification_checkup_open_app_settings": "Open app settings",
     "bipe_voice_speed": "%1$s×",
-    "bipe_voice_speed_label": "Speed: %1$s times"
+    "bipe_voice_speed_label": "Speed: %1$s times",
+    "bipe_chats_media_quality_standard": "Standard, smaller files",
+    "bipe_chats_media_quality_high": "High, as they were taken"
   }
 }
