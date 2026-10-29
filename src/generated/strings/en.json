@@ -1946,6 +1946,8 @@
     "bipe_app_notification_checkup_help_xiaomi": "On Xiaomi, turn on autostart for Bipe in the app settings.",
     "bipe_app_notification_checkup_help_samsung": "On Samsung, take Bipe off the sleeping apps list in the battery settings.",
     "bipe_app_notification_checkup_help_motorola": "On Motorola, set Bipe's battery use to unrestricted in the app settings.",
-    "bipe_app_notification_checkup_open_app_settings": "Open app settings"
+    "bipe_app_notification_checkup_open_app_settings": "Open app settings",
+    "bipe_voice_speed": "%1$s×",
+    "bipe_voice_speed_label": "Speed: %1$s times"
   }
 }
