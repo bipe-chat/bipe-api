@@ -1,0 +1,10 @@
+{
+  "$comment": "gov.br verification, trust step 5 (bipe-chat/bipe#544, docs/identity.md). enabled turns the flow on in both apps; off, step 5 shows Em breve. Default chosen: false, a switch here (one source for both apps) that stays off until the sample-file check (bipe-chat/bipe#542) and the legal review (bipe-chat/bipe#17) close, because the server checks for CPF location and code survival are best guesses that fail closed. MZ can overrule. The gov.br app has no documented URL scheme: iOS opens its App Store page (Abrir when installed); Android opens the app by package name, else its Play page. maxDocumentBytes is the API's limit for the signed file. fileName is the name the app saves the challenge under (bipe_govbr_step_sign names it).",
+  "version": 1,
+  "enabled": false,
+  "androidPackage": "br.gov.meugovbr",
+  "playStoreUrl": "https://play.google.com/store/apps/details?id=br.gov.meugovbr",
+  "iosStoreUrl": "https://apps.apple.com/br/app/gov-br/id1506827551",
+  "maxDocumentBytes": 5242880,
+  "fileName": "bipe-verificacao.pdf"
+}

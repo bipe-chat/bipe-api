@@ -33,6 +33,7 @@ export function loadRegistries(root) {
     badgeKeys: read("registries/badge-keys.json"),
     clearedChats: read("registries/cleared-chats.json"),
     imageDescriptions: read("registries/image-descriptions.json"),
+    govbr: read("registries/govbr.json"),
     pixMarks: read("registries/pix-marks.json"),
     dataUse: read("registries/data-use.json"),
     brandMarks: read("registries/brand-marks.json"),
@@ -236,6 +237,8 @@ function validate(reg) {
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }
+  const gb = reg.govbr;
+  if (typeof gb.enabled !== "boolean" || !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(gb.androidPackage) || !gb.playStoreUrl?.startsWith("https://play.google.com/") || !gb.iosStoreUrl?.startsWith("https://apps.apple.com/") || !Number.isInteger(gb.maxDocumentBytes) || gb.maxDocumentBytes < 1 || !/^[a-z0-9-]+\.pdf$/.test(gb.fileName)) fail("govbr: enabled boolean, androidPackage a package name, store URLs, maxDocumentBytes a positive integer, fileName <name>.pdf");
   const desc = reg.imageDescriptions;
   if (!/^chat\.bipe\.[a-z_]+$/.test(desc.field) || !Number.isInteger(desc.maxLength) || desc.maxLength < 100 || desc.maxLength > 4000) fail("image-descriptions: field must be chat.bipe.<name> and maxLength an integer from 100 to 4000");
   const dm = reg.dmSelection;

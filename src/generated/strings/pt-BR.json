@@ -1965,6 +1965,9 @@
     "bipe_gallery_media": "Mídia",
     "bipe_gallery_files": "Arquivos",
     "bipe_gallery_empty_media": "Nenhuma foto ou vídeo nesta conversa ainda.",
-    "bipe_gallery_empty_files": "Nenhum arquivo nesta conversa ainda."
+    "bipe_gallery_empty_files": "Nenhum arquivo nesta conversa ainda.",
+    "bipe_search_messages": "Mensagens",
+    "bipe_search_recent": "Buscas recentes",
+    "bipe_search_recent_clear": "Limpar"
   }
 }
