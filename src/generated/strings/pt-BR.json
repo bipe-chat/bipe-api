@@ -2011,6 +2011,18 @@
     "bipe_select_forward_done": "Mensagens encaminhadas",
     "bipe_select_delete_title": "Apagar suas mensagens?",
     "bipe_select_delete_body": "Suas mensagens escolhidas somem para todo mundo na conversa. As mensagens de outras pessoas continuam lá.",
-    "bipe_select_delete_failed": "Não deu para apagar as mensagens. Tente de novo."
+    "bipe_select_delete_failed": "Não deu para apagar as mensagens. Tente de novo.",
+    "bipe_app_drafts_banner": "Rascunho do assistente (%1$s)",
+    "bipe_app_drafts_title": "Rascunhos",
+    "bipe_app_drafts_send": "Enviar",
+    "bipe_app_drafts_edit": "Editar",
+    "bipe_app_drafts_discard": "Descartar",
+    "bipe_app_drafts_empty": "Nenhum rascunho. Quando seu assistente escrever um, ele aparece aqui.",
+    "bipe_app_drafts_send_failed": "Não deu para enviar o rascunho. Tente de novo.",
+    "bipe_app_drafts_nothing_sent": "Nada sai até você tocar em Enviar.",
+    "bipe_privacy_assistants": "Assistentes de IA",
+    "bipe_privacy_assistant_send": "Assistente pode enviar",
+    "bipe_privacy_assistant_send_footer": "Desligado: seu assistente só deixa rascunhos, e quem envia é você. Ligado: ele pode enviar por você, e a conversa mostra que a mensagem veio do seu assistente.",
+    "bipe_app_assistant_sent_label": "Enviada pelo assistente de %1$s"
   }
 }
