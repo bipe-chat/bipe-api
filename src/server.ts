@@ -29,7 +29,7 @@ import { createGovbrChallenge, GOVBR_PDF_MAX_BYTES, pruneGovbrChallenges, submit
 import { ProfileFacts } from "./profile-facts.js";
 import { Theft } from "./theft.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
-import { accountRules, legalRules, profileRules } from "./registry.js";
+import { accountRules, assistantRules, legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
@@ -58,6 +58,7 @@ import { getWorkHours, setWorkHours } from "./work-hours.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
 import { orderHousekeeping } from "./orders.js";
+import { assistantFacts, oneAssistant } from "./assistants.js";
 import { handleMcp, MCP_MAX_BODY_BYTES } from "./mcp.js";
 import { queueHousekeeping } from "./queue.js";
 import { quoteHousekeeping } from "./quotes.js";
@@ -172,6 +173,8 @@ const limits = {
   newsSwitch: new RateLimiter(20, 3_600_000),
   starlingsReply: new RateLimiter(600, 3_600_000),
   banner: new RateLimiter(120, 60_000),
+  assistant: new RateLimiter(120, 60_000),
+  assistantResolve: new RateLimiter(60, 60_000),
   mcp: new RateLimiter(60, 60_000),
   workHours: new RateLimiter(30, 3_600_000),
   // gov.br signed challenge (bipe#543).
@@ -314,6 +317,7 @@ syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
 const CnpjBody = z.object({ cnpj: z.string().max(32) });
 const BrandMarkInviteBody = z.object({ label: z.string().max(32) });
+const AssistantResolveBody = z.object({ user_ids: z.array(z.string().max(512)).max(assistantRules.maxResolve) });
 const EcnpjBody = z.object({ signature: z.string().min(1).max(131_072) });
 const DomainBody = z.object({ domain: z.string().max(253) });
 
@@ -1101,6 +1105,21 @@ app.get("/v1/badges/:userId", async (c) => {
   if (result.status === 410) return c.json({ reason: result.reason }, 410);
   if (result.status === 404) throw new ApiError("not_found");
   return c.json(result.envelope);
+});
+
+// Assistants as chat members (ADR 0210, bipe#867). Public like the badge: anyone who sees the account may check it.
+app.use("/v1/assistants/:userId", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.post("/v1/assistants/resolve", smallBody, async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.assistantResolve.check(userId);
+  const body = await parse(c, AssistantResolveBody);
+  return c.json({ assistants: await assistantFacts(db, (id) => badges.verifiedBrand(id), body.user_ids) });
+});
+app.get("/v1/assistants/:userId", async (c) => {
+  limits.assistant.check(clientIp(c));
+  const facts = await oneAssistant(db, (id) => badges.verifiedBrand(id), c.req.param("userId"));
+  c.header("cache-control", "public, max-age=300");
+  return c.json(facts);
 });
 
 // Brand marks (ADR 0162, bipe#483). Public like the badge: customers check a reseller's marks. The apps verify each
