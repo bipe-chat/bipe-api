@@ -2031,6 +2031,7 @@
     "bipe_assistant_model_fora": "A IA dele roda fora do Brasil",
     "bipe_assistant_model_desconhecido": "Não se sabe onde a IA dele roda",
     "bipe_assistant_joined": "%1$s adicionou o assistente %2$s. Ele lê as mensagens deste grupo.",
-    "bipe_assistant_admin_only": "Só quem administra o grupo pode adicionar um assistente."
+    "bipe_assistant_admin_only": "Só quem administra o grupo pode adicionar um assistente.",
+    "bipe_app_assistant_reads": "Um assistente de %1$s lê esta conversa"
   }
 }

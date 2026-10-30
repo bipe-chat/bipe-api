@@ -2031,6 +2031,7 @@
     "bipe_assistant_model_fora": "Its AI runs outside Brazil",
     "bipe_assistant_model_desconhecido": "Where its AI runs is unknown",
     "bipe_assistant_joined": "%1$s added the assistant %2$s. It reads this group's messages.",
-    "bipe_assistant_admin_only": "Only a group admin can add an assistant."
+    "bipe_assistant_admin_only": "Only a group admin can add an assistant.",
+    "bipe_app_assistant_reads": "An assistant of %1$s reads this chat"
   }
 }
