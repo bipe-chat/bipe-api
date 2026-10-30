@@ -326,6 +326,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     // Brand marks (ADR 0162): a mark ends with either account, so the deletion removes the user's marks as brand or
     // reseller, the invites they made and the events they did. Events of the other party keep only that party's ID.
     await q("DELETE FROM brand_marks WHERE brand_user_id = $1 OR reseller_user_id = $1");
+    await q("DELETE FROM assistant_accounts WHERE user_id = $1 OR operator_user_id = $1");
     await q("DELETE FROM brand_mark_invites WHERE brand_user_id = $1");
     await q("DELETE FROM brand_mark_events WHERE actor_user_id = $1");
     // Theft protection (ADR 0044, ADR 0051): the user's guardians, guardian roles, phone IDs and marks go. Marks the
