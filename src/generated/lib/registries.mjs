@@ -67,6 +67,7 @@ function fail(msg) {
 export function validateMcpTools(mt) {
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (!eq(mt.surfaces, ["bridge", "public", "personal"]) || !eq(mt.classes, ["public", "metadata", "content"]) || !eq(mt.writes, ["none", "draft", "send", "state"])) fail("mcp-tools: unsupported surfaces, classes or writes");
+  if (mt.readerMarker?.eventType !== "chat.bipe.assistant" || mt.readerMarker?.field !== "full_content") fail("mcp-tools: readerMarker must be chat.bipe.assistant full_content (ADR 0130)");
   const ps = mt.personalSend;
   if (!ps || ps.accountDataType !== "chat.bipe.assistant_send" || ps.default !== false || ps.scope !== "content-send" || ps.markerField !== "chat.bipe.assistant") fail("mcp-tools: personalSend must be the ADR 0210 switch, off by default");
   if (!Number.isInteger(ps.clientMaxLength) || ps.clientMaxLength < 8 || ps.clientMaxLength > 256) fail("mcp-tools: personalSend.clientMaxLength must be an integer from 8 to 256");
@@ -109,6 +110,22 @@ export function assistantSender(messageContent, reg) {
   if (!m || typeof m !== "object" || Array.isArray(m)) return null;
   const client = typeof m.client === "string" ? m.client.trim() : "";
   return client && client.length <= ps.clientMaxLength ? client : null;
+}
+
+/**
+ * Members whose assistant reads the whole chat (ADR 0130, bipe-chat/bipe#439): from the room's state events of type
+ * readerMarker.eventType, the state keys whose content has readerMarker.field exactly true and whose sender is the
+ * state key. Sorted, each once. The apps show bipe_app_assistant_reads for each.
+ */
+export function assistantReaders(stateEvents, reg) {
+  const rm = reg.mcpTools.readerMarker;
+  const out = new Set();
+  for (const e of stateEvents ?? []) {
+    if (!e || e.type !== rm.eventType || typeof e.state_key !== "string" || !e.state_key.startsWith("@")) continue;
+    if (e.sender !== e.state_key) continue;
+    if (e.content?.[rm.field] === true) out.add(e.state_key);
+  }
+  return [...out].sort();
 }
 
 // Assistant drafts (bipe ADR 0210, bipe-chat/bipe#866; docs/drafts-room.md).
@@ -187,6 +204,16 @@ export function validateDmPowerLevels(pl) {
   }
   for (const type of ["m.room.message", "m.reaction", "m.room.redaction", "org.matrix.msc3401.call.member"]) {
     if (pl.events?.[type] !== undefined && pl.events[type] > pl.usersDefault) fail(`dm-power-levels: ${type} must stay open`);
+  }
+  // ADR 0210, bipe-chat/bipe#879: every member sets their own assistant marker, in DMs and in groups.
+  if (pl.events?.["chat.bipe.assistant"] !== pl.usersDefault) fail("dm-power-levels: chat.bipe.assistant must be at usersDefault");
+  const ge = pl.groupEvents ?? {};
+  for (const [type, v] of Object.entries(ge)) {
+    if (!level(v) || !/^[a-z0-9._]+$/.test(type)) fail(`dm-power-levels: group event ${type}`);
+  }
+  if (ge["chat.bipe.assistant"] !== 0) fail("dm-power-levels: groupEvents chat.bipe.assistant must be 0");
+  for (const type of ["m.room.power_levels", "m.room.encryption", "m.room.history_visibility", "m.room.tombstone", "m.room.server_acl"]) {
+    if (!(ge[type] >= 100)) fail(`dm-power-levels: groupEvents ${type} must be 100`);
   }
 }
 

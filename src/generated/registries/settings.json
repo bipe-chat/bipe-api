@@ -67,7 +67,7 @@
           "key": "assistants",
           "title": "bipe_privacy_assistants",
           "rows": [
-            { "key": "assistantSend", "title": "bipe_privacy_assistant_send", "footer": "bipe_privacy_assistant_send_footer", "kind": "switch", "adr": "0210", "gate": "planned:439" }
+            { "key": "assistantSend", "title": "bipe_privacy_assistant_send", "footer": "bipe_privacy_assistant_send_footer", "kind": "switch", "adr": "0210" }
           ]
         }
       ]

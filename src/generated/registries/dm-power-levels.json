@@ -1,5 +1,5 @@
 {
-  "$comment": "ADR 0141, bipe-chat/bipe#532: the m.room.power_levels content of a new DM. Both people sit at usersDefault, so neither can invite, kick, ban, delete the other person's messages or change the room (name, photo, topic, power levels, join rules, history, encryption). Messages, reactions, deleting own messages and call membership stay at 0. Clients create the room with the user at createLevel and the other person at 0, so that the server can write the first state and the invite, then send this content. Old DMs keep their power levels.",
+  "$comment": "ADR 0141, bipe-chat/bipe#532: the m.room.power_levels content of a new DM. Both people sit at usersDefault, so neither can invite, kick, ban, delete the other person's messages or change the room (name, photo, topic, power levels, join rules, history, encryption). Messages, reactions, deleting own messages and call membership stay at 0. Clients create the room with the user at createLevel and the other person at 0, so that the server can write the first state and the invite, then send this content. Old DMs keep their power levels. chat.bipe.assistant stays at 0 (ADR 0210, bipe-chat/bipe#879): a member sets their own assistant marker; a state key that starts with @ must equal the sender (Matrix spec), so nobody can set another member's. groupEvents is the events map of a new group, sent as the power_level_content_override of Client.createRoom. Synapse replaces its whole default events map with an override, so groupEvents repeats the Synapse defaults for a private chat (unverified against the running Synapse version, 30 October 2026) and adds the marker.",
   "version": 1,
   "createLevel": 100,
   "usersDefault": 0,
@@ -9,7 +9,9 @@
   "kick": 100,
   "ban": 100,
   "redact": 100,
-  "notifications": { "room": 100 },
+  "notifications": {
+    "room": 100
+  },
   "events": {
     "m.room.avatar": 100,
     "m.room.canonical_alias": 100,
@@ -26,6 +28,20 @@
     "m.room.message": 0,
     "m.room.redaction": 0,
     "m.call.member": 0,
-    "org.matrix.msc3401.call.member": 0
+    "org.matrix.msc3401.call.member": 0,
+    "chat.bipe.assistant": 0
+  },
+  "groupEvents": {
+    "m.room.avatar": 50,
+    "m.room.canonical_alias": 50,
+    "m.room.encryption": 100,
+    "m.room.history_visibility": 100,
+    "m.room.name": 50,
+    "m.room.pinned_events": 50,
+    "m.room.power_levels": 100,
+    "m.room.server_acl": 100,
+    "m.room.tombstone": 100,
+    "m.room.topic": 50,
+    "chat.bipe.assistant": 0
   }
 }
