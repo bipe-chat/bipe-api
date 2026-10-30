@@ -2019,6 +2019,10 @@
     "bipe_app_drafts_discard": "Discard",
     "bipe_app_drafts_empty": "No drafts. When your assistant writes one, it shows up here.",
     "bipe_app_drafts_send_failed": "Couldn't send the draft. Try again.",
-    "bipe_app_drafts_nothing_sent": "Nothing goes out until you tap Send."
+    "bipe_app_drafts_nothing_sent": "Nothing goes out until you tap Send.",
+    "bipe_privacy_assistants": "AI assistants",
+    "bipe_privacy_assistant_send": "Assistant can send",
+    "bipe_privacy_assistant_send_footer": "Off: your assistant only leaves drafts, and you send. On: it can send as you, and the chat shows the message came from your assistant.",
+    "bipe_app_assistant_sent_label": "Sent by %1$s's assistant"
   }
 }

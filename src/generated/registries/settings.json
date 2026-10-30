@@ -62,6 +62,13 @@
             { "key": "export", "title": "bipe_privacy_export", "footer": "bipe_privacy_export_footer", "kind": "action", "adr": "0112" },
             { "key": "whatBipeKeeps", "title": "bipe_privacy_what_bipe_keeps", "kind": "url", "url": "lgpd", "adr": "0090" }
           ]
+        },
+        {
+          "key": "assistants",
+          "title": "bipe_privacy_assistants",
+          "rows": [
+            { "key": "assistantSend", "title": "bipe_privacy_assistant_send", "footer": "bipe_privacy_assistant_send_footer", "kind": "switch", "adr": "0210", "gate": "planned:439" }
+          ]
         }
       ]
     },

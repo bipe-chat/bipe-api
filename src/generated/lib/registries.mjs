@@ -66,14 +66,18 @@ function fail(msg) {
 export function validateMcpTools(mt) {
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (!eq(mt.surfaces, ["bridge", "public", "personal"]) || !eq(mt.classes, ["public", "metadata", "content"]) || !eq(mt.writes, ["none", "draft", "send", "state"])) fail("mcp-tools: unsupported surfaces, classes or writes");
+  const ps = mt.personalSend;
+  if (!ps || ps.accountDataType !== "chat.bipe.assistant_send" || ps.default !== false || ps.scope !== "content-send" || ps.markerField !== "chat.bipe.assistant") fail("mcp-tools: personalSend must be the ADR 0210 switch, off by default");
+  if (!Number.isInteger(ps.clientMaxLength) || ps.clientMaxLength < 8 || ps.clientMaxLength > 256) fail("mcp-tools: personalSend.clientMaxLength must be an integer from 8 to 256");
   if (!Array.isArray(mt.tools) || !mt.tools.length) fail("mcp-tools: tools must be a non-empty list");
   const names = new Set();
   for (const t of mt.tools) {
     const keys = ["name", "surface", "class", "writes", "scope", "en", "pt"];
     if (Object.keys(t).some((k) => !keys.includes(k))) fail(`mcp-tools: ${t.name}: unknown field`);
     if (typeof t.name !== "string" || !/^[a-z]+(_[a-z]+)*$/.test(t.name)) fail(`mcp-tools: name "${t.name}" must be snake_case`);
-    if (names.has(t.name)) fail(`mcp-tools: duplicate name ${t.name}`);
-    names.add(t.name);
+    // Each surface is its own MCP server, so a name is unique per surface.
+    if (names.has(`${t.surface}/${t.name}`)) fail(`mcp-tools: duplicate name ${t.name} on ${t.surface}`);
+    names.add(`${t.surface}/${t.name}`);
     if (!mt.surfaces.includes(t.surface)) fail(`mcp-tools: ${t.name}: unknown surface`);
     if (!mt.classes.includes(t.class)) fail(`mcp-tools: ${t.name}: unknown class`);
     if (!mt.writes.includes(t.writes)) fail(`mcp-tools: ${t.name}: unknown writes`);
@@ -85,10 +89,25 @@ export function validateMcpTools(mt) {
     if (t.class !== "public" && !t.scope) fail(`mcp-tools: ${t.name}: a ${t.class} tool needs a scope`);
     if (t.surface === "public" && (t.class !== "public" || t.writes !== "none" || t.scope)) fail(`mcp-tools: ${t.name}: a public tool is class public, writes none, no scope`);
     if (t.class === "public" && t.surface !== "public") fail(`mcp-tools: ${t.name}: class public belongs to the public surface`);
-    // ADR 0210: assistants draft, people send.
-    if (t.surface === "personal" && t.writes === "send") fail(`mcp-tools: ${t.name}: a personal tool never sends (ADR 0210); use writes draft`);
+    // ADR 0210 (MZ, 30 October 2026): a personal tool sends only behind the user's switch and its own scope.
+    if (t.surface === "personal" && t.writes === "send" && t.scope !== mt.personalSend?.scope) fail(`mcp-tools: ${t.name}: a personal tool that sends needs scope ${mt.personalSend?.scope}`);
+    if (t.surface !== "personal" && t.scope === mt.personalSend?.scope) fail(`mcp-tools: ${t.name}: scope ${t.scope} is for personal sends only`);
     if (t.writes === "draft" && t.surface !== "personal") fail(`mcp-tools: ${t.name}: only personal tools write drafts`);
   }
+}
+
+/** Whether bipe-mcp may send: the switch content (global account data chat.bipe.assistant_send) says enabled true. Anything else is off. */
+export function assistantSendAllowed(content) {
+  return !!content && typeof content === "object" && !Array.isArray(content) && content.enabled === true;
+}
+
+/** The client name of a message an assistant sent (field chat.bipe.assistant), or null. Apps label such a message. */
+export function assistantSender(messageContent, reg) {
+  const ps = reg.mcpTools.personalSend;
+  const m = messageContent?.[ps.markerField];
+  if (!m || typeof m !== "object" || Array.isArray(m)) return null;
+  const client = typeof m.client === "string" ? m.client.trim() : "";
+  return client && client.length <= ps.clientMaxLength ? client : null;
 }
 
 // Assistant drafts (bipe ADR 0210, bipe-chat/bipe#866; docs/drafts-room.md).
