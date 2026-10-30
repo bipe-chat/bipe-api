@@ -1,0 +1,9 @@
+{
+  "$comment": "Assistant drafts (bipe ADR 0210, bipe-chat/bipe#866; protocol: docs/drafts-room.md). Each account has one private, end-to-end encrypted drafts room with only the user's own devices. Its room ID is in global account data accountDataType as {\"room_id\": ...}; that ID, not the room type, identifies the room. The creating device sets the creation type roomType when its SDK can. A draft is an m.room.message with msgtype m.text in that room: body is the draft text, and the field named field holds {\"room_id\", \"reply_to\"?, \"thread_root\"?, \"client\"}. Other Matrix apps show the draft as plain text. The Bipe apps show a draft only when its sender is the user's own account and the target room is a joined room. Send and discard redact the draft message. bodyMaxLength and clientMaxLength cap what the apps show; a longer draft is ignored. Rules: test-vectors/drafts.json.",
+  "version": 1,
+  "roomType": "chat.bipe.drafts",
+  "accountDataType": "chat.bipe.drafts_room",
+  "field": "chat.bipe.draft",
+  "bodyMaxLength": 8000,
+  "clientMaxLength": 64
+}
