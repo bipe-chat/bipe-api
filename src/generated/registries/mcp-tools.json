@@ -1,0 +1,27 @@
+{
+  "$comment": "MCP tools of every Bipe MCP surface, one data class each (bipe ADR 0130, ADR 0210; bipe-chat/bipe#436). surface: bridge (bipe-business, the company's server), public (bipe-api, mcp.bipe.chat, Sao Paulo), personal (bipe-mcp on the user's machine). class: public (anyone can see it on bipe.chat, no opt-in), metadata (lists, assignees, tags, status, times; no text), content (message text, notes, attachments; off by default, opt-in per scope with the destination named). writes: none, draft (puts a draft in the user's apps, bipe#866), send (sends a message), state (changes status, tags or room state). A personal tool never has writes send (ADR 0210: assistants draft, people send). A public tool has class public, writes none and no scope. The servers read this file; docs and the site render it. No second list.",
+  "version": 1,
+  "surfaces": ["bridge", "public", "personal"],
+  "classes": ["public", "metadata", "content"],
+  "writes": ["none", "draft", "send", "state"],
+  "tools": [
+    { "name": "resolve_handle", "surface": "public", "class": "public", "writes": "none", "en": "Find the public Bipe account behind an @handle.", "pt": "Acha a conta pública do Bipe por trás de um @." },
+    { "name": "get_public_profile", "surface": "public", "class": "public", "writes": "none", "en": "Read the public profile of an @handle, as bipe.chat shows it.", "pt": "Lê o perfil público de um @, como o bipe.chat mostra." },
+    { "name": "check_cnpj_seal", "surface": "public", "class": "public", "writes": "none", "en": "Check whether an @handle has a verified company seal (CNPJ).", "pt": "Confere se um @ tem o selo de empresa verificada (CNPJ)." },
+
+    { "name": "list_conversations", "surface": "bridge", "class": "metadata", "writes": "none", "scope": "conversations:read", "en": "List customer conversations with status, assignee, tags and times. No text.", "pt": "Lista as conversas com clientes: status, responsável, etiquetas e horários. Sem texto." },
+    { "name": "read_conversation", "surface": "bridge", "class": "content", "writes": "none", "scope": "content:read", "en": "Read the messages of one customer conversation.", "pt": "Lê as mensagens de uma conversa com cliente." },
+    { "name": "send_message", "surface": "bridge", "class": "content", "writes": "send", "scope": "content:send", "en": "Send a message to a customer as the company. The customer sees that a program answers.", "pt": "Manda uma mensagem ao cliente em nome da empresa. O cliente vê que um programa responde." },
+    { "name": "send_question", "surface": "bridge", "class": "content", "writes": "send", "scope": "content:send", "en": "Send a question card with answer buttons to a customer.", "pt": "Manda ao cliente uma pergunta com botões de resposta." },
+    { "name": "assign", "surface": "bridge", "class": "metadata", "writes": "state", "scope": "conversations:write", "en": "Assign a conversation to a person on the team.", "pt": "Passa uma conversa para uma pessoa da equipe." },
+    { "name": "set_status", "surface": "bridge", "class": "metadata", "writes": "state", "scope": "conversations:write", "en": "Set the status of a conversation: open, waiting or done.", "pt": "Muda o status de uma conversa: aberta, aguardando ou resolvida." },
+    { "name": "tag", "surface": "bridge", "class": "metadata", "writes": "state", "scope": "conversations:write", "en": "Add or remove a tag on a conversation.", "pt": "Põe ou tira uma etiqueta de uma conversa." },
+    { "name": "add_note", "surface": "bridge", "class": "content", "writes": "state", "scope": "content:notes", "en": "Add an internal note to a conversation. The customer never sees it.", "pt": "Põe uma nota interna na conversa. O cliente nunca vê." },
+
+    { "name": "list_chats", "surface": "personal", "class": "metadata", "writes": "none", "scope": "chats:read", "en": "List your chats with names, unread counts and times. No text.", "pt": "Lista suas conversas com nomes, não lidas e horários. Sem texto." },
+    { "name": "read_my_messages", "surface": "personal", "class": "content", "writes": "none", "scope": "content-own", "en": "Read the messages you sent in a chat, and your notes. Never other people's messages.", "pt": "Lê as mensagens que você mandou numa conversa e suas notas. Nunca as dos outros." },
+    { "name": "read_chat", "surface": "personal", "class": "content", "writes": "none", "scope": "content-full", "en": "Read every message of a chat. Works only after set_full_content; every member then sees that your assistant reads.", "pt": "Lê todas as mensagens de uma conversa. Só funciona depois de set_full_content; aí todo mundo da conversa vê que seu assistente lê." },
+    { "name": "draft_message", "surface": "personal", "class": "content", "writes": "draft", "scope": "content-own", "en": "Put a draft in a chat on your phone. Nothing is sent until you tap send.", "pt": "Deixa um rascunho numa conversa no seu celular. Nada sai até você tocar em enviar." },
+    { "name": "set_full_content", "surface": "personal", "class": "metadata", "writes": "state", "scope": "chats:read", "en": "Turn full reading of one chat on or off. On shows every member a notice.", "pt": "Liga ou desliga a leitura completa de uma conversa. Ligada, todo mundo da conversa vê um aviso." }
+  ]
+}
