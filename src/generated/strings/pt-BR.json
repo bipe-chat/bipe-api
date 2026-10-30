@@ -2011,6 +2011,26 @@
     "bipe_select_forward_done": "Mensagens encaminhadas",
     "bipe_select_delete_title": "Apagar suas mensagens?",
     "bipe_select_delete_body": "Suas mensagens escolhidas somem para todo mundo na conversa. As mensagens de outras pessoas continuam lá.",
-    "bipe_select_delete_failed": "Não deu para apagar as mensagens. Tente de novo."
+    "bipe_select_delete_failed": "Não deu para apagar as mensagens. Tente de novo.",
+    "bipe_report_category_csam": "Abuso sexual de criança",
+    "bipe_report_category_csam_hint": "Fotos, vídeos ou conversa sexual com menor de idade.",
+    "bipe_report_category_child_safety": "Risco para criança",
+    "bipe_report_category_child_safety_hint": "Aliciamento, exploração ou perigo para criança ou adolescente.",
+    "bipe_report_category_ncii": "Imagem íntima sem permissão",
+    "bipe_report_category_ncii_hint": "Nudez ou sexo de alguém que não autorizou a divulgação.",
+    "bipe_report_category_threat": "Ameaça",
+    "bipe_report_category_threat_hint": "Ameaça de violência contra alguém.",
+    "bipe_report_category_takeover": "Conta invadida",
+    "bipe_report_category_takeover_hint": "Alguém tomou a conta de outra pessoa e fala no nome dela.",
+    "bipe_report_category_scam": "Golpe",
+    "bipe_report_category_scam_hint": "Pede Pix, dados ou dinheiro com mentira.",
+    "bipe_report_category_impersonation": "Se passa por outra pessoa",
+    "bipe_report_category_impersonation_hint": "Finge ser alguém, uma empresa ou um órgão público.",
+    "bipe_report_category_illegal_hate": "Discriminação ou ódio",
+    "bipe_report_category_illegal_hate_hint": "Racismo ou outro crime de ódio previsto na lei.",
+    "bipe_report_category_spam": "Spam",
+    "bipe_report_category_spam_hint": "Mensagens em massa que você não pediu.",
+    "bipe_report_category_other": "Outro motivo",
+    "bipe_report_category_other_hint": "Algo que não está na lista."
   }
 }

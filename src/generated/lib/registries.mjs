@@ -49,6 +49,7 @@ export function loadRegistries(root) {
     profileFacts: read("registries/profile-facts.json"),
     theft: read("registries/theft-protection.json"),
     workHours: read("registries/work-hours.json"),
+    reportCategories: read("registries/report-categories.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -58,6 +59,27 @@ export function loadRegistries(root) {
 
 function fail(msg) {
   throw new Error(`registry validation failed: ${msg}`);
+}
+
+// Report categories (bipe-chat/bipe#697, docs/report-envelope.md). The ids are the contract of the sealed report.
+export const REPORT_CATEGORY_IDS = ["csam", "child_safety", "ncii", "threat", "takeover", "scam", "impersonation", "illegal_hate", "spam", "other"];
+export function validateReportCategories(reg) {
+  const rc = reg.reportCategories;
+  if (rc.version !== 1 || !Array.isArray(rc.categories)) fail("report-categories: version must be 1 with a categories list");
+  const ids = rc.categories.map((c) => c.id);
+  if (JSON.stringify([...ids].sort()) !== JSON.stringify([...REPORT_CATEGORY_IDS].sort())) fail(`report-categories: ids must be exactly ${REPORT_CATEGORY_IDS.join(", ")}`);
+  if (ids.at(-1) !== "other") fail("report-categories: other must be last");
+  for (const c of rc.categories) {
+    if (Object.keys(c).sort().join() !== "firstActionMinutes,flaggerEligible,id") fail(`report-categories: ${c.id} has unknown or missing fields`);
+    if (!Number.isInteger(c.firstActionMinutes) || c.firstActionMinutes < 1 || c.firstActionMinutes > 10080) fail(`report-categories: ${c.id} firstActionMinutes must be 1 to 10080`);
+    if (typeof c.flaggerEligible !== "boolean") fail(`report-categories: ${c.id} flaggerEligible must be a boolean`);
+    for (const key of [`bipe_report_category_${c.id}`, `bipe_report_category_${c.id}_hint`]) {
+      if (!reg.strings.strings[key] || !reg.stringsEn.strings[key]) fail(`report-categories: missing string ${key}`);
+    }
+  }
+  for (const id of ["csam", "child_safety"]) {
+    if (rc.categories.find((c) => c.id === id).firstActionMinutes > 60) fail(`report-categories: ${id} first action must be 60 minutes or less`);
+  }
 }
 
 // ADR 0205 (bipe-chat/bipe#837): sticker limits, account data names and the on-device search words.
@@ -189,6 +211,7 @@ export function validateMessageFormatting(formatting) {
 }
 
 function validate(reg) {
+  validateReportCategories(reg);
   validateMessageFormatting(reg.messageFormatting);
   validateTrustRegistry(reg.trust);
   validateAgendaTemplates(reg);
