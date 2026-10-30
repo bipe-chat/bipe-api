@@ -58,6 +58,7 @@ import { getWorkHours, setWorkHours } from "./work-hours.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
 import { orderHousekeeping } from "./orders.js";
+import { handleMcp, MCP_MAX_BODY_BYTES } from "./mcp.js";
 import { queueHousekeeping } from "./queue.js";
 import { quoteHousekeeping } from "./quotes.js";
 import { businessRoutes, CATALOG_PHOTO_PATH } from "./business-routes.js";
@@ -171,6 +172,7 @@ const limits = {
   newsSwitch: new RateLimiter(20, 3_600_000),
   starlingsReply: new RateLimiter(600, 3_600_000),
   banner: new RateLimiter(120, 60_000),
+  mcp: new RateLimiter(60, 60_000),
   workHours: new RateLimiter(30, 3_600_000),
   // gov.br signed challenge (bipe#543).
   govbrChallenge: new RateLimiter(10, 3_600_000),
@@ -463,6 +465,23 @@ app.get("/v1/banner", async (c) => {
   limits.banner.check(clientIp(c));
   c.header("cache-control", "public, max-age=60");
   return c.json({ banner: await currentBanner(db) });
+});
+
+// Public MCP server (ADR 0130, ADR 0210, bipe#438). No auth, public data only; the edge serves it as
+// https://mcp.bipe.chat/mcp. Stateless: no session, no server-sent events, so GET has nothing to stream.
+const mcpBody = bodyLimit({ maxSize: MCP_MAX_BODY_BYTES, onError: (c) => c.json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Request too large" } }, 413) });
+app.get("/v1/mcp", (c) => c.body(null, 405, { allow: "POST" }));
+app.post("/v1/mcp", mcpBody, async (c) => {
+  limits.mcp.check(clientIp(c));
+  const lookup = (handle: string) =>
+    publicProfile(db, config.PUBLIC_API_URL, handle, badges).catch((e: unknown) => {
+      if (e instanceof ApiError && e.id === "not_found") return null;
+      throw e;
+    });
+  const reply = await handleMcp(await c.req.text(), lookup, config.PUBLIC_SITE_URL);
+  c.header("cache-control", "no-store");
+  if (reply.status === 202) return c.body(null, 202);
+  return c.json(reply.body, reply.status);
 });
 
 // ADR 0094: the app lost the answer of a sign-up. The key is the only proof, so no form and no attestation.
