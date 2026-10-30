@@ -2032,6 +2032,26 @@
     "bipe_assistant_model_desconhecido": "Where its AI runs is unknown",
     "bipe_assistant_joined": "%1$s added the assistant %2$s. It reads this group's messages.",
     "bipe_assistant_admin_only": "Only a group admin can add an assistant.",
-    "bipe_app_message_action_copy_link": "Copy link"
+    "bipe_app_message_action_copy_link": "Copy link",
+    "bipe_report_category_csam": "Child sexual abuse",
+    "bipe_report_category_csam_hint": "Sexual photos, videos or talk involving a minor.",
+    "bipe_report_category_child_safety": "Child at risk",
+    "bipe_report_category_child_safety_hint": "Grooming, exploitation or danger to a child or teenager.",
+    "bipe_report_category_ncii": "Intimate image shared without consent",
+    "bipe_report_category_ncii_hint": "Nudity or sex of someone who did not agree to share it.",
+    "bipe_report_category_threat": "Threat",
+    "bipe_report_category_threat_hint": "A threat of violence against someone.",
+    "bipe_report_category_takeover": "Hacked account",
+    "bipe_report_category_takeover_hint": "Someone took over another person's account and speaks as them.",
+    "bipe_report_category_scam": "Scam",
+    "bipe_report_category_scam_hint": "Asks for Pix, data or money with a lie.",
+    "bipe_report_category_impersonation": "Pretends to be someone else",
+    "bipe_report_category_impersonation_hint": "Pretends to be a person, a company or a public body.",
+    "bipe_report_category_illegal_hate": "Discrimination or hate",
+    "bipe_report_category_illegal_hate_hint": "Racism or another hate crime under the law.",
+    "bipe_report_category_spam": "Spam",
+    "bipe_report_category_spam_hint": "Bulk messages you did not ask for.",
+    "bipe_report_category_other": "Something else",
+    "bipe_report_category_other_hint": "Something that is not on the list."
   }
 }
