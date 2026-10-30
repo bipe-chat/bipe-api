@@ -1,0 +1,6 @@
+{
+  "$comment": "Assistants as chat members (bipe ADR 0210 point 1, bipe-chat/bipe#867). Any AI provider can run an assistant as a Bipe account. Staff register it with its operator, a company account with a verified CNPJ claim (ADR 0042); a foreign operator without a CNPJ needs a staff review before that (default chosen in ADR 0210). bipe-api answers GET /v1/assistants/{userId} (public) and POST /v1/assistants/resolve (up to maxResolve IDs, signed in). The apps show bipe_assistant_label on the profile and the member list, the operator and the model location (bipe_assistant_model_<location>), and bipe_assistant_joined when one joins a group. Only a group admin adds an assistant to a group. modelLocations: where the assistant's model runs, as the operator declares it.",
+  "version": 1,
+  "modelLocations": ["brasil", "fora", "desconhecido"],
+  "maxResolve": 100
+}

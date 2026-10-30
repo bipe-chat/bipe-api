@@ -147,6 +147,7 @@ export class Growth {
           await this.syncVerifications(users);
           await this.syncGroups(users);
           await this.syncPlatforms(users);
+          await this.syncFifthContacts(users);
         }
         await this.db.query("DELETE FROM growth_events WHERE day < current_date - $1::int", [growthRules.retentionDaysKept]);
       } finally {
@@ -365,6 +366,49 @@ export class Growth {
     });
   }
 
+  /**
+   * contact_fifth (bipe-chat/bipe#752): the day each user got a fifth contact. A contact is another local person who
+   * shares a DM: a room that is not a space, has no room name, 2 joined members, no invited member, and m.room.member
+   * events from exactly those 2 people. The day of a contact is the day of the first member event of the person who
+   * came second. Recomputed each pass over the rooms made in the kept period; only the day of the fifth is stored.
+   */
+  private async syncFifthContacts(users: Set<string>): Promise<void> {
+    const since = Date.now() - growthRules.retentionDaysKept * 86_400_000;
+    const { rows } = await this.synapse!.query<{ room_id: string; sender: string; ts: string }>(
+      `SELECT m.room_id, m.sender, min(m.origin_server_ts) AS ts FROM events c
+         JOIN room_stats_current r ON r.room_id = c.room_id
+         LEFT JOIN room_stats_state s ON s.room_id = c.room_id
+         JOIN events m ON m.room_id = c.room_id AND m.type = 'm.room.member' AND NOT m.outlier
+        WHERE c.type = 'm.room.create' AND c.origin_server_ts > $1 AND s.room_type IS NULL
+          AND r.joined_members = 2 AND r.invited_members = 0
+          AND NOT EXISTS (SELECT 1 FROM current_state_events n WHERE n.room_id = c.room_id AND n.type = 'm.room.name')
+        GROUP BY m.room_id, m.sender`,
+      [since],
+    );
+    const rooms = new Map<string, { sender: string; ts: number }[]>();
+    for (const r of rows) rooms.set(r.room_id, [...(rooms.get(r.room_id) ?? []), { sender: r.sender, ts: Number(r.ts) }]);
+    // Per user: each contact with the earliest time they first shared a DM.
+    const contacts = new Map<string, Map<string, number>>();
+    for (const members of rooms.values()) {
+      if (members.length !== 2) continue;
+      const [a, b] = members as [{ sender: string; ts: number }, { sender: string; ts: number }];
+      if (a.sender === b.sender || !users.has(a.sender) || !users.has(b.sender)) continue;
+      const at = Math.max(a.ts, b.ts);
+      for (const [user, other] of [[a.sender, b.sender], [b.sender, a.sender]] as const) {
+        const known = contacts.get(user) ?? new Map<string, number>();
+        known.set(other, Math.min(known.get(other) ?? at, at));
+        contacts.set(user, known);
+      }
+    }
+    await this.tx(async (q) => {
+      for (const [user, known] of contacts) {
+        if (known.size < 5) continue;
+        const fifth = [...known.values()].sort((x, y) => x - y)[4]!;
+        await this.put(q, this.uid(user), "contact_fifth", dayOf(fifth));
+      }
+    });
+  }
+
   async close(): Promise<void> {
     await this.synapse?.end();
   }
@@ -377,7 +421,19 @@ export type GrowthNumbers = {
   funnel: { step: string; users: number }[];
   retention: { week: string; signups: number; days: { day: number; kept: number; due: number }[] }[];
   totals: { event: string; users: number; count: number }[];
+  /** Days from sign-up to contact_fifth per sign-up week (bipe-chat/bipe#752). null: fewer reached it than the rank. */
+  contacts: { week: string; signups: number; reached: number; medianDays: number | null; p75Days: number | null; invitesAcceptedPerMember: number }[];
 };
+
+/**
+ * The q-quantile (0.5 median, 0.75 p75) of the days to an event over a whole cohort of `signups` people, where people
+ * who have not reached it count as later than everyone. `days` are those who reached it. null while the rank is past them.
+ */
+export function cohortQuantile(days: number[], signups: number, q: number): number | null {
+  const rank = Math.ceil(q * signups);
+  if (rank < 1 || rank > days.length) return null;
+  return [...days].sort((a, b) => a - b)[rank - 1]!;
+}
 
 const pct = (a: number, b: number) => (b ? `${((100 * a) / b).toFixed(1)}%` : "-");
 
@@ -423,11 +479,35 @@ export async function growthNumbers(db: Db, since: string): Promise<GrowthNumber
     "SELECT event, count(DISTINCT uid)::int AS users, sum(n)::int AS count FROM growth_events WHERE day >= $1::date GROUP BY 1 ORDER BY 1",
     [since],
   );
-  return { funnel, retention, totals: all.rows };
+  const fifth = await db.query<{ week: string; days: number | null; accepted: number }>(
+    `SELECT to_char(date_trunc('week', s.day), 'YYYY-MM-DD') AS week,
+            (SELECT min(f.day) - s.day FROM growth_events f WHERE f.uid = s.uid AND f.event = 'contact_fifth') AS days,
+            (SELECT coalesce(sum(r.n), 0)::int FROM growth_events r WHERE r.uid = s.uid AND r.event = 'invite_redeemed') AS accepted
+       FROM growth_events s
+      WHERE s.event = 'signup_done' AND s.day >= $1::date ORDER BY 1`,
+    [since],
+  );
+  const contactWeeks = new Map<string, typeof fifth.rows>();
+  for (const r of fifth.rows) contactWeeks.set(r.week, [...(contactWeeks.get(r.week) ?? []), r]);
+  const contacts = [...contactWeeks].map(([week, people]) => {
+    const days = people.filter((p) => p.days !== null).map((p) => Math.max(0, Number(p.days)));
+    const accepted = people.reduce((sum, p) => sum + Number(p.accepted), 0);
+    return {
+      week,
+      signups: people.length,
+      reached: days.length,
+      medianDays: cohortQuantile(days, people.length, 0.5),
+      p75Days: cohortQuantile(days, people.length, 0.75),
+      invitesAcceptedPerMember: Math.round((100 * accepted) / people.length) / 100,
+    };
+  });
+  return { funnel, retention, totals: all.rows, contacts };
 }
 
 /** The same numbers as text tables, for the CLI. */
-export async function growthReport(db: Db, since: string): Promise<{ funnel: FunnelStep[]; retention: RetentionRow[]; totals: Record<string, number> }> {
+export type ContactRow = { week: string; signups: number; reached: string; median_days: number | string; p75_days: number | string; invites_accepted_per_member: number };
+
+export async function growthReport(db: Db, since: string): Promise<{ funnel: FunnelStep[]; retention: RetentionRow[]; totals: Record<string, number>; contacts: ContactRow[] }> {
   const g = await growthNumbers(db, since);
   const first = g.funnel[0]?.users ?? 0;
   const funnel = g.funnel.map((f, k) => ({
@@ -446,5 +526,13 @@ export async function growthReport(db: Db, since: string): Promise<{ funnel: Fun
     totals[`${r.event} (users)`] = r.users;
     totals[`${r.event} (count)`] = r.count;
   }
-  return { funnel, retention, totals };
+  const contacts = g.contacts.map((w) => ({
+    week: w.week,
+    signups: w.signups,
+    reached: `${w.reached}/${w.signups} ${pct(w.reached, w.signups)}`,
+    median_days: w.medianDays ?? "-",
+    p75_days: w.p75Days ?? "-",
+    invites_accepted_per_member: w.invitesAcceptedPerMember,
+  }));
+  return { funnel, retention, totals, contacts };
 }

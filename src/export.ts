@@ -146,6 +146,12 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       "SELECT id, business_id, source, lines, total_amount_cents, fulfilment, payment, status, refuse_reason, created_at FROM orders WHERE customer_id = $1 OR business_id = $1 ORDER BY created_at",
       userId,
     ),
+    // Assistants (ADR 0210): rows where the caller is the assistant or its operator.
+    assistant_accounts: await all(
+      db,
+      "SELECT user_id, operator_user_id, model_location, registered_at, ended_at FROM assistant_accounts WHERE user_id = $1 OR operator_user_id = $1 ORDER BY registered_at",
+      userId,
+    ),
     // Brand marks (ADR 0162): marks the caller holds or granted, the caller's own invites (no code hash) and the steps
     // the caller took. The other party appears as an account ID, as both sides already see it.
     brand_marks: await all(
