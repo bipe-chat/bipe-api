@@ -51,6 +51,7 @@ export function loadRegistries(root) {
     workHours: read("registries/work-hours.json"),
     mcpTools: read("registries/mcp-tools.json"),
     drafts: read("registries/drafts.json"),
+    assistants: read("registries/assistants.json"),
     reportCategories: read("registries/report-categories.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -339,6 +340,9 @@ function validate(reg) {
   const vm = reg.voiceMedia;
   if (![vm.transcriptDays, vm.noTranscriptDays, vm.maxKeptPerAccount].every((n) => Number.isInteger(n) && n >= 1) || vm.noTranscriptDays < vm.transcriptDays) fail("voice-media: transcriptDays, noTranscriptDays and maxKeptPerAccount must be positive integers, noTranscriptDays at least transcriptDays");
   validateStickers(reg.stickers);
+  const as = reg.assistants;
+  if (JSON.stringify(as.modelLocations) !== '["brasil","fora","desconhecido"]' || !Number.isInteger(as.maxResolve) || as.maxResolve < 1 || as.maxResolve > 500) fail("assistants: modelLocations must be brasil, fora, desconhecido and maxResolve an integer from 1 to 500");
+  for (const loc of as.modelLocations) if (!reg.strings.strings[`bipe_assistant_model_${loc}`]) fail(`assistants: string bipe_assistant_model_${loc} missing`);
   validateMcpTools(reg.mcpTools);
   validateDrafts(reg.drafts);
   const pxm = reg.pixMarks;
