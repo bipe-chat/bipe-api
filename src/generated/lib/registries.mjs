@@ -49,6 +49,8 @@ export function loadRegistries(root) {
     profileFacts: read("registries/profile-facts.json"),
     theft: read("registries/theft-protection.json"),
     workHours: read("registries/work-hours.json"),
+    mcpTools: read("registries/mcp-tools.json"),
+    drafts: read("registries/drafts.json"),
     assistants: read("registries/assistants.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -59,6 +61,87 @@ export function loadRegistries(root) {
 
 function fail(msg) {
   throw new Error(`registry validation failed: ${msg}`);
+}
+
+// MCP tools (bipe ADR 0130, ADR 0210; bipe-chat/bipe#436): one data class per tool, content off by default.
+export function validateMcpTools(mt) {
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  if (!eq(mt.surfaces, ["bridge", "public", "personal"]) || !eq(mt.classes, ["public", "metadata", "content"]) || !eq(mt.writes, ["none", "draft", "send", "state"])) fail("mcp-tools: unsupported surfaces, classes or writes");
+  const ps = mt.personalSend;
+  if (!ps || ps.accountDataType !== "chat.bipe.assistant_send" || ps.default !== false || ps.scope !== "content-send" || ps.markerField !== "chat.bipe.assistant") fail("mcp-tools: personalSend must be the ADR 0210 switch, off by default");
+  if (!Number.isInteger(ps.clientMaxLength) || ps.clientMaxLength < 8 || ps.clientMaxLength > 256) fail("mcp-tools: personalSend.clientMaxLength must be an integer from 8 to 256");
+  if (!Array.isArray(mt.tools) || !mt.tools.length) fail("mcp-tools: tools must be a non-empty list");
+  const names = new Set();
+  for (const t of mt.tools) {
+    const keys = ["name", "surface", "class", "writes", "scope", "en", "pt"];
+    if (Object.keys(t).some((k) => !keys.includes(k))) fail(`mcp-tools: ${t.name}: unknown field`);
+    if (typeof t.name !== "string" || !/^[a-z]+(_[a-z]+)*$/.test(t.name)) fail(`mcp-tools: name "${t.name}" must be snake_case`);
+    // Each surface is its own MCP server, so a name is unique per surface.
+    if (names.has(`${t.surface}/${t.name}`)) fail(`mcp-tools: duplicate name ${t.name} on ${t.surface}`);
+    names.add(`${t.surface}/${t.name}`);
+    if (!mt.surfaces.includes(t.surface)) fail(`mcp-tools: ${t.name}: unknown surface`);
+    if (!mt.classes.includes(t.class)) fail(`mcp-tools: ${t.name}: unknown class`);
+    if (!mt.writes.includes(t.writes)) fail(`mcp-tools: ${t.name}: unknown writes`);
+    for (const lang of ["en", "pt"]) {
+      if (typeof t[lang] !== "string" || !t[lang].trim() || t[lang].length > 200 || t[lang].includes("—")) fail(`mcp-tools: ${t.name}: ${lang} must be one line of up to 200 characters, no em dash`);
+    }
+    if (t.scope !== undefined && (typeof t.scope !== "string" || !/^[a-z]+(-[a-z]+)*(:[a-z]+)?$/.test(t.scope))) fail(`mcp-tools: ${t.name}: bad scope`);
+    // Content is off by default: every tool that is not public needs a token scope that turns it on.
+    if (t.class !== "public" && !t.scope) fail(`mcp-tools: ${t.name}: a ${t.class} tool needs a scope`);
+    if (t.surface === "public" && (t.class !== "public" || t.writes !== "none" || t.scope)) fail(`mcp-tools: ${t.name}: a public tool is class public, writes none, no scope`);
+    if (t.class === "public" && t.surface !== "public") fail(`mcp-tools: ${t.name}: class public belongs to the public surface`);
+    // ADR 0210 (MZ, 30 October 2026): a personal tool sends only behind the user's switch and its own scope.
+    if (t.surface === "personal" && t.writes === "send" && t.scope !== mt.personalSend?.scope) fail(`mcp-tools: ${t.name}: a personal tool that sends needs scope ${mt.personalSend?.scope}`);
+    if (t.surface !== "personal" && t.scope === mt.personalSend?.scope) fail(`mcp-tools: ${t.name}: scope ${t.scope} is for personal sends only`);
+    if (t.writes === "draft" && t.surface !== "personal") fail(`mcp-tools: ${t.name}: only personal tools write drafts`);
+  }
+}
+
+/** Whether bipe-mcp may send: the switch content (global account data chat.bipe.assistant_send) says enabled true. Anything else is off. */
+export function assistantSendAllowed(content) {
+  return !!content && typeof content === "object" && !Array.isArray(content) && content.enabled === true;
+}
+
+/** The client name of a message an assistant sent (field chat.bipe.assistant), or null. Apps label such a message. */
+export function assistantSender(messageContent, reg) {
+  const ps = reg.mcpTools.personalSend;
+  const m = messageContent?.[ps.markerField];
+  if (!m || typeof m !== "object" || Array.isArray(m)) return null;
+  const client = typeof m.client === "string" ? m.client.trim() : "";
+  return client && client.length <= ps.clientMaxLength ? client : null;
+}
+
+// Assistant drafts (bipe ADR 0210, bipe-chat/bipe#866; docs/drafts-room.md).
+export function validateDrafts(d) {
+  if (d.roomType !== "chat.bipe.drafts" || d.accountDataType !== "chat.bipe.drafts_room" || d.field !== "chat.bipe.draft") fail("drafts: unsupported ADR 0210 names");
+  if (!Number.isInteger(d.bodyMaxLength) || d.bodyMaxLength < 1000 || d.bodyMaxLength > 65536) fail("drafts: bodyMaxLength must be an integer from 1000 to 65536");
+  if (!Number.isInteger(d.clientMaxLength) || d.clientMaxLength < 8 || d.clientMaxLength > 256) fail("drafts: clientMaxLength must be an integer from 8 to 256");
+}
+
+/**
+ * Whether the apps show a drafts room event as a draft, and why not (bipe-chat/bipe#866).
+ * event: { sender, type, redacted?, content }, an event of the drafts room. ctx: { ownUserId, joinedRoomIds }.
+ * Returns { show: true, draft: { roomId, body, replyTo, threadRoot, client } } or { show: false, reason }.
+ */
+export function draftFromEvent(event, ctx, reg) {
+  const d = reg.drafts;
+  const no = (reason) => ({ show: false, reason });
+  if (!event || event.type !== "m.room.message") return no("type");
+  if (event.redacted) return no("redacted");
+  if (event.sender !== ctx.ownUserId) return no("sender");
+  const c = event.content;
+  if (!c || typeof c !== "object" || Array.isArray(c) || c.msgtype !== "m.text") return no("content");
+  const f = c[d.field];
+  if (!f || typeof f !== "object" || Array.isArray(f)) return no("field");
+  if (typeof f.room_id !== "string" || !f.room_id.startsWith("!")) return no("room_id");
+  if (!ctx.joinedRoomIds.includes(f.room_id)) return no("not_joined");
+  if (typeof c.body !== "string" || !c.body.trim()) return no("body");
+  if (c.body.length > d.bodyMaxLength) return no("body_too_long");
+  if (typeof f.client !== "string" || !f.client.trim() || f.client.length > d.clientMaxLength) return no("client");
+  for (const k of ["reply_to", "thread_root"]) {
+    if (f[k] !== undefined && (typeof f[k] !== "string" || !f[k].startsWith("$"))) return no(k);
+  }
+  return { show: true, draft: { roomId: f.room_id, body: c.body, replyTo: f.reply_to ?? null, threadRoot: f.thread_root ?? null, client: f.client.trim() } };
 }
 
 // ADR 0205 (bipe-chat/bipe#837): sticker limits, account data names and the on-device search words.
@@ -237,6 +320,8 @@ function validate(reg) {
   const as = reg.assistants;
   if (JSON.stringify(as.modelLocations) !== '["brasil","fora","desconhecido"]' || !Number.isInteger(as.maxResolve) || as.maxResolve < 1 || as.maxResolve > 500) fail("assistants: modelLocations must be brasil, fora, desconhecido and maxResolve an integer from 1 to 500");
   for (const loc of as.modelLocations) if (!reg.strings.strings[`bipe_assistant_model_${loc}`]) fail(`assistants: string bipe_assistant_model_${loc} missing`);
+  validateMcpTools(reg.mcpTools);
+  validateDrafts(reg.drafts);
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }

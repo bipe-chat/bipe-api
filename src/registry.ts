@@ -30,6 +30,11 @@ export const theftRules = reg.theft as { maxGuardians: number; markedMessageMinu
 /** Assistants as chat members (ADR 0210, registries/assistants.json). */
 export const assistantRules = reg.assistants as { modelLocations: string[]; maxResolve: number };
 
+/** MCP tools with their data class (ADR 0130, ADR 0210, registries/mcp-tools.json). */
+export const mcpToolRules = reg.mcpTools as {
+  tools: { name: string; surface: "bridge" | "public" | "personal"; class: "public" | "metadata" | "content"; writes: "none" | "draft" | "send" | "state"; scope?: string; en: string; pt: string }[];
+};
+
 /** Badge trust list and life (ADR 0123, registries/badge-keys.json). */
 export const badgeRules = reg.badgeKeys as { keys: Record<string, string>; lifeDays: number; renewDaysBeforeExpiry: number };
 
