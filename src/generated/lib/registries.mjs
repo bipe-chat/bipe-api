@@ -991,6 +991,24 @@ export function pinReminderNext(step, result, reg) {
   return { step: next, gapDays: gap(next) };
 }
 
+// The bring-people reminder (registries/onboarding.json bringPeople, bipe-chat/bipe#752). state: { declines,
+// lastAskAt: Unix ms of the last ask (the sheet or a reminder) or null, slots: [{ status, sentAt }] } with status the
+// invite status (pending, used, expired, revoked) and sentAt the invite's created_at in Unix ms. Returns the slot to
+// name, { slot: index, kind: "pending" | "expired" }, or null: no reminder now. The oldest qualifying slot wins; on a
+// tie, the first in slot order.
+export function bringPeopleReminder(state, nowMs, reg) {
+  const b = reg.onboarding.bringPeople;
+  const day = 86_400_000;
+  if (state.declines >= b.stopAfterDeclines) return null;
+  if (state.lastAskAt === null || nowMs - state.lastAskAt < b.followUpEveryDays * day) return null;
+  let best = null;
+  state.slots.forEach((s, i) => {
+    const kind = s.status === "expired" ? "expired" : s.status === "pending" && nowMs - s.sentAt >= b.pendingAfterDays * day ? "pending" : null;
+    if (kind && (best === null || s.sentAt < state.slots[best.slot].sentAt)) best = { slot: i, kind };
+  });
+  return best;
+}
+
 // ADR 0049 profile change facts (registries/profile-facts.json). facts: { created_at?, name_changes: [iso], photo_changes:
 // [iso] } as POST /v1/profile-facts returns them; nowMs: Unix ms. Returns { lines, notice }: lines in the order created,
 // photo, name; each { fact, at } (created: the creation time) or { fact, count, at } (at: the newest change in the

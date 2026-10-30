@@ -89,6 +89,13 @@
       "source": "synapse_db",
       "detail": "A device of the user was last seen that day with a browser user agent (Element Web at chat.bipe.net.br). Same source and rule as platform_ios. n = 1.",
       "content": "none"
+    },
+    {
+      "id": "contact_fifth",
+      "once": true,
+      "source": "synapse_db",
+      "detail": "The day the user got a fifth contact (bipe-chat/bipe#752). A contact is another local person who shares a DM with the user: a room that is not a space, has no room name, 2 joined members, no invited member, and m.room.member events from exactly those 2 people (room_stats_current, room_stats_state.room_type, current_state_events type, events sender, type, room_id and origin_server_ts only). The day of a contact is the day of the first member event of the person who came second. Only that day is kept: not the contacts, not the rooms, not the count.",
+      "content": "none"
     }
   ]
 }

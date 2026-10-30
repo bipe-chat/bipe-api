@@ -33,7 +33,8 @@
 //   node dist/cli.js banner set <file.json>          (ADR 0117: the remote critical banner; text through the humanizer first)
 //   node dist/cli.js banner show
 //   node dist/cli.js banner clear
-//   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
+//   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week,
+//                                                         and days to the fifth contact by sign-up week, bipe#752)
 //   node dist/cli.js transfer report [--days 30]     (bipe#531: active iOS accounts with a way back that survives the App Store transfer)
 //   node dist/cli.js proposta password [--password-stdin]   (ADR 0158: the one shared password; prints a new one once, or reads yours; ends every session)
 //   node dist/cli.js proposta visits [--days 30]       (per visitor email, then the visits, newest first)
@@ -282,6 +283,8 @@ try {
     console.table(report.retention);
     console.log("All events: users and count");
     console.table(report.totals);
+    console.log("Days from sign-up to the fifth contact (a person who shares a DM), by sign-up week; invites accepted per member");
+    console.table(report.contacts);
   } else if (group === "deletion" && command === "status") {
     const status = await deletionStatus(db);
     console.table(status.counts);
