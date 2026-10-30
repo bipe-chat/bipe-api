@@ -2011,6 +2011,14 @@
     "bipe_select_forward_done": "Messages forwarded",
     "bipe_select_delete_title": "Delete your messages?",
     "bipe_select_delete_body": "Your selected messages disappear for everyone in the chat. Messages from other people stay.",
-    "bipe_select_delete_failed": "Couldn't delete the messages. Try again."
+    "bipe_select_delete_failed": "Couldn't delete the messages. Try again.",
+    "bipe_assistant_label": "AI assistant",
+    "bipe_assistant_operator": "Run by %1$s",
+    "bipe_assistant_operator_unverified": "Company not verified",
+    "bipe_assistant_model_brasil": "Its AI runs in Brazil",
+    "bipe_assistant_model_fora": "Its AI runs outside Brazil",
+    "bipe_assistant_model_desconhecido": "Where its AI runs is unknown",
+    "bipe_assistant_joined": "%1$s added the assistant %2$s. It reads this group's messages.",
+    "bipe_assistant_admin_only": "Only a group admin can add an assistant."
   }
 }

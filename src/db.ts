@@ -773,6 +773,16 @@ const MIGRATIONS = [
    CREATE INDEX kept_media_media ON kept_media (media_id);`,
   // The owner's own linked number, encrypted (ADR 0191, bipe#787). NULL for links made before. Goes with the row.
   `ALTER TABLE phone_links ADD COLUMN number_enc bytea;`,
+  // Assistants as chat members (ADR 0210, bipe#867): which accounts are AI assistants, their operator and model
+  // location. Staff write it; ended rows stay for the history until the assistant or the operator is deleted.
+  `CREATE TABLE assistant_accounts (
+     user_id text PRIMARY KEY,
+     operator_user_id text NOT NULL,
+     model_location text NOT NULL CHECK (model_location IN ('brasil', 'fora', 'desconhecido')),
+     registered_at timestamptz NOT NULL DEFAULT now(),
+     ended_at timestamptz
+   );
+   CREATE INDEX assistant_accounts_operator ON assistant_accounts (operator_user_id);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

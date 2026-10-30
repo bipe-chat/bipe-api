@@ -49,6 +49,7 @@ export function loadRegistries(root) {
     profileFacts: read("registries/profile-facts.json"),
     theft: read("registries/theft-protection.json"),
     workHours: read("registries/work-hours.json"),
+    assistants: read("registries/assistants.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
@@ -233,6 +234,9 @@ function validate(reg) {
   const vm = reg.voiceMedia;
   if (![vm.transcriptDays, vm.noTranscriptDays, vm.maxKeptPerAccount].every((n) => Number.isInteger(n) && n >= 1) || vm.noTranscriptDays < vm.transcriptDays) fail("voice-media: transcriptDays, noTranscriptDays and maxKeptPerAccount must be positive integers, noTranscriptDays at least transcriptDays");
   validateStickers(reg.stickers);
+  const as = reg.assistants;
+  if (JSON.stringify(as.modelLocations) !== '["brasil","fora","desconhecido"]' || !Number.isInteger(as.maxResolve) || as.maxResolve < 1 || as.maxResolve > 500) fail("assistants: modelLocations must be brasil, fora, desconhecido and maxResolve an integer from 1 to 500");
+  for (const loc of as.modelLocations) if (!reg.strings.strings[`bipe_assistant_model_${loc}`]) fail(`assistants: string bipe_assistant_model_${loc} missing`);
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }

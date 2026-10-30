@@ -27,6 +27,9 @@ export const profileFactRules = reg.profileFacts as { windowDays: number; newAcc
 /** Theft protection (ADR 0044, ADR 0051, registries/theft-protection.json). */
 export const theftRules = reg.theft as { maxGuardians: number; markedMessageMinutes: number; statementLifeHours: number; checkMinutes: number };
 
+/** Assistants as chat members (ADR 0210, registries/assistants.json). */
+export const assistantRules = reg.assistants as { modelLocations: string[]; maxResolve: number };
+
 /** Badge trust list and life (ADR 0123, registries/badge-keys.json). */
 export const badgeRules = reg.badgeKeys as { keys: Record<string, string>; lifeDays: number; renewDaysBeforeExpiry: number };
 
