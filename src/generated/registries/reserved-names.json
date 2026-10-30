@@ -1,5 +1,5 @@
 {
-  "$comment": "Display names reserved for CNPJ-verified accounts (security.md rule 8). Compared after normalisation (lowercase, diacritics stripped, homoglyphs folded). Starter list: review before launch.",
+  "$comment": "Display names reserved for CNPJ-verified accounts (security.md rule 8). Compared after normalisation (lowercase, diacritics stripped, homoglyphs folded). Starter list: review before launch. The match is exact, so a name inside a longer display name ('bpc' in a personal name) does not collide; a common suffix such as 'oficial' needs its own entry. Federal programme names (bipe-chat/bipe#655, 30 October 2026) are in government.",
   "version": 1,
   "categories": {
     "bipe": ["bipe", "bipe oficial", "bipe chat", "suporte bipe", "equipe bipe", "seguranca bipe", "novidades do bipe", "novidades bipe"],
@@ -11,7 +11,11 @@
     "government": [
       "gov.br", "governo federal", "receita federal", "inss", "detran", "policia federal", "policia civil",
       "policia militar", "banco central", "pix", "correios", "tse", "justica eleitoral", "ministerio da saude",
-      "sus", "caixa tem", "serasa", "procon"
+      "sus", "caixa tem", "serasa", "procon",
+      "pe de meia", "pe-de-meia", "pe de meia oficial", "pe-de-meia oficial", "pe de meia universitario",
+      "pe-de-meia universitario", "bolsa familia", "bolsa familia oficial", "meu inss", "cadunico", "cad unico",
+      "cadastro unico", "farmacia popular", "minha casa minha vida", "auxilio gas", "desenrola", "desenrola brasil",
+      "valores a receber", "beneficio de prestacao continuada", "bpc"
     ]
   }
 }
