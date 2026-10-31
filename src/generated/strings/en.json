@@ -2083,6 +2083,15 @@
     "bipe_operator_left_body": "%1$s is no longer part of Bipe. Change server to keep your @ and your number.",
     "bipe_operator_left_action": "Change server",
     "bipe_recovery_push_started_body": "Someone started moving your account to another device. If it was not you, open Bipe and cancel.",
-    "bipe_recovery_push_completed_body": "Your account signed in on a new device. If it was not you, open Bipe now."
+    "bipe_recovery_push_completed_body": "Your account signed in on a new device. If it was not you, open Bipe now.",
+    "bipe_os_theft_prompt_title": "Protect your phone from theft",
+    "bipe_os_theft_prompt_body": "If someone steals your phone, the phone itself can lock the thief out. Check that this protection is on.",
+    "bipe_os_theft_action": "Check protection",
+    "bipe_os_theft_row_title": "Phone protection",
+    "bipe_os_theft_row_body": "Your phone has its own theft protection. Bipe cannot see whether it is on.",
+    "bipe_os_theft_path_ios_face_id": "In the main Settings screen, tap Face ID & Passcode, then Stolen Device Protection.",
+    "bipe_os_theft_path_ios_touch_id": "In the main Settings screen, tap Touch ID & Passcode, then Stolen Device Protection.",
+    "bipe_os_theft_path_android": "In Settings, tap Google, All services and Theft protection. Turn on Theft Detection Lock and Offline Device Lock.",
+    "bipe_os_theft_path_samsung": "In Settings, tap Security and privacy, Lost device protection and Theft protection. Turn on Theft Detection Lock and Offline Device Lock."
   }
 }

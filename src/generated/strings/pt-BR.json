@@ -2083,6 +2083,15 @@
     "bipe_operator_left_body": "%1$s não faz mais parte do Bipe. Troque de servidor para manter seu @ e seu número.",
     "bipe_operator_left_action": "Trocar de servidor",
     "bipe_recovery_push_started_body": "Alguém começou a levar sua conta para outro aparelho. Se não foi você, abra o Bipe e cancele.",
-    "bipe_recovery_push_completed_body": "Sua conta entrou num aparelho novo. Se não foi você, abra o Bipe agora."
+    "bipe_recovery_push_completed_body": "Sua conta entrou num aparelho novo. Se não foi você, abra o Bipe agora.",
+    "bipe_os_theft_prompt_title": "Proteja o celular contra roubo",
+    "bipe_os_theft_prompt_body": "Se alguém roubar seu celular, o próprio aparelho pode bloquear o ladrão. Confira se essa proteção está ligada.",
+    "bipe_os_theft_action": "Conferir proteção",
+    "bipe_os_theft_row_title": "Proteção do celular",
+    "bipe_os_theft_row_body": "Seu celular tem uma proteção própria contra roubo. O Bipe não consegue ver se ela está ligada.",
+    "bipe_os_theft_path_ios_face_id": "Na tela inicial de Ajustes, toque em Face ID e Código e depois em Proteção de Dispositivo Roubado.",
+    "bipe_os_theft_path_ios_touch_id": "Na tela inicial de Ajustes, toque em Touch ID e Código e depois em Proteção de Dispositivo Roubado.",
+    "bipe_os_theft_path_android": "Em Configurações, toque em Google, Todos os serviços e Proteção contra roubo. Ligue o Bloqueio de Detecção de Roubo e o Bloqueio de Dispositivo Offline.",
+    "bipe_os_theft_path_samsung": "Em Configurações, toque em Segurança e privacidade, Proteção do aparelho perdido e Proteção contra roubo. Ligue o Bloqueio de Detecção de Roubo e o Bloqueio de Dispositivo Offline."
   }
 }
