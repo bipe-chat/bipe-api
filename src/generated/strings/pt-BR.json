@@ -2093,6 +2093,12 @@
     "bipe_os_theft_path_ios_touch_id": "Na tela inicial de Ajustes, toque em Touch ID e Código e depois em Proteção de Dispositivo Roubado.",
     "bipe_os_theft_path_android": "Em Configurações, toque em Google, Todos os serviços e Proteção contra roubo. Ligue o Bloqueio de Detecção de Roubo e o Bloqueio de Dispositivo Offline.",
     "bipe_os_theft_path_samsung": "Em Configurações, toque em Segurança e privacidade, Proteção do aparelho perdido e Proteção contra roubo. Ligue o Bloqueio de Detecção de Roubo e o Bloqueio de Dispositivo Offline.",
-    "bipe_search_in_chat": "Buscar na conversa"
+    "bipe_search_in_chat": "Buscar na conversa",
+    "bipe_voice_source_forwarded": "Encaminhado",
+    "bipe_voice_source_forwarded_many": "Encaminhado muitas vezes",
+    "bipe_voice_source_recorded": "Gravado no app",
+    "bipe_voice_source_file": "Arquivo de áudio",
+    "bipe_voice_source_title": "Sobre esta marca",
+    "bipe_voice_source_body": "O app de quem enviou coloca esta marca, e um app alterado pode falsificar. Para saber quem mandou, veja se a conta é verificada."
   }
 }
