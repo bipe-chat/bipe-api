@@ -18,6 +18,7 @@ import { newChallenge } from "./attest.js";
 import { refreshKeyAttestationStatus } from "./key-attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { Reach } from "./reach.js";
+import { ReachTiers, reachSettings } from "./reach-tiers.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
@@ -96,6 +97,9 @@ const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_
 const support = new SupportBot(db, config, intake);
 const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL, support };
 console.log(`badges: ${badges.state}`);
+// Reach tiers and the first-contact budget (bipe#851). Budgets and thresholds: REACH_* in the environment.
+const reachTiers = new ReachTiers(db, reach, reachSettings(config), (id) => badges.verifiedBrand(id));
+console.log(`first-contact budget: ${reachTiers.state}`);
 const brandMarks = new BrandMarks(db, (id) => badges.verifiedBrand(id), config.PUBLIC_SITE_URL);
 console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" : "off (no STARLINGS_APP_INTAKE_KEY)"}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
@@ -130,6 +134,7 @@ const limits = {
   contactsLookup: new RateLimiter(30, 3_600_000),
   attestChallenge: new RateLimiter(20, 3_600_000),
   setMessaging: new RateLimiter(30, 3_600_000),
+  reach: new RateLimiter(60, 60_000),
   dataExport: new RateLimiter(3, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
@@ -847,6 +852,14 @@ app.put("/v1/me/messaging", async (c) => {
   return c.json({ who_can_message });
 });
 
+// Reach tier and first-contact budget (bipe#851). No score: the tier, the budget and the step that raises it.
+app.get("/v1/me/reach", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.reach.check(userId);
+  c.header("cache-control", "no-store");
+  return c.json(await reachTiers.status(userId));
+});
+
 // Data export (LGPD art. 18, ADR 0112). The app asks for a biometric check first.
 app.get("/v1/me/export", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
@@ -877,7 +890,8 @@ app.post("/internal/v1/may-invite", async (c) => {
   // The support account (ADR 0114) opens one support room per user, whatever their policy.
   // So does the news account (ADR 0117): one read-only room per user.
   if (inviter === config.SUPPORT_USER_ID || inviter === config.NEWS_USER_ID) return c.json({ allow: true, policy: await policyOf(db, invitee) });
-  return c.json(await mayInvite(db, inviter, invitee, shares_room, { reach, roomId: room_id ?? null }));
+  // bipe#851: reason reach_limit when the inviter's first-contact budget is used; the module answers M_LIMIT_EXCEEDED.
+  return c.json(await mayInvite(db, inviter, invitee, shares_room, { reach, tiers: reachTiers, roomId: room_id ?? null }));
 });
 
 // First-contact outcomes (bipe#845), from bipe_messaging: the invitee's join or own leave, and ignore-list changes.

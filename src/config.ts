@@ -125,6 +125,18 @@ const Env = z.object({
   SYGNAL_URL: emptyAsUnset(z.url()),
   // CVM register check (ADR 0077): the daily download from dados.cvm.gov.br. "false" turns it off (no CVM lines).
   CVM_REFRESH: z.string().default("true").transform((v) => v !== "false"),
+  // Reach tiers and first-contact budget (security.md rule 11, bipe#851, src/reach-tiers.ts). Production values belong in
+  // Secret bipe-api, not in a public file: a public number is a target. Unset values use the strategy's starting values
+  // (REACH_DEFAULTS), meant for local runs; the start log says when they apply. REACH_LIMITS=off records first contacts
+  // and answers GET /v1/me/reach, but refuses no invite.
+  REACH_LIMITS: z.string().default("on").transform((v) => v !== "off"),
+  // tier=budget pairs, for example "unattested=5,new=10". A missing tier keeps its default.
+  REACH_BUDGETS: emptyAsUnset(z.string().regex(/^(?:(?:unattested|new|normal|verified|company|slowed)=\d{1,6})(?:,(?:unattested|new|normal|verified|company|slowed)=\d{1,6})*$/, "tier=number pairs")),
+  REACH_NEW_DAYS: emptyAsUnset(z.coerce.number().int().min(0).max(365)),
+  REACH_FEEDBACK_DAYS: emptyAsUnset(z.coerce.number().int().min(1).max(90)),
+  REACH_SLOWED_MIN_CONTACTS: emptyAsUnset(z.coerce.number().int().min(1).max(10_000)),
+  REACH_SLOWED_FACTOR: emptyAsUnset(z.coerce.number().positive().max(100)),
+  REACH_SLOWED_MIN_RATE: emptyAsUnset(z.coerce.number().min(0).max(1)),
   BIPE_MAIL_FROM: z.string().regex(/^[^\r\n<>]*<[^\s<>@]+@[^\s<>@]+>$|^[^\s<>@]+@[^\s<>@]+$/, "an address, or a name and <address>").default("Bipe <nao-responda@bipe.chat>"),
 });
 

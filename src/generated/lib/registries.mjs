@@ -412,6 +412,8 @@ function validate(reg) {
   for (const k of ["recipientDays", "blockWindowDays", "dailyCountDays"]) {
     if (!(Number.isInteger(rc[k]) && rc[k] > 0)) fail(`reach: ${k} must be a positive integer`);
   }
+  if (!(Number.isInteger(rc.windowHours) && rc.windowHours > 0 && rc.windowHours <= rc.recipientDays * 24)) fail("reach: windowHours must be a positive integer within recipientDays");
+  if (JSON.stringify(rc.tiers) !== '["unattested","new","normal","verified","company","slowed"]') fail("reach: tiers must be unattested, new, normal, verified, company, slowed");
   if (rc.blockWindowDays > rc.recipientDays || rc.dailyCountDays < rc.recipientDays) fail("reach: blockWindowDays must not exceed recipientDays, and dailyCountDays must be at least recipientDays");
   const tp = reg.theft;
   for (const k of ["maxGuardians", "markedMessageMinutes", "statementLifeHours", "checkMinutes"]) {

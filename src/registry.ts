@@ -25,7 +25,7 @@ export const voiceMediaRules = reg.voiceMedia as { transcriptDays: number; noTra
 export const profileFactRules = reg.profileFacts as { windowDays: number; newAccountDays: number; noticePairHours: number; noticeDays: number };
 
 /** First-contact outcomes for reach reputation (bipe-chat/bipe#845, registries/reach.json). */
-export const reachRules = reg.reach as { recipientDays: number; blockWindowDays: number; dailyCountDays: number };
+export const reachRules = reg.reach as { recipientDays: number; blockWindowDays: number; dailyCountDays: number; windowHours: number; tiers: string[] };
 
 /** Theft protection (ADR 0044, ADR 0051, registries/theft-protection.json). */
 export const theftRules = reg.theft as { maxGuardians: number; markedMessageMinutes: number; statementLifeHours: number; checkMinutes: number };

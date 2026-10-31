@@ -150,7 +150,8 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
   const { db, mas, config } = deps;
   // Attestation first: it is the cheapest check that stops scripted sign-ups. A given attestation must be valid.
   // Android (bipe#92): a genuine chain from a phone that is not attested counts as no attestation (ADR 0043).
-  if (!checkAttestation(deps, input.attestation) && (config.SIGNUP_ATTEST_REQUIRED || input.account_type === "company")) {
+  const attested = checkAttestation(deps, input.attestation);
+  if (!attested && (config.SIGNUP_ATTEST_REQUIRED || input.account_type === "company")) {
     throw new ApiError("attestation_invalid");
   }
   const accountType: AccountType = input.account_type ?? "personal";
@@ -204,7 +205,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, linkedInviteId, accountType]);
+        await client.query("INSERT INTO signups (user_id, invite_id, account_type, attested) VALUES ($1, $2, $3, $4)", [userId, linkedInviteId, accountType, attested]);
         if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
         await client.query("COMMIT");
       } catch (e) {
@@ -224,7 +225,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, linkedInviteId, accountType]);
+        await client.query("INSERT INTO signups (user_id, invite_id, account_type, attested) VALUES ($1, $2, $3, $4)", [userId, linkedInviteId, accountType, attested]);
         if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
         await client.query(
           `INSERT INTO account_secrets (user_id, device_first, pin_hash, pin_set_at, token_hash, token_set_at)
