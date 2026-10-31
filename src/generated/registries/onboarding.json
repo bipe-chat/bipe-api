@@ -162,6 +162,21 @@
     "pendingAfterDays": 3,
     "stopAfterDeclines": 2
   },
+  "chatListPrompt": {
+    "$comment": "The one prompt card of the chat list (spec chat-list-prompt, bipe-chat/bipe#894), in queue order: the first entry whose source condition holds and that the slot allows shows. tier critical and access preempt the slot; every other entry shares BipePromptSlot (promptSlot.hours) with the Você prompts. Keys equal to a prompts key keep that prompt's slot memory.",
+    "entries": [
+      { "key": "remoteBanner", "tier": "critical" },
+      { "key": "approvePhone", "tier": "access" },
+      { "key": "notificationCheckup", "tier": "safety" },
+      { "key": "recovery", "tier": "safety" },
+      { "key": "pinReminder", "tier": "safety" },
+      { "key": "handle", "tier": "identity" },
+      { "key": "profile", "tier": "identity" },
+      { "key": "bringPeopleReminder", "tier": "growth" },
+      { "key": "invite", "tier": "growth" },
+      { "key": "notes", "tier": "discovery" }
+    ]
+  },
   "firstList": {
     "$comment": "Cards at the top of Conversas while it lists at most maxChats chats (bipe-chat/bipe#198, spec chat-list-cards). A card goes away for good once used or dismissed.",
     "maxChats": 3,

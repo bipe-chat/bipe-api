@@ -1021,6 +1021,20 @@ export function bringPeopleReminder(state, nowMs, reg) {
   return best;
 }
 
+// The chat list prompt card (registries/onboarding.json chatListPrompt, spec chat-list-prompt, bipe-chat/bipe#894).
+// eligible: the keys whose source condition holds now. slot: { holder, sinceMs } of BipePromptSlot, or null when empty.
+// Returns the key that shows, or null. A preempting entry (tier critical or access) wins at once. Every other entry
+// shows only when the slot allows it: no holder, the key holds the slot, or promptSlot.hours passed since the holder
+// took it. The first allowed entry in queue order wins.
+export function chatListPrompt(eligible, slot, nowMs, reg) {
+  const o = reg.onboarding;
+  const entries = o.chatListPrompt.entries.filter((e) => eligible.includes(e.key));
+  const first = entries.find((e) => e.tier === "critical" || e.tier === "access");
+  if (first) return first.key;
+  const allows = (key) => !slot || slot.holder === key || nowMs - slot.sinceMs >= o.promptSlot.hours * 3_600_000;
+  return entries.find((e) => allows(e.key))?.key ?? null;
+}
+
 // ADR 0049 profile change facts (registries/profile-facts.json). facts: { created_at?, name_changes: [iso], photo_changes:
 // [iso] } as POST /v1/profile-facts returns them; nowMs: Unix ms. Returns { lines, notice }: lines in the order created,
 // photo, name; each { fact, at } (created: the creation time) or { fact, count, at } (at: the newest change in the
