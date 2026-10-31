@@ -45,6 +45,7 @@
 //   node dist/cli.js assistant add <user_id> <operator_user_id> <brasil|fora|desconhecido>   (ADR 0210: the operator needs a verified CNPJ seal)
 //   node dist/cli.js assistant end <user_id>         (the account stays; it is no longer labelled as an assistant)
 //   node dist/cli.js assistant list
+//   node dist/cli.js reach show <user_id|@handle> [--days 30]   (bipe#845: first contacts sent, accepted, declined, ignored, blocked, reported per day)
 //   node dist/cli.js deletion status                 (ADR 0140: requests per state, and the ids, steps and errors of failing ones; no user IDs)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
@@ -65,7 +66,7 @@ import { newsList, queueNewsItem, requestNewsBackfill } from "./news.js";
 import { addAssistant, endAssistant, listAssistants } from "./assistants.js";
 import { Badges } from "./badges.js";
 import { cvmField, refreshCvm } from "./cvm.js";
-import { validCnpj } from "./registry.js";
+import { reachRules, validCnpj } from "./registry.js";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { transferReadiness } from "./transfer.js";
@@ -75,6 +76,7 @@ import { loadConfig } from "./config.js";
 import { Mas } from "./mas.js";
 import { Theft } from "./theft.js";
 import { deletionStatus } from "./deletion.js";
+import { Reach } from "./reach.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -285,6 +287,15 @@ try {
     console.table(report.totals);
     console.log("Days from sign-up to the fifth contact (a person who shares a DM), by sign-up week; invites accepted per member");
     console.table(report.contacts);
+  } else if (group === "reach" && command === "show" && arg?.startsWith("@")) {
+    // --days defaults to 14 for invites; this report's window is 30 days unless --days is given.
+    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    if (!(Number.isInteger(days) && days >= 1 && days <= 90)) throw new Error("--days must be 1 to 90");
+    const config = loadConfig();
+    const userId = await existingAccount(db, new Mas(config), config.SERVER_NAME, arg);
+    const reach = new Reach(db, { serverName: config.SERVER_NAME });
+    console.log(`First contacts by ${userId}, per day in Brazil. Ignored settles when a first contact is ${reachRules.recipientDays} days old.`);
+    console.table(await reach.daily(userId, days));
   } else if (group === "deletion" && command === "status") {
     const status = await deletionStatus(db);
     console.table(status.counts);
@@ -320,7 +331,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | reach show @user [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
     process.exitCode = 2;
   }
 } finally {
