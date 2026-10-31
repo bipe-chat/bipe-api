@@ -33,7 +33,8 @@
 //   node dist/cli.js banner set <file.json>          (ADR 0117: the remote critical banner; text through the humanizer first)
 //   node dist/cli.js banner show
 //   node dist/cli.js banner clear
-//   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
+//   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week,
+//                                                         and days to the fifth contact by sign-up week, bipe#752)
 //   node dist/cli.js transfer report [--days 30]     (bipe#531: active iOS accounts with a way back that survives the App Store transfer)
 //   node dist/cli.js proposta password [--password-stdin]   (ADR 0158: the one shared password; prints a new one once, or reads yours; ends every session)
 //   node dist/cli.js proposta visits [--days 30]       (per visitor email, then the visits, newest first)
@@ -41,6 +42,9 @@
 //   node dist/cli.js proposta forget <email>          (LGPD deletion request: visitor, sessions and visits)
 //   node dist/cli.js theft status <user_id>          (ADR 0044: guardians count and the open mark, no guardian IDs)
 //   node dist/cli.js theft clear <user_id>           (ADR 0051: support clears a mark after a CPF check by hand; unlocks the covered accounts too)
+//   node dist/cli.js assistant add <user_id> <operator_user_id> <brasil|fora|desconhecido>   (ADR 0210: the operator needs a verified CNPJ seal)
+//   node dist/cli.js assistant end <user_id>         (the account stays; it is no longer labelled as an assistant)
+//   node dist/cli.js assistant list
 //   node dist/cli.js deletion status                 (ADR 0140: requests per state, and the ids, steps and errors of failing ones; no user IDs)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
@@ -58,6 +62,8 @@ import { type Config, loadMailConfig } from "./config.js";
 import { forgetBugReports, getBugReport, listBugReports } from "./bug-reports.js";
 import { clearBanner, currentBanner, setBanner } from "./banner.js";
 import { newsList, queueNewsItem, requestNewsBackfill } from "./news.js";
+import { addAssistant, endAssistant, listAssistants } from "./assistants.js";
+import { Badges } from "./badges.js";
 import { cvmField, refreshCvm } from "./cvm.js";
 import { validCnpj } from "./registry.js";
 import { readFileSync } from "node:fs";
@@ -277,6 +283,8 @@ try {
     console.table(report.retention);
     console.log("All events: users and count");
     console.table(report.totals);
+    console.log("Days from sign-up to the fifth contact (a person who shares a DM), by sign-up week; invites accepted per member");
+    console.table(report.contacts);
   } else if (group === "deletion" && command === "status") {
     const status = await deletionStatus(db);
     console.table(status.counts);
@@ -299,11 +307,20 @@ try {
     const userId = await existingAccount(db, new Mas(config), config.SERVER_NAME, arg);
     await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), userId, arg2, values.force === true);
     console.log(`linked a number to ${userId}`);
+  } else if (group === "assistant" && command === "add" && arg?.startsWith("@") && arg2?.startsWith("@") && positionals[4]) {
+    // Only the seal check of Badges is used: no signing key, no Synapse.
+    const badges = new Badges(db, {});
+    await addAssistant(db, (id) => badges.verifiedBrand(id), arg, arg2, positionals[4]);
+    console.log(`assistant ${arg} registered for ${arg2} (${positionals[4]})`);
+  } else if (group === "assistant" && command === "end" && arg?.startsWith("@")) {
+    console.log((await endAssistant(db, arg)) ? `assistant ${arg} ended` : "no active registration");
+  } else if (group === "assistant" && command === "list") {
+    console.table(await listAssistants(db));
   } else if (group === "phone" && command === "unlink" && arg?.startsWith("@")) {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
     process.exitCode = 2;
   }
 } finally {
