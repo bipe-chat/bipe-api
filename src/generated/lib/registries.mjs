@@ -47,6 +47,7 @@ export function loadRegistries(root) {
     messageFormatting: read("registries/message-formatting.json"),
     photoMatch: read("registries/photo-match.json"),
     profileFacts: read("registries/profile-facts.json"),
+    reach: read("registries/reach.json"),
     theft: read("registries/theft-protection.json"),
     workHours: read("registries/work-hours.json"),
     mcpTools: read("registries/mcp-tools.json"),
@@ -407,6 +408,11 @@ function validate(reg) {
     if (!(Number.isInteger(pf[k]) && pf[k] > 0)) fail(`profile-facts: ${k} must be a positive integer`);
   }
   if (pf.noticeDays > pf.windowDays) fail("profile-facts: noticeDays must not exceed windowDays");
+  const rc = reg.reach;
+  for (const k of ["recipientDays", "blockWindowDays", "dailyCountDays"]) {
+    if (!(Number.isInteger(rc[k]) && rc[k] > 0)) fail(`reach: ${k} must be a positive integer`);
+  }
+  if (rc.blockWindowDays > rc.recipientDays || rc.dailyCountDays < rc.recipientDays) fail("reach: blockWindowDays must not exceed recipientDays, and dailyCountDays must be at least recipientDays");
   const tp = reg.theft;
   for (const k of ["maxGuardians", "markedMessageMinutes", "statementLifeHours", "checkMinutes"]) {
     if (!(Number.isInteger(tp[k]) && tp[k] > 0)) fail(`theft-protection: ${k} must be a positive integer`);
