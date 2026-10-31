@@ -129,8 +129,7 @@ export function parseStopOrders(text: string): CvmStopOrder[] {
   if (rows.length === 0) throw new Error("cvm stop orders: no rows");
   const out: CvmStopOrder[] = [];
   for (const r of rows) {
-    const digits = (r[docAt] ?? "").replace(/\D/g, "");
-    const cnpj = digits.length === 14 ? digits : null;
+    const cnpj = cvmCnpj(r[docAt]);
     const on = cvmDate(r[dateAt]);
     if (cnpj && on) out.push({ cnpj, act: (r[actAt] ?? "").slice(0, 64), on });
   }

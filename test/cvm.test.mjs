@@ -57,8 +57,12 @@ test("stop orders count only rows with a CNPJ", () => {
     "21.000;2026-05-12;Golpe Invest Ltda;2026-05-13;11.222.333/0001-81;https://x;",
     "21.001;2026-05-12;Fulano;2026-05-13;123.456.789-09;https://x;",
     "21.002;2026-05-12;Sem documento;2026-05-13;;https://x;",
+    "21.003;2026-05-12;Letras Ltda;2026-05-13;12.ABC.345/01DE-35;https://x;",
   ].join("\r\n");
-  assert.deepEqual(parseStopOrders(text), [{ cnpj: "11222333000181", act: "21.000", on: "2026-05-12" }]);
+  assert.deepEqual(parseStopOrders(text), [
+    { cnpj: "11222333000181", act: "21.000", on: "2026-05-12" },
+    { cnpj: "12ABC34501DE35", act: "21.003", on: "2026-05-12" },
+  ]);
 });
 
 test("a zip with several CSVs: the source takes its _pj file", () => {
