@@ -2092,6 +2092,7 @@
     "bipe_os_theft_path_ios_face_id": "Na tela inicial de Ajustes, toque em Face ID e Código e depois em Proteção de Dispositivo Roubado.",
     "bipe_os_theft_path_ios_touch_id": "Na tela inicial de Ajustes, toque em Touch ID e Código e depois em Proteção de Dispositivo Roubado.",
     "bipe_os_theft_path_android": "Em Configurações, toque em Google, Todos os serviços e Proteção contra roubo. Ligue o Bloqueio de Detecção de Roubo e o Bloqueio de Dispositivo Offline.",
-    "bipe_os_theft_path_samsung": "Em Configurações, toque em Segurança e privacidade, Proteção do aparelho perdido e Proteção contra roubo. Ligue o Bloqueio de Detecção de Roubo e o Bloqueio de Dispositivo Offline."
+    "bipe_os_theft_path_samsung": "Em Configurações, toque em Segurança e privacidade, Proteção do aparelho perdido e Proteção contra roubo. Ligue o Bloqueio de Detecção de Roubo e o Bloqueio de Dispositivo Offline.",
+    "bipe_search_in_chat": "Buscar na conversa"
   }
 }
