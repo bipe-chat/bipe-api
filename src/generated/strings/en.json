@@ -2099,6 +2099,7 @@
     "bipe_voice_source_recorded": "Recorded in the app",
     "bipe_voice_source_file": "Audio file",
     "bipe_voice_source_title": "About this mark",
-    "bipe_voice_source_body": "The sender's app adds this mark, and a modified app can fake it. To know who sent it, check whether the account is verified."
+    "bipe_voice_source_body": "The sender's app adds this mark, and a modified app can fake it. To know who sent it, check whether the account is verified.",
+    "bipe_govbr_verified_no_name": "Done. Your name is verified."
   }
 }
