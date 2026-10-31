@@ -886,14 +886,15 @@ app.post("/internal/v1/first-contacts/membership", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
   const { room_id, user_id, membership } = await parse(c, MemberChangeBody);
   await reach.membership(room_id, user_id, membership);
-  return c.body(null, 204);
+  // A JSON body: the module's client parses every answer as JSON.
+  return c.json({});
 });
 
 app.post("/internal/v1/first-contacts/ignored", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
   const { user_id, ignored_users } = await parse(c, IgnoredUsersBody);
   await reach.ignored(user_id, ignored_users);
-  return c.body(null, 204);
+  return c.json({});
 });
 
 // Support DM (ADR 0114): the caller's room with the support account.
