@@ -1,9 +1,9 @@
 // First run (registries/onboarding.json, bipe-chat/bipe#415): validation and Swift/Kotlin output.
 
-const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss", "shareInvite", "shareProfile", "profileQr", "notes", "photoPicker", "pinCheck", "bringPeopleSheet", "bringPeopleResend"];
+const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss", "shareInvite", "shareProfile", "profileQr", "notes", "photoPicker", "pinCheck", "bringPeopleSheet", "bringPeopleResend", "osTheftSettings"];
 const STATES = ["syncedToken"];
 const CARD_STATES = ["hasHandle"];
-const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "voceWithoutPhoto", "pinReminderDue", "firstChatListAfterSignup", "bringPeopleDue"];
+const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "voceWithoutPhoto", "pinReminderDue", "firstChatListAfterSignup", "bringPeopleDue", "voceAfterDays"];
 const CIRCLES = ["family", "building"];
 const KEY = /^[a-z][A-Za-z]*$/;
 
@@ -64,6 +64,7 @@ export function validateOnboarding(reg) {
   const pr = o.pinReminder;
   if (!Array.isArray(pr?.days) || pr.days.length === 0 || !pr.days.every((d) => Number.isInteger(d) && d > 0)) fail("pinReminder.days must be whole days");
   if (!Number.isInteger(pr.thenEveryDays) || pr.thenEveryDays < 1) fail("pinReminder.thenEveryDays must be whole days");
+  if (!Number.isInteger(o.osTheftProtection?.afterDays) || o.osTheftProtection.afterDays < 0) fail("osTheftProtection.afterDays must be whole days");
   const bp = o.bringPeople;
   for (const k of ["slots", "followUpEveryDays", "pendingAfterDays", "stopAfterDeclines"]) {
     if (!Number.isInteger(bp?.[k]) || bp[k] < 1) fail(`bringPeople.${k} must be a whole number above 0`);
@@ -233,6 +234,8 @@ public enum BipeOnboarding {
     /// Trigger pinReminderDue (bipe-chat/bipe#202): the gap in days after each step, then pinReminderThenEveryDays.
     public static let pinReminderDays = [${o.pinReminder.days.join(", ")}]
     public static let pinReminderThenEveryDays = ${o.pinReminder.thenEveryDays}
+    /// Trigger voceAfterDays (bipe-chat/bipe#125): days after this phone first saw the account.
+    public static let osTheftProtectionAfterDays = ${o.osTheftProtection.afterDays}
     /// Specs bring-people and bring-people-reminder (bipe-chat/bipe#752).
     public static let bringPeopleSlots = ${o.bringPeople.slots}
     public static let bringPeopleFirstCircle = ${quote(o.bringPeople.firstCircle)}
@@ -330,6 +333,8 @@ object BipeOnboarding {
     /** Trigger pinReminderDue (bipe-chat/bipe#202): the gap in days after each step, then [PIN_REMINDER_THEN_EVERY_DAYS]. */
     val PIN_REMINDER_DAYS: List<Int> = listOf(${o.pinReminder.days.join(", ")})
     const val PIN_REMINDER_THEN_EVERY_DAYS: Int = ${o.pinReminder.thenEveryDays}
+    /** Trigger voceAfterDays (bipe-chat/bipe#125): days after this phone first saw the account. */
+    const val OS_THEFT_PROTECTION_AFTER_DAYS: Int = ${o.osTheftProtection.afterDays}
     /** Specs bring-people and bring-people-reminder (bipe-chat/bipe#752). */
     const val BRING_PEOPLE_SLOTS: Int = ${o.bringPeople.slots}
     const val BRING_PEOPLE_FIRST_CIRCLE: String = ${quote(o.bringPeople.firstCircle)}

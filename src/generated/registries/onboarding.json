@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "$comment": "First run for new and returning users (bipe-chat/bipe#415, ADR 0072, ADR 0113). One source for the start screen, the sign-up steps, the recovery rows and the later prompts on iOS and Android. `start`: the start screen variant per state; exactly one variant matches each pair of `invitePending` (an invite came from a link or a deferred install) and `inviteRequired` (GET /v1/signup/config). Every screen has one `primary` (filled) button and zero or more `text` buttons. `to` is a step key, `recovery`, `waitlist` or `create` (POST /v1/signup). `steps` are the sign-up screens in order. `recovery` rows are in screen order; `when` names the state that shows a row; `gate` is `planned:<issue>` for a row that stays hidden until bipe-chat/bipe#<issue> ships. `apple` and `google` (ADR 0096) show only when GET /v1/links/providers offers a path for that provider on the platform (Apple native on iOS, else web). `prompts` come after the account exists; `trigger` says when. `chatListWithoutRecovery` (bipe#531): GET /v1/me/account says independent_recovery false, the account is at least accounts.json recoveryReminder.firstAfterDays old on this phone and the snooze ended; the handle card goes first, one card at a time (spec recovery-reminder). Titles and bodies are bipe_* string keys.",
+  "$comment": "First run for new and returning users (bipe-chat/bipe#415, ADR 0072, ADR 0113). One source for the start screen, the sign-up steps, the recovery rows and the later prompts on iOS and Android. `start`: the start screen variant per state; exactly one variant matches each pair of `invitePending` (an invite came from a link or a deferred install) and `inviteRequired` (GET /v1/signup/config). Every screen has one `primary` (filled) button and zero or more `text` buttons. `to` is a step key, `recovery`, `waitlist` or `create` (POST /v1/signup). `steps` are the sign-up screens in order. `recovery` rows are in screen order; `when` names the state that shows a row; `gate` is `planned:<issue>` for a row that stays hidden until bipe-chat/bipe#<issue> ships. `apple` and `google` (ADR 0096) show only when GET /v1/links/providers offers a path for that provider on the platform (Apple native on iOS, else web). `prompts` come after the account exists; `trigger` says when. `voceAfterDays` (bipe#125): the account is osTheftProtection.afterDays old on this phone; the prompt shows on the Você tab. `chatListWithoutRecovery` (bipe#531): GET /v1/me/account says independent_recovery false, the account is at least accounts.json recoveryReminder.firstAfterDays old on this phone and the snooze ended; the handle card goes first, one card at a time (spec recovery-reminder). Titles and bodies are bipe_* string keys.",
   "start": [
     {
       "key": "invited",
@@ -115,6 +115,15 @@
       "text": [{ "title": "bipe_fallback_skip", "to": "dismiss" }]
     },
     {
+      "key": "osTheftProtection",
+      "trigger": "voceAfterDays",
+      "slot": true,
+      "title": "bipe_os_theft_prompt_title",
+      "body": "bipe_os_theft_prompt_body",
+      "primary": { "title": "bipe_os_theft_action", "to": "osTheftSettings" },
+      "text": [{ "title": "bipe_fallback_skip", "to": "dismiss" }]
+    },
+    {
       "key": "bringPeople",
       "trigger": "firstChatListAfterSignup",
       "title": "bipe_bring_people_title",
@@ -140,6 +149,10 @@
     "$comment": "Trigger pinReminderDue (bipe-chat/bipe#202), spaced like Signal: the gap after step n is days[n], then thenEveryDays. A right PIN goes one step on; a wrong PIN goes back to step 0; Agora não keeps the step and asks again after 1 day. The first reminder comes days[0] after this phone first saw the account. Rule: tools/lib/registries.mjs pinReminderNext, test-vectors/onboarding-schedule.json.",
     "days": [1, 3, 7, 14, 30],
     "thenEveryDays": 60
+  },
+  "osTheftProtection": {
+    "$comment": "Trigger voceAfterDays (bipe-chat/bipe#125, ADR 0045 tier 0): the Você tab shows the prompt osTheftProtection once the account is afterDays old on this phone (the first time this phone saw it). Agora não, or the button, hides it for good on this phone, for every account. The button target osTheftSettings opens the phone's settings (iOS UIApplication.openSettingsURLString; Android Settings.ACTION_SECURITY_SETTINGS on Samsung, else Settings.ACTION_SETTINGS). Neither OS lets an app read whether its theft protection is on (spec theft-protection notes), so the app never says it is on.",
+    "afterDays": 1
   },
   "bringPeople": {
     "$comment": "Specs bring-people and bring-people-reminder (bipe-chat/bipe#752, MZ 26 Oct 2026). Trigger firstChatListAfterSignup: the account signed up on this phone, Conversas shows with no chat open and no other sheet, and the sheet never showed on this account. It opens once with `slots` slots for the `firstCircle` circle (ADR 0047). Trigger bringPeopleDue: at least followUpEveryDays since the last ask, fewer than stopAfterDeclines declines, and a slot pending for at least pendingAfterDays or expired; the oldest such slot is named. Agora não on the sheet (no slot filled) or on the reminder adds one decline. Rule: tools/lib/registries.mjs bringPeopleReminder, test-vectors/onboarding-schedule.json.",
