@@ -53,7 +53,7 @@ import { startCvmRefresh } from "./cvm.js";
 import { currentBanner } from "./banner.js";
 import { invitePreviewHtml } from "./invite-preview.js";
 import { MEDIA_ID, VoiceMedia } from "./voice-media.js";
-import { sendApprovalNudge } from "./approval-nudge.js";
+import { type DevicePushDeps, pushToDevices } from "./device-push.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
@@ -76,7 +76,12 @@ const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
 const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID] });
 const news = new NewsBot(db, config);
-const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news };
+// Synapse admin API (account deletion, voice audio expiry, device pushes). Null without SYNAPSE_ADMIN_TOKEN.
+const synapseAdmin = config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null;
+// Content-free pushes to an account's devices (approval nudge bipe#628, recovery alerts bipe#171).
+const devicePush: DevicePushDeps = { pushers: synapseAdmin ? (userId: string) => synapseAdmin.pushers(userId) : null, sygnalUrl: config.SYGNAL_URL ?? null };
+console.log(`device push: ${devicePush.pushers && devicePush.sygnalUrl ? "on" : "off (no SYNAPSE_ADMIN_TOKEN or SYGNAL_URL)"}`);
+const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news, push: devicePush };
 const linkDeps: LinkDeps = { ...accounts, links: new Links(config) };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
@@ -274,7 +279,6 @@ const prunePropostaJob = () =>
 prunePropostaJob();
 setInterval(prunePropostaJob, 24 * 3_600_000).unref();
 // Account deletion (ADR 0140): due requests run every minute; the kept verification records go after their retention.
-const synapseAdmin = config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null;
 const deletions: DeletionDeps = {
   ...accounts,
   synapse: synapseAdmin,
@@ -282,8 +286,6 @@ const deletions: DeletionDeps = {
   serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID],
 };
 console.log(`account deletion job: ${deletions.synapse ? "on" : "off (no SYNAPSE_ADMIN_TOKEN): requests wait"}`);
-const approvalNudge = { pushers: synapseAdmin ? (userId: string) => synapseAdmin.pushers(userId) : null, sygnalUrl: config.SYGNAL_URL ?? null };
-console.log(`approval nudge: ${approvalNudge.pushers && approvalNudge.sygnalUrl ? "on" : "off (no SYNAPSE_ADMIN_TOKEN or SYGNAL_URL)"}`);
 const deletionJob = () => void runDueDeletions(deletions).catch((e) => console.error(`deletion job failed: ${(e as Error).message}`));
 setInterval(deletionJob, DELETION_TICK_MS).unref();
 const pruneDeletionRecords = () =>
@@ -575,7 +577,7 @@ app.post("/v1/me/approval-nudge", async (c) => {
   const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   if (!deviceId) throw new ApiError("bad_request", "device_required");
   limits.approvalNudge.check(userId);
-  await sendApprovalNudge(approvalNudge, userId, deviceId);
+  await pushToDevices(devicePush, userId, "device_approval", deviceId);
   return c.body(null, 204);
 });
 

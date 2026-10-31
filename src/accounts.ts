@@ -13,6 +13,7 @@ import { acceptedTermsVersion } from "./terms.js";
 import { linkState } from "./links.js";
 import { hasIndependentRecovery } from "./transfer.js";
 import { pendingDeletion } from "./deletion.js";
+import { type DevicePushDeps, pushToDevices } from "./device-push.js";
 
 // Device-first accounts: ADR 0057 and ADR 0059 (bipe/docs/adr), security.md rules 5 and 6.
 // - The hidden MAS password is made here, set through the MAS admin API and returned once. Never stored, never logged.
@@ -21,6 +22,8 @@ import { pendingDeletion } from "./deletion.js";
 //   A correct PIN sets the count to 0. Every recovery path checks the PIN only after its other factor passed.
 // - Recovery by email: link, then PIN (access) or a new PIN (reset), then the delay, then the claim.
 //   Old devices see waiting recoveries in GET /v1/me/account and can cancel them.
+// - Old devices also get a content-free push when a recovery starts and when it completes (bipe#171, device-push.ts).
+//   The new device has no pusher yet, so every Bipe Next pusher of the account gets it.
 
 export interface AccountDeps {
   db: Db;
@@ -34,6 +37,8 @@ export interface AccountDeps {
   news?: { welcome(userId: string): void };
   /** Android Key Attestation (bipe#92). Absent: Google's pinned roots. Only synthetic tests set it. */
   verifyKeyAttestation?: KeyAttestationVerifier;
+  /** Content-free pushes to the account's devices (bipe#171). Absent in the admin CLI: nothing is pushed. */
+  push?: DevicePushDeps;
 }
 
 type Queryable = Db | pg.PoolClient;
@@ -207,6 +212,7 @@ export async function redeemToken(deps: AccountDeps, token: string, pin: string)
     return issued;
   });
   await notify(deps, userId, "bipe_mail_notice_new_device");
+  await pushToDevices(deps.push, userId, "recovery_completed", null);
   return creds;
 }
 
@@ -453,13 +459,16 @@ export async function confirmRecoveryEmail(deps: AccountDeps, token: string, pin
   // A second request with the same link got here first.
   if (!readyAt) throw new ApiError("recovery_invalid");
   await notify(deps, found.user_id, purpose === "access" ? "bipe_mail_notice_recovery_started" : "bipe_mail_notice_pin_reset_started", readyAt);
+  await pushToDevices(deps.push, found.user_id, "recovery_started", null);
   return { recovery_id: found.id, claim_secret: claim, purpose, ready_at: readyAt.toISOString() };
 }
 
 /** Poll, and collect when the delay has ended. The claim secret proves the new device. */
 export async function claimRecovery(deps: AccountDeps, recoveryId: string, claimSecret: string) {
   requireSecret(claimSecret);
-  return inTransaction(deps.db, async (client) => {
+  // The claim that completes the recovery pushes recovery_completed after the commit; a poll or a reclaim does not.
+  let completedFor = null as string | null;
+  const result = await inTransaction(deps.db, async (client) => {
     const { rows } = await client.query<{
       user_id: string;
       purpose: Purpose;
@@ -485,6 +494,7 @@ export async function claimRecovery(deps: AccountDeps, recoveryId: string, claim
     if (now > row.ready_at.getTime() + accountRules.recoveryClaimDays * DAY_MS) return { state: "expired", ...base };
 
     await client.query("UPDATE recoveries SET state = 'completed', ended_at = now(), ended_by = 'claim' WHERE id = $1", [recoveryId]);
+    completedFor = row.user_id;
     if (row.purpose === "pin_reset") {
       await client.query(
         `INSERT INTO account_secrets (user_id, pin_hash, pin_set_at) VALUES ($1, $2, now())
@@ -495,6 +505,8 @@ export async function claimRecovery(deps: AccountDeps, recoveryId: string, claim
     }
     return { state: "completed", ...base, ...(await issueCredentials(deps, client, row.user_id)) };
   });
+  if (completedFor) await pushToDevices(deps.push, completedFor, "recovery_completed", null);
+  return result;
 }
 
 // --- Notices -----------------------------------------------------------------------------------------

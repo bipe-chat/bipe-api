@@ -6,6 +6,7 @@ import { Mas } from "../dist/mas.js";
 import { newSecret, PinHasher, secretHash } from "../dist/secrets.js";
 import { isolatedDatabase, isLoopbackPeer, testDatabaseUrl } from "./helpers/database.mjs";
 import { masStub } from "./helpers/mas.mjs";
+import { bipePusher, kinds, pushGateway } from "./helpers/push-gateway.mjs";
 
 // Synthetic fixtures only. Assertions never print credentials, PINs, mail or token values.
 const GOOD_PIN = "49382615";
@@ -183,6 +184,35 @@ test("a committed token recovery cannot be replayed when the caller loses its re
   await redeemToken(f.deps, f.token, GOOD_PIN); // Deliberately discard the result, as a caller losing the response would.
   await assert.rejects(redeemToken(f.deps, f.token, GOOD_PIN), failsWith("recovery_invalid"));
   assert.equal(f.stub.passwordCalls, 1);
+});
+
+test("old devices get a push when a recovery starts and when its claim completes it, not on polls or reclaims (bipe#171)", { timeout: 30000 }, async (t) => {
+  const f = await fixture(t, true);
+  const gateway = await pushGateway(t);
+  const asked = [];
+  f.deps.push = { pushers: async (userId) => { asked.push(userId); return [bipePusher("OLDPHONE")]; }, sygnalUrl: gateway.url };
+  const started = await confirmRecoveryEmail(f.deps, await recoveryLink(f), GOOD_PIN);
+  assert.deepEqual(kinds(gateway), ["recovery_started"]);
+  assert.equal((await claimRecovery(f.deps, started.recovery_id, started.claim_secret)).state, "waiting");
+  assert.deepEqual(kinds(gateway), ["recovery_started"], "a poll pushes nothing");
+  await f.db.query("UPDATE recoveries SET ready_at = now() - interval '1 second' WHERE id = $1", [started.recovery_id]);
+  assert.equal((await claimRecovery(f.deps, started.recovery_id, started.claim_secret)).state, "completed");
+  assert.equal((await claimRecovery(f.deps, started.recovery_id, started.claim_secret)).state, "completed");
+  assert.deepEqual(kinds(gateway), ["recovery_started", "recovery_completed"], "a reclaim pushes nothing");
+  assert.ok(asked.every((userId) => userId === f.user));
+  assert.equal(gateway.state.requests[1].notification.event_id, "$recovery_completed");
+});
+
+test("a PIN reset start and a token sign-in push; a gateway failure does not fail the request (bipe#171)", { timeout: 30000 }, async (t) => {
+  const f = await fixture(t, true);
+  const gateway = await pushGateway(t);
+  f.deps.push = { pushers: async () => [bipePusher("OLDPHONE")], sygnalUrl: gateway.url };
+  const reset = await confirmRecoveryEmail(f.deps, await recoveryLink(f), undefined, NEW_PIN);
+  assert.equal(reset.purpose, "pin_reset");
+  gateway.state.status = 500;
+  const creds = await redeemToken(f.deps, f.token, GOOD_PIN);
+  assert.ok(typeof creds.password === "string", "the sign-in succeeds although the gateway failed");
+  assert.deepEqual(kinds(gateway), ["recovery_started", "recovery_completed"]);
 });
 
 test("record the current completed-email-claim retry behaviour for security review", { timeout: 30000 }, async (t) => {

@@ -2081,6 +2081,8 @@
     "bipe_moved_invite_action": "Invite the new account",
     "bipe_operator_left_title": "Your server left Bipe",
     "bipe_operator_left_body": "%1$s is no longer part of Bipe. Change server to keep your @ and your number.",
-    "bipe_operator_left_action": "Change server"
+    "bipe_operator_left_action": "Change server",
+    "bipe_recovery_push_started_body": "Someone started moving your account to another device. If it was not you, open Bipe and cancel.",
+    "bipe_recovery_push_completed_body": "Your account signed in on a new device. If it was not you, open Bipe now."
   }
 }

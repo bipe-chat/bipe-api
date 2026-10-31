@@ -2081,6 +2081,8 @@
     "bipe_moved_invite_action": "Convidar a conta nova",
     "bipe_operator_left_title": "Seu servidor saiu do Bipe",
     "bipe_operator_left_body": "%1$s não faz mais parte do Bipe. Troque de servidor para manter seu @ e seu número.",
-    "bipe_operator_left_action": "Trocar de servidor"
+    "bipe_operator_left_action": "Trocar de servidor",
+    "bipe_recovery_push_started_body": "Alguém começou a levar sua conta para outro aparelho. Se não foi você, abra o Bipe e cancele.",
+    "bipe_recovery_push_completed_body": "Sua conta entrou num aparelho novo. Se não foi você, abra o Bipe agora."
   }
 }
