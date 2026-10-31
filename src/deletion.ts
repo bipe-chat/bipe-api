@@ -341,6 +341,9 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q("UPDATE theft_marks SET cleared_by = 'deleted' WHERE cleared_by = $1");
     // Invites the user made stay for the people who joined with them, without the maker.
     await q("UPDATE invites SET created_by = NULL, name = NULL, revoked_at = COALESCE(revoked_at, now()) WHERE created_by = $1");
+    // Group links the user made stop working and lose their maker (ADR 0184). The user's own joins go.
+    await q("UPDATE group_links SET created_by = NULL, revoked_at = COALESCE(revoked_at, now()) WHERE created_by = $1");
+    await q("DELETE FROM group_link_joins WHERE user_id = $1");
     for (const table of [
       "signups",
       "account_secrets",

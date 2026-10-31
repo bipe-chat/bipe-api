@@ -57,3 +57,37 @@ ${image}
 </html>
 `;
 }
+
+/** Link preview head for a group link (bipe-chat/bipe#744): the group name and member count, never member names. */
+export function groupLinkPreviewHtml(siteUrl: string, preview: { valid: boolean; name?: string; members?: number }): string {
+  const site = siteUrl.replace(/\/$/, "");
+  const valid = preview.valid && preview.members !== undefined;
+  const title = valid && preview.name ? appString("pt", "bipe_group_link_preview_title", preview.name) : "Convite para o Bipe";
+  // Same text as the static invite page (bipe-web copy.ts invite.lead) when the link does not work.
+  const description = valid
+    ? appString("pt", "bipe_group_link_preview_count", String(preview.members))
+    : "Um app de mensagens brasileiro que avisa quando tem golpe e esconde seu número.";
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>${escape(title)}</title>
+<meta name="description" content="${escape(description)}">
+<meta property="og:title" content="${escape(title)}">
+<meta property="og:description" content="${escape(description)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Bipe">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:image" content="${site}/og/convite.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${escape(title)}">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body><p><a href="${site}/convite/">${escape(title)}</a></p></body>
+</html>
+`;
+}

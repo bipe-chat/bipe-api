@@ -51,7 +51,8 @@ import { SupportBot } from "./support.js";
 import { NewsBot } from "./news.js";
 import { startCvmRefresh } from "./cvm.js";
 import { currentBanner } from "./banner.js";
-import { invitePreviewHtml } from "./invite-preview.js";
+import { groupLinkPreviewHtml, invitePreviewHtml } from "./invite-preview.js";
+import { GroupLinks, MatrixGroupRooms, pruneGroupLinks } from "./group-links.js";
 import { MEDIA_ID, VoiceMedia } from "./voice-media.js";
 import { type DevicePushDeps, pushToDevices } from "./device-push.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
@@ -74,19 +75,26 @@ const auth = new MatrixAuth(config);
 const staff = new StaffGate(auth, mas);
 const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
-const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID] });
+const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID, config.GROUPS_USER_ID] });
 const news = new NewsBot(db, config);
 // Synapse admin API (account deletion, voice audio expiry, device pushes). Null without SYNAPSE_ADMIN_TOKEN.
 const synapseAdmin = config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null;
 // Content-free pushes to an account's devices (approval nudge bipe#628, recovery alerts bipe#171).
 const devicePush: DevicePushDeps = { pushers: synapseAdmin ? (userId: string) => synapseAdmin.pushers(userId) : null, sygnalUrl: config.SYGNAL_URL ?? null };
 console.log(`device push: ${devicePush.pushers && devicePush.sygnalUrl ? "on" : "off (no SYNAPSE_ADMIN_TOKEN or SYGNAL_URL)"}`);
-const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news, push: devicePush };
+const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
+// Group links (ADR 0184, bipe#744): the groups service account invites people who have the link. Off without its token.
+const groupLinks = new GroupLinks({
+  db,
+  rooms: config.GROUPS_ACCESS_TOKEN ? new MatrixGroupRooms(config.SYNAPSE_URL, config.GROUPS_ACCESS_TOKEN, config.GROUPS_USER_ID) : null,
+  verified: async (userId) => (await badges.forUser(userId)).status === 200,
+  siteUrl: config.PUBLIC_SITE_URL,
+});
+const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news, push: devicePush, groupLinks };
 const linkDeps: LinkDeps = { ...accounts, links: new Links(config) };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
-const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
 const theft = new Theft(db, mas, badges, config.SERVER_NAME);
 const profileFacts = new ProfileFacts(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_INTAKE_KEY);
@@ -99,6 +107,7 @@ console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
 console.log(`support bot: ${support.enabled ? "on" : "off (no SUPPORT_ACCESS_TOKEN or SUPPORT_STORE_PASSPHRASE)"}`);
 console.log(`news bot: ${news.enabled ? "on" : "off (no NEWS_ACCESS_TOKEN or NEWS_STORE_PASSPHRASE)"}`);
+console.log(`group links: ${groupLinks.state}`);
 console.log(`cvm register: ${config.CVM_REFRESH ? "daily refresh on" : "off (CVM_REFRESH=false)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 console.log(`strategic page summaries: ${config.PROPOSTA_NOTIFY_EMAIL && accounts.mailer.enabled ? "on" : "off (no PROPOSTA_NOTIFY_EMAIL or no email)"}`);
@@ -191,6 +200,10 @@ const limits = {
   brandMarks: new RateLimiter(120, 60_000),
   brandMarkInvite: new RateLimiter(30, 3_600_000),
   brandMarkCode: new RateLimiter(60, 3_600_000),
+  // Group links (ADR 0184).
+  groupLinkCreate: new RateLimiter(30, 3_600_000),
+  groupLinkPreview: new RateLimiter(120, 3_600_000),
+  groupLinkJoin: new RateLimiter(30, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -243,6 +256,12 @@ const pruneBrandMarks = () =>
     .catch((e) => console.error(`brand mark prune failed: ${(e as Error).message}`));
 pruneBrandMarks();
 setInterval(pruneBrandMarks, 24 * 3_600_000).unref();
+const pruneGroupLinkRows = () =>
+  void pruneGroupLinks(db)
+    .then((n) => n > 0 && console.log(`group links pruned: ${n}`))
+    .catch((e) => console.error(`group link prune failed: ${(e as Error).message}`));
+pruneGroupLinkRows();
+setInterval(pruneGroupLinkRows, 24 * 3_600_000).unref();
 support.start();
 news.start();
 // Profile change facts (ADR 0049): Synapse profile sync every 15 minutes, 30-day retention.
@@ -283,7 +302,7 @@ const deletions: DeletionDeps = {
   ...accounts,
   synapse: synapseAdmin,
   bugReportsDir: config.BUG_REPORTS_DIR,
-  serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID],
+  serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID, config.GROUPS_USER_ID],
 };
 console.log(`account deletion job: ${deletions.synapse ? "on" : "off (no SYNAPSE_ADMIN_TOKEN): requests wait"}`);
 const deletionJob = () => void runDueDeletions(deletions).catch((e) => console.error(`deletion job failed: ${(e as Error).message}`));
@@ -781,6 +800,50 @@ app.get("/v1/web/convite/:code", async (c) => {
   return c.html(await invitePreviewHtml(db, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("code")));
 });
 
+// Group links (ADR 0184, bipe#744). The group link page on the public site reads the preview from the browser.
+app.use("/v1/group-links/:code", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+
+app.get("/v1/group-links/:code", async (c) => {
+  limits.groupLinkPreview.check(clientIp(c));
+  return c.json(await groupLinks.preview(c.req.param("code")));
+});
+
+app.post("/v1/group-links/:code/join", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.groupLinkJoin.check(userId);
+  return c.json(await groupLinks.join(userId, c.req.param("code")));
+});
+
+// Link-preview crawlers only: the site edge routes them here for bipe.chat/g/<code>.
+app.get("/v1/web/g/:code", async (c) => {
+  limits.invitePreviewHead.check(clientIp(c));
+  c.header("Cache-Control", "no-store");
+  c.header("Referrer-Policy", "no-referrer");
+  c.header("X-Robots-Tag", "noindex");
+  return c.html(groupLinkPreviewHtml(config.PUBLIC_SITE_URL, await groupLinks.preview(c.req.param("code"))));
+});
+
+const GroupLinkBody = z.object({ room_id: z.string().min(2).max(255) });
+
+app.get("/v1/me/group-links", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  const roomId = c.req.query("room_id");
+  if (!roomId || roomId.length > 255) throw new ApiError("bad_request", "room_id");
+  return c.json(await groupLinks.list(userId, roomId));
+});
+
+app.post("/v1/me/group-links", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.groupLinkCreate.check(userId);
+  return c.json(await groupLinks.create(userId, (await parse(c, GroupLinkBody)).room_id), 201);
+});
+
+app.delete("/v1/me/group-links/:id", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await groupLinks.revoke(userId, c.req.param("id"));
+  return c.body(null, 204);
+});
+
 app.get("/v1/me/invites", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   return c.json(await myInvites(db, userId, invitePolicy));
@@ -842,8 +905,11 @@ app.post("/internal/v1/may-invite", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
   const { inviter, invitee, shares_room } = await parse(c, MayInviteBody);
   // The support account (ADR 0114) opens one support room per user, whatever their policy.
-  // So does the news account (ADR 0117): one read-only room per user.
-  if (inviter === config.SUPPORT_USER_ID || inviter === config.NEWS_USER_ID) return c.json({ allow: true, policy: await policyOf(db, invitee) });
+  // So does the news account (ADR 0117): one read-only room per user. The groups account (ADR 0184) invites only
+  // people who asked with a group link.
+  if (inviter === config.SUPPORT_USER_ID || inviter === config.NEWS_USER_ID || inviter === config.GROUPS_USER_ID) {
+    return c.json({ allow: true, policy: await policyOf(db, invitee) });
+  }
   return c.json(await mayInvite(db, inviter, invitee, shares_room));
 });
 

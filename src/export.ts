@@ -92,6 +92,13 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       userId,
     ),
     invite_grants: await one(db, "SELECT extra FROM invite_grants WHERE user_id = $1", userId),
+    // Group links (ADR 0184): the links the caller made (no code hash) and the links the caller came in with.
+    group_links_created: await all(
+      db,
+      "SELECT id, room_id, signs_up, signups, created_at, expires_at, revoked_at FROM group_links WHERE created_by = $1 ORDER BY created_at",
+      userId,
+    ),
+    group_link_joins: await all(db, "SELECT link_id, signed_up, joined_at FROM group_link_joins WHERE user_id = $1 ORDER BY joined_at", userId),
     invite_connections: (await inviteConnections(db, userId)).user_ids,
     business: await one(
       db,
