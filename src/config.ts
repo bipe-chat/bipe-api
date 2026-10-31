@@ -115,6 +115,10 @@ const Env = z.object({
   NEWS_STORE_DIR: z.string().default("/data/news-crypto"),
   NEWS_STORE_PASSPHRASE: emptyAsUnset(z.string().min(32)),
   NEWS_SEND_PER_MINUTE: z.coerce.number().int().min(1).max(600).default(60),
+  // Group links (ADR 0184, bipe#744): the groups service account (registries/official-accounts.json role groups). A MAS
+  // compatibility token with no E2EE device: the account invites and reads room state only. Off without the token.
+  GROUPS_USER_ID: z.string().regex(/^@[a-z0-9._=\/-]+:[a-z0-9.-]+$/).optional(),
+  GROUPS_ACCESS_TOKEN: emptyAsUnset(z.string().min(16)),
   // Account deletion (ADR 0140): a Synapse admin access token for the room handover, the redaction and the
   // deactivation. A MAS compatibility token of a dedicated admin account (mas-cli manage issue-compatibility-token
   // <user> --yes-i-want-to-grant-synapse-admin-privileges); MAS gives no Synapse admin scope to client_credentials.
@@ -128,7 +132,11 @@ const Env = z.object({
   BIPE_MAIL_FROM: z.string().regex(/^[^\r\n<>]*<[^\s<>@]+@[^\s<>@]+>$|^[^\s<>@]+@[^\s<>@]+$/, "an address, or a name and <address>").default("Bipe <nao-responda@bipe.chat>"),
 });
 
-export type Config = Omit<z.infer<typeof Env>, "SUPPORT_USER_ID" | "NEWS_USER_ID"> & { SUPPORT_USER_ID: string; NEWS_USER_ID: string };
+export type Config = Omit<z.infer<typeof Env>, "SUPPORT_USER_ID" | "NEWS_USER_ID" | "GROUPS_USER_ID"> & {
+  SUPPORT_USER_ID: string;
+  NEWS_USER_ID: string;
+  GROUPS_USER_ID: string;
+};
 
 const MailEnv = Env.pick({ PUBLIC_SITE_URL: true, BIPE_SMTP_HOST: true, BIPE_SMTP_PORT: true, BIPE_SMTP_USER: true, BIPE_SMTP_PASSWORD: true, BIPE_MAIL_FROM: true });
 export type MailConfig = z.infer<typeof MailEnv>;
@@ -147,6 +155,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...parsed.data,
     SUPPORT_USER_ID: parsed.data.SUPPORT_USER_ID ?? `@suporte:${parsed.data.SERVER_NAME}`,
     NEWS_USER_ID: parsed.data.NEWS_USER_ID ?? `@bipe:${parsed.data.SERVER_NAME}`,
+    GROUPS_USER_ID: parsed.data.GROUPS_USER_ID ?? `@grupos:${parsed.data.SERVER_NAME}`,
   };
 }
 

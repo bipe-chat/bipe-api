@@ -6,6 +6,7 @@ import { type KeyAttestation, verifyKeyAttestation } from "./key-attest.js";
 import { ApiError } from "./errors.js";
 import { skeletonFree, validHandle } from "./handles.js";
 import { inviterOf, returnInviteUse, takeInviteUse } from "./invites.js";
+import { returnGroupSignup, takeGroupSignup } from "./group-links.js";
 import type { Lang } from "./registry.js";
 import { newSecret, secretHash } from "./secrets.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
@@ -176,7 +177,10 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
   // A code is used when given, and required only when SIGNUP_INVITE_REQUIRED is on.
   const code = input.invite_code?.trim();
   const inviteId = code ? await takeInviteUse(db, code) : null;
-  if (code && inviteId === null) throw new ApiError("invite_invalid");
+  // ADR 0184: a group link code works only from a link that signs people up and has sign-ups left, for a personal
+  // account. The account makes no invite pair (ADR 0034): the admin did not invite this person in person.
+  const group = code && inviteId === null && accountType === "personal" ? await takeGroupSignup(db, code) : null;
+  if (code && inviteId === null && !group) throw new ApiError("invite_invalid");
   if (!code && config.SIGNUP_INVITE_REQUIRED) throw new ApiError("invite_invalid");
   // ADR 0138 rule 2 (bipe#513): the invite of a company sign-up comes from its owner's personal account on the phone.
   // The use counts against that quota, but the company account keeps no link to it: no invite_id, no inviter, no invite pair.
@@ -204,7 +208,12 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, linkedInviteId, accountType]);
+        await client.query("INSERT INTO signups (user_id, invite_id, account_type, group_link_id) VALUES ($1, $2, $3, $4)", [
+          userId,
+          linkedInviteId,
+          accountType,
+          group?.linkId ?? null,
+        ]);
         if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
         await client.query("COMMIT");
       } catch (e) {
@@ -224,7 +233,12 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       const client = await db.connect();
       try {
         await client.query("BEGIN");
-        await client.query("INSERT INTO signups (user_id, invite_id, account_type) VALUES ($1, $2, $3)", [userId, linkedInviteId, accountType]);
+        await client.query("INSERT INTO signups (user_id, invite_id, account_type, group_link_id) VALUES ($1, $2, $3, $4)", [
+          userId,
+          linkedInviteId,
+          accountType,
+          group?.linkId ?? null,
+        ]);
         if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
         await client.query(
           `INSERT INTO account_secrets (user_id, device_first, pin_hash, pin_set_at, token_hash, token_set_at)
@@ -264,10 +278,13 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
     deps.growth?.record(userId, "signup_done");
     deps.news?.welcome(userId);
     if (inviter) deps.growth?.record(inviter, "invite_redeemed");
+    // The service account invites the new account; the app joins the group after sign-in.
+    const groupRoomId = group && (await deps.groupLinks?.inviteNewAccount(group.linkId, group.roomId, userId)) ? group.roomId : null;
     return {
       user_id: userId,
       ...(handle ? { handle } : {}),
       ...(inviter ? { inviter_user_id: inviter } : {}),
+      ...(groupRoomId ? { group_room_id: groupRoomId } : {}),
       ...(secrets ?? {}),
     };
   } catch (e) {
@@ -276,6 +293,7 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
     if (masUserId) await mas.deactivate(masUserId).catch(() => console.error("signup: deactivate after failure failed"));
     if (signupKey) await db.query("DELETE FROM signup_replays WHERE key_hash = $1", [secretHash(signupKey)]).catch(() => {});
     if (inviteId !== null) await returnInviteUse(db, inviteId).catch(() => console.error("signup: invite refund failed"));
+    if (group) await returnGroupSignup(db, group.linkId).catch(() => console.error("signup: group link refund failed"));
     throw e;
   }
 }

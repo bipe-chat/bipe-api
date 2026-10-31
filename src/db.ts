@@ -783,6 +783,30 @@ const MIGRATIONS = [
      ended_at timestamptz
    );
    CREATE INDEX assistant_accounts_operator ON assistant_accounts (operator_user_id);`,
+  // Group links (ADR 0184, bipe#744): one link per admin and group, the code as a SHA-256 hash, the people it brought in.
+  // created_by goes to NULL when the creator's account is deleted. Rows go 365 days after the link ends.
+  `CREATE TABLE group_links (
+     id bigserial PRIMARY KEY,
+     code_hash text NOT NULL UNIQUE,
+     room_id text NOT NULL,
+     created_by text,
+     signs_up boolean NOT NULL,
+     signups integer NOT NULL DEFAULT 0 CHECK (signups >= 0),
+     created_at timestamptz NOT NULL DEFAULT now(),
+     expires_at timestamptz NOT NULL,
+     revoked_at timestamptz
+   );
+   CREATE INDEX group_links_room ON group_links (room_id) WHERE revoked_at IS NULL;
+   CREATE INDEX group_links_created_by ON group_links (created_by) WHERE created_by IS NOT NULL;
+   CREATE TABLE group_link_joins (
+     link_id bigint NOT NULL REFERENCES group_links(id) ON DELETE CASCADE,
+     user_id text NOT NULL,
+     signed_up boolean NOT NULL DEFAULT false,
+     joined_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (link_id, user_id)
+   );
+   CREATE INDEX group_link_joins_user ON group_link_joins (user_id);
+   ALTER TABLE signups ADD COLUMN group_link_id bigint REFERENCES group_links(id) ON DELETE SET NULL;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

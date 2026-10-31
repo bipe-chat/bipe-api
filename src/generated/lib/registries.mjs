@@ -262,6 +262,8 @@ export function validateLinkedRecovery(accounts) {
 export function validateOfficialAccounts(reg) {
   const accounts = reg.officialAccounts.accounts;
   if (!accounts || typeof accounts !== "object" || Array.isArray(accounts) || !Object.keys(accounts).length) fail("official accounts: accounts must be a non-empty map");
+  // tools/gen.mjs writes the groups account for the apps (ADR 0184).
+  if (!accounts.groups) fail("official accounts: role groups is required (ADR 0184)");
   const userIds = new Set();
   const handles = new Set();
   for (const [role, account] of Object.entries(accounts)) {

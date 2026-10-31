@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { GroupLinks } from "./group-links.js";
 import type { Growth } from "./growth.js";
 import type { KeyAttestationVerifier } from "./key-attest.js";
 import type pg from "pg";
@@ -39,6 +40,8 @@ export interface AccountDeps {
   verifyKeyAttestation?: KeyAttestationVerifier;
   /** Content-free pushes to the account's devices (bipe#171). Absent in the admin CLI: nothing is pushed. */
   push?: DevicePushDeps;
+  /** Group links (ADR 0184): invites an account made with a group code into its group. Absent in the admin CLI. */
+  groupLinks?: Pick<GroupLinks, "inviteNewAccount">;
 }
 
 type Queryable = Db | pg.PoolClient;

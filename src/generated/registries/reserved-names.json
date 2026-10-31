@@ -2,7 +2,7 @@
   "$comment": "Display names reserved for CNPJ-verified accounts (security.md rule 8). Compared after normalisation (lowercase, diacritics stripped, homoglyphs folded). Starter list: review before launch. The match is exact, so a name inside a longer display name ('bpc' in a personal name) does not collide; a common suffix such as 'oficial' needs its own entry. Federal programme names (bipe-chat/bipe#655, 30 October 2026) are in government.",
   "version": 1,
   "categories": {
-    "bipe": ["bipe", "bipe oficial", "bipe chat", "suporte bipe", "equipe bipe", "seguranca bipe", "novidades do bipe", "novidades bipe"],
+    "bipe": ["bipe", "bipe oficial", "bipe chat", "suporte bipe", "equipe bipe", "seguranca bipe", "novidades do bipe", "novidades bipe", "bipe grupos", "grupos bipe"],
     "bank": [
       "banco do brasil", "caixa", "caixa economica federal", "itau", "itau unibanco", "bradesco", "santander",
       "nubank", "banco inter", "inter", "c6 bank", "btg pactual", "sicoob", "sicredi", "picpay", "mercado pago",

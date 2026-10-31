@@ -33,6 +33,7 @@ export type ErrorId =
   | "brand_mark_limit"
   | "deletion_pending"
   | "keep_limit"
+  | "group_link_no_access"
   // Business tools (bipe-shared api/business-schemas.json AgendaError, BusinessToolError).
   | "slot_taken"
   | "hold_expired"
@@ -89,6 +90,7 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   brand_mark_limit: 409,
   deletion_pending: 409,
   keep_limit: 409,
+  group_link_no_access: 409,
   slot_taken: 409,
   hold_expired: 409,
   too_many_open_bookings: 422,
