@@ -1,0 +1,9 @@
+{
+  "$comment": "First-contact outcomes for reach reputation (security.md rule 11, bipe-chat/bipe#39, bipe-chat/bipe#845). A first contact is an invite that the API allows when the inviter and the invitee share no other joined room and no invite pair (bipe-api mayInvite). The API keeps one row per first contact: the inviter, a keyed hash of the invitee, the room and the time, for recipientDays. In that time the Synapse module bipe_messaging reports the invitee's join (accepted), the invitee's own leave from the invite (declined) and a new ignore of the inviter (blocked, only within blockWindowDays of the first contact). A row with no join or leave and no block after recipientDays counts as ignored; then the row goes. A user report (Synapse event_reports) counts against the sender of the reported event. The API keeps per-sender daily counts (sent, accepted, declined, ignored, blocked, reported) for dailyCountDays. Never a recipient ID in clear, never message content. Reach tiers and budget (bipe-chat/bipe#851): each tier has a budget of first contacts per rolling windowHours; GET /v1/me/reach returns it. Over the budget, the Synapse module refuses the invite with M_LIMIT_EXCEEDED. The budgets and the thresholds (new-account age, the slowed rule) are bipe-api environment configuration, not this file, because a public number is a target for abuse. Contacts and replies are never limited. tiers is the order of the contract enum ReachStatus.tier. recipientDays and blockWindowDays 7 come from the reach reputation strategy (27 October 2026, proposed); dailyCountDays 90 is a default; MZ can overrule.",
+  "version": 1,
+  "recipientDays": 7,
+  "blockWindowDays": 7,
+  "dailyCountDays": 90,
+  "windowHours": 24,
+  "tiers": ["unattested", "new", "normal", "verified", "company", "slowed"]
+}

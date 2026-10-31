@@ -17,6 +17,8 @@ import { SignupLimits } from "./signup-limits.js";
 import { newChallenge } from "./attest.js";
 import { refreshKeyAttestationStatus } from "./key-attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
+import { Reach } from "./reach.js";
+import { ReachTiers, reachSettings } from "./reach-tiers.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
@@ -76,6 +78,8 @@ const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
 const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID] });
 const news = new NewsBot(db, config);
+// First-contact outcomes (bipe#845): off without BIPE_GROWTH_HMAC_SECRET; reports need SYNAPSE_DATABASE_URL.
+const reach = new Reach(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 // Synapse admin API (account deletion, voice audio expiry, device pushes). Null without SYNAPSE_ADMIN_TOKEN.
 const synapseAdmin = config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null;
 // Content-free pushes to an account's devices (approval nudge bipe#628, recovery alerts bipe#171).
@@ -93,10 +97,14 @@ const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_
 const support = new SupportBot(db, config, intake);
 const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL, support };
 console.log(`badges: ${badges.state}`);
+// Reach tiers and the first-contact budget (bipe#851). Budgets and thresholds: REACH_* in the environment.
+const reachTiers = new ReachTiers(db, reach, reachSettings(config), (id) => badges.verifiedBrand(id));
+console.log(`first-contact budget: ${reachTiers.state}`);
 const brandMarks = new BrandMarks(db, (id) => badges.verifiedBrand(id), config.PUBLIC_SITE_URL);
 console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" : "off (no STARLINGS_APP_INTAKE_KEY)"}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
+console.log(`first-contact outcomes: ${reach.state}`);
 console.log(`support bot: ${support.enabled ? "on" : "off (no SUPPORT_ACCESS_TOKEN or SUPPORT_STORE_PASSPHRASE)"}`);
 console.log(`news bot: ${news.enabled ? "on" : "off (no NEWS_ACCESS_TOKEN or NEWS_STORE_PASSPHRASE)"}`);
 console.log(`cvm register: ${config.CVM_REFRESH ? "daily refresh on" : "off (CVM_REFRESH=false)"}`);
@@ -126,6 +134,7 @@ const limits = {
   contactsLookup: new RateLimiter(30, 3_600_000),
   attestChallenge: new RateLimiter(20, 3_600_000),
   setMessaging: new RateLimiter(30, 3_600_000),
+  reach: new RateLimiter(60, 60_000),
   dataExport: new RateLimiter(3, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
@@ -314,6 +323,21 @@ const purgeVoiceMedia = () =>
     .catch((e) => console.error(`voice audio purge failed: ${(e as Error).message}`));
 purgeVoiceMedia();
 setInterval(purgeVoiceMedia, 24 * 3_600_000).unref();
+// First-contact outcomes (bipe#845): user reports every 15 minutes; first contacts go after recipientDays (hourly).
+const syncReachReports = () =>
+  void reach
+    .syncReports()
+    .then((n) => n && console.log(`reach: user reports read: ${n}`))
+    .catch((e) => console.error(`reach report sync failed: ${(e as Error).message}`));
+syncReachReports();
+setInterval(syncReachReports, 15 * 60_000).unref();
+const pruneReach = () =>
+  void reach
+    .prune()
+    .then((r) => r.firstContacts + r.days > 0 && console.log(`reach rows pruned: ${r.firstContacts} first contacts, ${r.days} daily counts`))
+    .catch((e) => console.error(`reach prune failed: ${(e as Error).message}`));
+pruneReach();
+setInterval(pruneReach, 3_600_000).unref();
 const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
@@ -415,12 +439,15 @@ const smallBody = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error
 const signatureBody = bodyLimit({ maxSize: 160 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
 const reportBody = bodyLimit({ maxSize: BODY_MAX_BYTES, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
 const govbrBody = bodyLimit({ maxSize: GOVBR_PDF_MAX_BYTES, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
+// An ignore list (bipe#845) can hold many IDs; only the Synapse module calls this route.
+const ignoredBody = bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
 const photoBody = bodyLimit({ maxSize: profileRules.photoMaxBytes, onError: (c) => c.json({ error: "photo_invalid", reason: "too_large" }, 413) });
 app.use("*", (c, next) => {
   if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
   if (c.req.path === PHOTO_PATH || CATALOG_PHOTO_PATH.test(c.req.path)) return photoBody(c, next);
   if (GOVBR_DOCUMENT_PATH.test(c.req.path)) return govbrBody(c, next);
+  if (c.req.path === "/internal/v1/first-contacts/ignored") return ignoredBody(c, next);
   return smallBody(c, next);
 });
 
@@ -799,6 +826,17 @@ const MayInviteBody = z.object({
   inviter: z.string().max(255),
   invitee: z.string().max(255),
   shares_room: z.boolean(),
+  // Sent by bipe_messaging from bipe#845 on; an older module sends none.
+  room_id: z.string().max(255).optional(),
+});
+const MemberChangeBody = z.object({
+  room_id: z.string().min(1).max(255),
+  user_id: z.string().min(1).max(255),
+  membership: z.enum(["join", "leave"]),
+});
+const IgnoredUsersBody = z.object({
+  user_id: z.string().min(1).max(255),
+  ignored_users: z.array(z.string().max(255)).max(10_000),
 });
 
 app.get("/v1/me/messaging", async (c) => {
@@ -812,6 +850,14 @@ app.put("/v1/me/messaging", async (c) => {
   const { who_can_message } = await parse(c, MessagingBody);
   await setPolicy(db, userId, who_can_message);
   return c.json({ who_can_message });
+});
+
+// Reach tier and first-contact budget (bipe#851). No score: the tier, the budget and the step that raises it.
+app.get("/v1/me/reach", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.reach.check(userId);
+  c.header("cache-control", "no-store");
+  return c.json(await reachTiers.status(userId));
 });
 
 // Data export (LGPD art. 18, ADR 0112). The app asks for a biometric check first.
@@ -840,11 +886,29 @@ app.post(BUG_REPORT_PATH, async (c) => {
 // Called by the Synapse module before every invite. Caddy does not route /internal/*.
 app.post("/internal/v1/may-invite", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
-  const { inviter, invitee, shares_room } = await parse(c, MayInviteBody);
+  const { inviter, invitee, shares_room, room_id } = await parse(c, MayInviteBody);
   // The support account (ADR 0114) opens one support room per user, whatever their policy.
   // So does the news account (ADR 0117): one read-only room per user.
   if (inviter === config.SUPPORT_USER_ID || inviter === config.NEWS_USER_ID) return c.json({ allow: true, policy: await policyOf(db, invitee) });
-  return c.json(await mayInvite(db, inviter, invitee, shares_room));
+  // bipe#851: reason reach_limit when the inviter's first-contact budget is used; the module answers M_LIMIT_EXCEEDED.
+  return c.json(await mayInvite(db, inviter, invitee, shares_room, { reach, tiers: reachTiers, roomId: room_id ?? null }));
+});
+
+// First-contact outcomes (bipe#845), from bipe_messaging: the invitee's join or own leave, and ignore-list changes.
+// The module drops a failed call; it never blocks the event. Never log the user IDs.
+app.post("/internal/v1/first-contacts/membership", async (c) => {
+  checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
+  const { room_id, user_id, membership } = await parse(c, MemberChangeBody);
+  await reach.membership(room_id, user_id, membership);
+  // A JSON body: the module's client parses every answer as JSON.
+  return c.json({});
+});
+
+app.post("/internal/v1/first-contacts/ignored", async (c) => {
+  checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
+  const { user_id, ignored_users } = await parse(c, IgnoredUsersBody);
+  await reach.ignored(user_id, ignored_users);
+  return c.json({});
 });
 
 // Support DM (ADR 0114): the caller's room with the support account.

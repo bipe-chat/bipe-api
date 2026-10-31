@@ -4,7 +4,7 @@ import { ApiError } from "./errors.js";
 import { experimentReport } from "./experiments.js";
 import { HANDLE_CHANGE_KEEP_DAYS } from "./handles.js";
 import { RETENTION_DAYS as BUG_REPORT_KEEP_DAYS } from "./bug-reports.js";
-import { growthRules } from "./registry.js";
+import { growthRules, reachRules } from "./registry.js";
 import { cell, MIN_CELL } from "./staff-report.js";
 import { transferReadiness } from "./transfer.js";
 import type { Visits } from "./visits.js";
@@ -137,6 +137,10 @@ export class StaffReports {
       one("problem-reports", BUG_REPORT_KEEP_DAYS,
         "SELECT count(*)::int AS rows, min(created_at) AS oldest, count(*) FILTER (WHERE created_at <= now() - make_interval(days => $1))::int AS over FROM bug_reports",
         [BUG_REPORT_KEEP_DAYS + 1]),
+      // bipe#845: the prune runs every hour, so a first contact may be at most one hour past recipientDays.
+      one("first-contacts", reachRules.recipientDays,
+        "SELECT count(*)::int AS rows, min(sent_at) AS oldest, count(*) FILTER (WHERE sent_at <= now() - make_interval(days => $1, hours => 2))::int AS over FROM first_contacts",
+        [reachRules.recipientDays]),
       one("signup-replays", 7,
         "SELECT count(*)::int AS rows, min(created_at) AS oldest, count(*) FILTER (WHERE created_at <= now() - interval '8 days')::int AS over FROM signup_replays"),
     ]);

@@ -35,7 +35,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     generated_at: now.toISOString(),
     user_id: userId,
     not_included: ["messages", "contacts", "media"],
-    sign_up: await one(db, "SELECT created_at, account_type FROM signups WHERE user_id = $1", userId),
+    sign_up: await one(db, "SELECT created_at, account_type, attested FROM signups WHERE user_id = $1", userId),
     account: await one(
       db,
       `SELECT device_first, pin_hash IS NOT NULL AS pin_set, pin_set_at, pin_wrong_tries, pin_blocked_at,
@@ -120,6 +120,16 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       userId,
     ),
     growth_events: await growth.rowsOf(userId),
+    // First contacts the caller started (bipe#845): room and time only. The recipient hash stays out, and so does what
+    // the recipient did with each one: a block is the recipient's private choice, so the daily counts fold blocked
+    // into not_answered.
+    first_contacts: await all(db, "SELECT room_id, sent_at FROM first_contacts WHERE inviter = $1 ORDER BY sent_at", userId),
+    first_contact_days: await all(
+      db,
+      `SELECT to_char(day, 'YYYY-MM-DD') AS day, sent, accepted, declined, ignored + blocked AS not_answered, reported
+         FROM reach_daily WHERE user_id = $1 ORDER BY day`,
+      userId,
+    ),
     // Problem reports (bipe#367): text and metadata. The log and screenshot files stay on the server.
     problem_reports: await bugReportsOf(db, userId),
     // Support DM (ADR 0114): the room ID only. The messages are in the room; the bot keeps no copy.
