@@ -5,6 +5,8 @@ const STATES = ["syncedToken"];
 const CARD_STATES = ["hasHandle"];
 const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "voceWithoutPhoto", "pinReminderDue", "firstChatListAfterSignup", "bringPeopleDue", "voceAfterDays"];
 const CIRCLES = ["family", "building"];
+const TIERS = ["critical", "access", "safety", "identity", "growth", "discovery"];
+const PREEMPTS = ["critical", "access"];
 const KEY = /^[a-z][A-Za-z]*$/;
 
 function fail(msg) {
@@ -79,6 +81,13 @@ export function validateOnboarding(reg) {
     needButtons(c, c.key);
     if (c.when !== undefined && !CARD_STATES.includes(c.when)) fail(`${c.key}: when "${c.when}"`);
   }
+  const clp = o.chatListPrompt?.entries;
+  if (!Array.isArray(clp) || clp.length === 0) fail("chatListPrompt.entries required");
+  clp.forEach((e, i) => {
+    if (!KEY.test(e.key) || clp.filter((d) => d.key === e.key).length > 1) fail(`chatListPrompt: key "${e.key}"`);
+    if (!TIERS.includes(e.tier)) fail(`chatListPrompt ${e.key}: tier "${e.tier}"`);
+    if (i > 0 && TIERS.indexOf(e.tier) < TIERS.indexOf(clp[i - 1].tier)) fail(`chatListPrompt ${e.key}: entries must be in tier order`);
+  });
   for (const p of o.prompts) {
     needKey(p.key, "prompts");
     if (!TRIGGERS.includes(p.trigger)) fail(`${p.key}: trigger "${p.trigger}"`);
@@ -227,6 +236,18 @@ ${o.firstList.cards.map((c) => `        case .${c.key}: ${c.when === "hasHandle"
     }
 }
 
+/// The one prompt card of the chat list (spec chat-list-prompt, bipe-chat/bipe#894). \`allCases\` is the queue order.
+public enum BipeChatListPrompt: String, CaseIterable, Sendable {
+${o.chatListPrompt.entries.map((e) => `    case ${e.key}`).join("\n")}
+
+    /// True for tiers critical and access: the entry ignores the prompt slot and takes the card at once.
+    public var preempts: Bool {
+        switch self {
+${o.chatListPrompt.entries.map((e) => `        case .${e.key}: ${PREEMPTS.includes(e.tier)}`).join("\n")}
+        }
+    }
+}
+
 public enum BipeOnboarding {
     public static let firstListMaxChats = ${o.firstList.maxChats}
     /// Hours between two slot prompts on one account (bipe-chat/bipe#200).
@@ -324,6 +345,21 @@ enum class BipeOnboardingCard(
 ) {
 ${o.firstList.cards.map((c) => `    ${snake(c.key)}(${res(c.title)}, ${res(c.body)}, ${button(c.primary)}, listOf(${c.text.map(button).join(", ")}), ${c.when === "hasHandle"}),`).join("\n")}
     ;
+}
+
+/** The one prompt card of the chat list (spec chat-list-prompt, bipe-chat/bipe#894). [entries] order is the queue order. */
+enum class BipeChatListPrompt(
+    /** True for tiers critical and access: the entry ignores the prompt slot and takes the card at once. */
+    val preempts: Boolean,
+) {
+${o.chatListPrompt.entries.map((e) => `    ${snake(e.key)}(${PREEMPTS.includes(e.tier)}),`).join("\n")}
+    ;
+
+    /** The raw key, as in registries/onboarding.json and the prompt slot memory. */
+    val key: String
+        get() = when (this) {
+${o.chatListPrompt.entries.map((e) => `            ${snake(e.key)} -> ${quote(e.key)}`).join("\n")}
+        }
 }
 
 object BipeOnboarding {
