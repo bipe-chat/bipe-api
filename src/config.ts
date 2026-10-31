@@ -127,9 +127,10 @@ const Env = z.object({
   CVM_REFRESH: z.string().default("true").transform((v) => v !== "false"),
   // Reach tiers and first-contact budget (security.md rule 11, bipe#851, src/reach-tiers.ts). Production values belong in
   // Secret bipe-api, not in a public file: a public number is a target. Unset values use the strategy's starting values
-  // (REACH_DEFAULTS), meant for local runs; the start log says when they apply. REACH_LIMITS=off records first contacts
-  // and answers GET /v1/me/reach, but refuses no invite.
-  REACH_LIMITS: z.string().default("on").transform((v) => v !== "off"),
+  // (REACH_DEFAULTS), meant for local runs; the start log says when they apply. Limits are off unless REACH_LIMITS=on:
+  // off records first contacts and answers GET /v1/me/reach, but refuses no invite, so a deploy changes no one's reach
+  // until the budgets are set in the Secret and the limits are turned on on purpose.
+  REACH_LIMITS: z.string().default("off").transform((v) => v === "on"),
   // tier=budget pairs, for example "unattested=5,new=10". A missing tier keeps its default.
   REACH_BUDGETS: emptyAsUnset(z.string().regex(/^(?:(?:unattested|new|normal|verified|company|slowed)=\d{1,6})(?:,(?:unattested|new|normal|verified|company|slowed)=\d{1,6})*$/, "tier=number pairs")),
   REACH_NEW_DAYS: emptyAsUnset(z.coerce.number().int().min(0).max(365)),
