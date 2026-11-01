@@ -147,6 +147,18 @@ ${rows.filter(({ r }) => r.url).map(({ r, id }) => `        case .${id}: URL(str
         }
     }
 }
+
+/// The bipe.chat pages of \`urls\`, for a screen that links a page outside a url row.
+public enum BipeSettingsUrl: String, CaseIterable, Sendable {
+${Object.keys(s.urls).map((k) => `    case ${k}`).join("\n")}
+
+    /// The page in the app language ("pt" or "en").
+    public func url(language: String) -> URL? {
+        switch self {
+${Object.entries(s.urls).map(([k, u]) => `        case .${k}: URL(string: language == "pt" ? ${quote(u.pt)} : ${quote(u.en)})`).join("\n")}
+        }
+    }
+}
 `;
   }
   // Kotlin
@@ -179,6 +191,15 @@ ${rows.map(({ g, r, id }) => `    ${snake(id)}(${quote(`${g.key}.${r.key}`)}, Bi
 
     /** The page a url row opens, in the app language ("pt" or "en"). */
     fun url(language: String): String? = if (language == "pt") urlPt else urlEn
+}
+
+/** The bipe.chat pages of \`urls\`, for a screen that links a page outside a url row. */
+enum class BipeSettingsUrl(val pt: String, val en: String) {
+${Object.entries(s.urls).map(([k, u]) => `    ${snake(k)}(${quote(u.pt)}, ${quote(u.en)}),`).join("\n")}
+    ;
+
+    /** The page in the app language ("pt" or "en"). */
+    fun url(language: String): String = if (language == "pt") pt else en
 }
 
 data class BipeSettingsSection(

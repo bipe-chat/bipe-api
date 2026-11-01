@@ -7,7 +7,8 @@
     "terms": { "pt": "https://bipe.chat/termos/", "en": "https://bipe.chat/en/terms/" },
     "privacy": { "pt": "https://bipe.chat/privacidade/", "en": "https://bipe.chat/en/privacy/" },
     "whoCanRead": { "pt": "https://bipe.chat/quem-pode-ler/", "en": "https://bipe.chat/en/who-can-read/" },
-    "lgpd": { "pt": "https://bipe.chat/lgpd/", "en": "https://bipe.chat/en/lgpd/" }
+    "lgpd": { "pt": "https://bipe.chat/lgpd/", "en": "https://bipe.chat/en/lgpd/" },
+    "accessibility": { "pt": "https://bipe.chat/acessibilidade/", "en": "https://bipe.chat/en/accessibility/" }
   },
   "groups": [
     {
@@ -149,6 +150,7 @@
           "rows": [
             { "key": "appearance", "title": "bipe_chats_appearance", "kind": "choice" },
             { "key": "colors", "title": "bipe_chats_colors", "footer": "bipe_chats_colors_footer", "kind": "link" },
+            { "key": "accessibility", "title": "bipe_chats_accessibility", "kind": "link" },
             { "key": "language", "title": "bipe_settings_language", "footer": "bipe_settings_language_footer", "kind": "action", "gate": "ios" },
             { "key": "mediaQuality", "title": "bipe_chats_media_quality", "kind": "link" },
             { "key": "showMedia", "title": "bipe_chats_show_media", "kind": "choice" },
