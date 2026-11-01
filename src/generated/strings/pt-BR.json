@@ -2123,6 +2123,7 @@
     "bipe_group_link_error_access": "Não deu para preparar o link. Só quem administra o grupo pode criar um.",
     "bipe_group_link_open_invited_by": "%1$s chamou você para este grupo.",
     "bipe_group_link_open_invalid": "Este link não vale mais. Peça um link novo para quem mandou.",
+    "bipe_group_link_open_history": "Você vai ver as mensagens enviadas depois que entrar.",
     "bipe_group_link_preview_title": "Grupo %1$s no Bipe",
     "bipe_group_link_preview_count": "Pessoas no grupo: %1$s. Toque para entrar.",
     "bipe_groups_service_name": "Bipe Grupos"
