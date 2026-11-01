@@ -351,6 +351,7 @@ function validate(reg) {
   const vm = reg.voiceMedia;
   if (![vm.transcriptDays, vm.noTranscriptDays, vm.maxKeptPerAccount].every((n) => Number.isInteger(n) && n >= 1) || vm.noTranscriptDays < vm.transcriptDays) fail("voice-media: transcriptDays, noTranscriptDays and maxKeptPerAccount must be positive integers, noTranscriptDays at least transcriptDays");
   if (!/^chat\.bipe\.[a-z_]+$/.test(vm.forwardKey) || !Number.isInteger(vm.forwardedManyTimes) || vm.forwardedManyTimes < 2) fail("voice-media: forwardKey must be chat.bipe.<name> and forwardedManyTimes an integer of 2 or more");
+  if (!Number.isInteger(vm.forwardChats) || !Number.isInteger(vm.forwardChatsManyTimes) || !(1 <= vm.forwardChatsManyTimes && vm.forwardChatsManyTimes <= vm.forwardChats)) fail("voice-media: forwardChats and forwardChatsManyTimes must be integers, 1 <= forwardChatsManyTimes <= forwardChats");
   validateStickers(reg.stickers);
   const as = reg.assistants;
   if (JSON.stringify(as.modelLocations) !== '["brasil","fora","desconhecido"]' || !Number.isInteger(as.maxResolve) || as.maxResolve < 1 || as.maxResolve > 500) fail("assistants: modelLocations must be brasil, fora, desconhecido and maxResolve an integer from 1 to 500");
@@ -1125,6 +1126,21 @@ export function forwardedContent(original, newContent, reg) {
   delete base["m.mentions"];
   base[reg.voiceMedia.forwardKey] = { count: Math.min(forwardCount(original, reg) + 1, FORWARD_COUNT_MAX) };
   return base;
+}
+
+/** The forward line of any message (bipe-chat/bipe#933): forwardedManyTimes, forwarded, or null for a count under 1. */
+export function forwardLine(count, reg) {
+  if (count >= reg.voiceMedia.forwardedManyTimes) return "forwardedManyTimes";
+  return count >= 1 ? "forwarded" : null;
+}
+
+/**
+ * The most chats one forward goes to (bipe-chat/bipe#933). sentCounts are the counts of the contents the forward sends
+ * (each the original count plus 1): forwardChatsManyTimes when one reaches forwardedManyTimes, else forwardChats.
+ */
+export function forwardChatLimit(sentCounts, reg) {
+  const vm = reg.voiceMedia;
+  return sentCounts.some((c) => c >= vm.forwardedManyTimes) ? vm.forwardChatsManyTimes : vm.forwardChats;
 }
 
 /** The source line of a voice message or audio file: forwarded, forwardedManyTimes, recorded (voice marker) or file. */
