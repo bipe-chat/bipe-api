@@ -389,6 +389,8 @@ const TermsBody = z.object({ terms_version: z.string().regex(TERMS_VERSION_PATTE
 const SignupResumeBody = z.object({ signup_key: z.string().regex(SECRET_PATTERN) });
 const HandleBody = z.object({ handle: z.string().max(64) });
 const PinBody = z.object({ pin: PinField });
+// bipe-chat/bipe#908: changing the PIN needs the current one when the account has a PIN.
+const PinChangeBody = z.object({ pin: PinField, old_pin: PinField.nullish() });
 const EmailBody = z.object({ email: z.email().max(254), lang: Lang.default("pt") });
 const TokenBody = z.object({ token: SecretField });
 const RedeemBody = z.object({ recovery_token: SecretField, pin: PinField });
@@ -412,7 +414,7 @@ const LinkWebBody = z.object({ app_id: z.enum(APP_IDS) });
 const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
 const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
-const GuardiansBody = z.object({ user_ids: z.array(z.string().max(255)).max(10) });
+const GuardiansBody = z.object({ user_ids: z.array(z.string().max(255)).max(10), pin: PinField });
 const PhoneBody = z.object({ phone_id: z.string().min(16).max(64) });
 const TheftMarksBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
 const ProfileFactsBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
@@ -547,7 +549,8 @@ app.post("/v1/me/terms", async (c) => {
 app.put("/v1/me/pin", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.pinSet.check(userId);
-  await setPin(accounts, userId, (await parse(c, PinBody)).pin);
+  const body = await parse(c, PinChangeBody);
+  await setPin(accounts, userId, body.pin, body.old_pin ?? undefined);
   return c.body(null, 204);
 });
 
@@ -579,13 +582,16 @@ app.get("/v1/web-link/place", async (c) => {
 app.post("/v1/me/device-first", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.credentials.check(userId);
+  const { pin } = await parse(c, PinBody);
   c.header("cache-control", "no-store");
-  return c.json(await moveToDeviceFirst(accounts, userId));
+  return c.json(await moveToDeviceFirst(accounts, userId, pin));
 });
 
 app.post("/v1/me/recovery-token", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.credentials.check(userId);
+  const { pin } = await parse(c, PinBody);
+  await verifyPin(accounts, userId, pin);
   c.header("cache-control", "no-store");
   return c.json(await rotateRecoveryToken(accounts, userId));
 });
@@ -1100,6 +1106,8 @@ app.put("/v1/me/guardians", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.theftAction.check(userId);
   const body = await parse(c, GuardiansBody);
+  // bipe-chat/bipe#908: a session alone cannot replace the guardians.
+  await verifyPin(accounts, userId, body.pin);
   return c.json(await theft.setGuardians(userId, body.user_ids));
 });
 
