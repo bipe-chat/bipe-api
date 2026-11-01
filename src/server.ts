@@ -262,6 +262,13 @@ const pruneGroupLinkRows = () =>
     .catch((e) => console.error(`group link prune failed: ${(e as Error).message}`));
 pruneGroupLinkRows();
 setInterval(pruneGroupLinkRows, 24 * 3_600_000).unref();
+const leaveEndedGroups = () =>
+  void groupLinks
+    .leaveUnused()
+    .then((n) => n > 0 && console.log(`group links: service account left ${n} groups`))
+    .catch((e) => console.error(`group link leave failed: ${(e as Error).message}`));
+leaveEndedGroups();
+setInterval(leaveEndedGroups, 3_600_000).unref();
 support.start();
 news.start();
 // Profile change facts (ADR 0049): Synapse profile sync every 15 minutes, 30-day retention.
