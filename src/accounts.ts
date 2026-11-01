@@ -128,9 +128,17 @@ export async function verifyPin({ db, pins }: AccountDeps, userId: string, pin: 
   if (outcome.kind === "wrong") throw new ApiError("pin_wrong", undefined, { tries_left: outcome.left });
 }
 
-/** Signed-in device: set or change the PIN (biometric check on the device first, ADR 0057). */
-export async function setPin(deps: AccountDeps, userId: string, pin: string): Promise<void> {
+/**
+ * Signed-in device: set or change the PIN (biometric check on the device first, ADR 0057). A change needs the current
+ * PIN (bipe-chat/bipe#908), checked and counted like verifyPin, so a session alone cannot take the PIN.
+ */
+export async function setPin(deps: AccountDeps, userId: string, pin: string, oldPin?: string): Promise<void> {
   checkPinRule(pin);
+  const { rows: current } = await deps.db.query("SELECT 1 FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL", [userId]);
+  if (current.length > 0) {
+    if (oldPin === undefined) throw new ApiError("bad_request", "old_pin");
+    await verifyPin(deps, userId, oldPin);
+  }
   const hash = await deps.pins.hash(pin);
   const hadPin = await inTransaction(deps.db, async (client) => {
     const { rows } = await client.query<{ pin_hash: string | null }>("SELECT pin_hash FROM account_secrets WHERE user_id = $1 FOR UPDATE", [userId]);
@@ -180,10 +188,19 @@ export async function issueCredentials(
   return { user_id: userId, password, recovery_token: token };
 }
 
-/** Beta account (own password) moves to a hidden password; also for an app that lost its stored password. */
-export async function moveToDeviceFirst(deps: AccountDeps, userId: string): Promise<Credentials> {
-  const { rows } = await deps.db.query("SELECT 1 FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL", [userId]);
+/**
+ * Beta account (own password) moves to a hidden password, once. It needs the current PIN (bipe-chat/bipe#908): with a
+ * session alone, a thief or a phished web session would get a permanent password and lock the owner out. A
+ * device-first account that lost its password recovers with the token or email instead.
+ */
+export async function moveToDeviceFirst(deps: AccountDeps, userId: string, pin: string): Promise<Credentials> {
+  const { rows } = await deps.db.query<{ device_first: boolean }>(
+    "SELECT device_first FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL",
+    [userId],
+  );
   if (rows.length === 0) throw new ApiError("pin_not_set");
+  if (rows[0].device_first) throw new ApiError("already_device_first");
+  await verifyPin(deps, userId, pin);
   return inTransaction(deps.db, (client) => issueCredentials(deps, client, userId));
 }
 
