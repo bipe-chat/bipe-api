@@ -35,6 +35,10 @@ function fakeRooms({ botLevel = 50, adminLevel = 100 } = {}) {
       invites.push([roomId, userId]);
       members.set(userId, "invite");
     },
+    async leave(roomId) {
+      if (roomId !== ROOM || members.get(BOT) !== "join") throw new RoomRefused("leave", 403);
+      members.set(BOT, "leave");
+    },
   };
 }
 
@@ -123,4 +127,27 @@ test("room version 12 creators are admins without an entry in users", () => {
   assert.equal(facts.level(ADMIN), Number.POSITIVE_INFINITY);
   assert.equal(facts.level(MEMBER), 0);
   assert.equal(facts.name, null);
+});
+
+test("the service account leaves when the last link of the group ends", async (t) => {
+  const db = await isolatedDatabase(t);
+  const rooms = fakeRooms();
+  const gl = links(db, rooms);
+  await gl.create(ADMIN, ROOM);
+  const second = await gl.create(ADMIN, ROOM);
+  // The second link ended the first; one link is still active, so the account stays.
+  assert.equal(await gl.leaveUnused(), 0);
+  assert.equal(rooms.members.get(BOT), "join");
+
+  await gl.revoke(ADMIN, second.id);
+  assert.equal(rooms.members.get(BOT), "leave");
+  // Nothing left to do on the next run.
+  assert.equal(await gl.leaveUnused(), 0);
+
+  // A new link brings it back (the app invites it), and expiry makes it leave again.
+  rooms.members.set(BOT, "invite");
+  const third = await gl.create(ADMIN, ROOM);
+  await db.query("UPDATE group_links SET expires_at = now() - interval '1 minute' WHERE id = $1", [third.id]);
+  assert.equal(await gl.leaveUnused(), 1);
+  assert.equal(rooms.members.get(BOT), "leave");
 });

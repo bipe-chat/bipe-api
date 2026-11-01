@@ -29,6 +29,7 @@ export interface GroupRooms {
   join(roomId: string): Promise<void>;
   state(roomId: string): Promise<RoomStateEvent[]>;
   invite(roomId: string, userId: string): Promise<void>;
+  leave(roomId: string): Promise<void>;
 }
 
 /** A refusal from Synapse (403 or 404): the service account is not in the room, or may not do this. */
@@ -53,6 +54,10 @@ export class MatrixGroupRooms implements GroupRooms {
 
   async invite(roomId: string, userId: string): Promise<void> {
     await this.call("invite", "POST", `/rooms/${encodeURIComponent(roomId)}/invite`, { user_id: userId });
+  }
+
+  async leave(roomId: string): Promise<void> {
+    await this.call("leave", "POST", `/rooms/${encodeURIComponent(roomId)}/leave`, {});
   }
 
   private async call(what: string, method: string, path: string, body?: unknown): Promise<any> {
@@ -239,6 +244,40 @@ export class GroupLinks {
       if (!facts || !isAdmin(facts, userId)) throw new ApiError("not_found");
     }
     await this.deps.db.query("UPDATE group_links SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL", [linkId]);
+    await this.leaveUnused(row.room_id);
+  }
+
+  /**
+   * The service account leaves each group that has no active link left (revoked or expired), so it does not stay in
+   * the member list with invite power. A new link brings it back: the app invites it again. Runs hourly for expiry.
+   */
+  async leaveUnused(roomId?: string): Promise<number> {
+    if (!this.deps.rooms) return 0;
+    const { rows } = await this.deps.db.query<{ room_id: string }>(
+      `SELECT DISTINCT room_id FROM group_links g
+       WHERE NOT service_left AND NOT (${ACTIVE}) AND ($1::text IS NULL OR room_id = $1)
+         AND NOT EXISTS (SELECT 1 FROM group_links a WHERE a.room_id = g.room_id AND a.revoked_at IS NULL AND a.expires_at > now())`,
+      [roomId ?? null],
+    );
+    let left = 0;
+    for (const { room_id } of rows) {
+      try {
+        await this.deps.rooms.leave(room_id);
+        left++;
+      } catch (e) {
+        // Not in the room any more (an admin removed it): nothing to leave. Anything else retries next hour.
+        if (!(e instanceof RoomRefused)) {
+          console.error(`group link: leave failed (${(e as Error).message})`);
+          continue;
+        }
+      }
+      this.cache.delete(room_id);
+      await this.deps.db.query(
+        `UPDATE group_links SET service_left = true WHERE room_id = $1 AND NOT (${ACTIVE})`,
+        [room_id],
+      );
+    }
+    return left;
   }
 
   private async active(text: string): Promise<LinkRow | null> {

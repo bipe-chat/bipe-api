@@ -807,6 +807,8 @@ const MIGRATIONS = [
    );
    CREATE INDEX group_link_joins_user ON group_link_joins (user_id);
    ALTER TABLE signups ADD COLUMN group_link_id bigint REFERENCES group_links(id) ON DELETE SET NULL;`,
+  // The groups service account left the room after its last link ended (ADR 0184).
+  `ALTER TABLE group_links ADD COLUMN service_left boolean NOT NULL DEFAULT false;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
