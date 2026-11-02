@@ -921,6 +921,7 @@
     "bipe_dm_notifications_mentions_disclaimer": "O servidor não tem essa opção em conversas protegidas. Você pode não receber aviso nesta conversa.",
     "bipe_dm_permalink_same": "Você já está nesta conversa",
     "bipe_dm_no_name": "Conversa sem nome",
+    "bipe_person_no_name": "Sem nome",
     "bipe_dm_inline_reply_failed": "Não deu para enviar. Abra a conversa.",
     "bipe_dm_error_muting": "Não deu para silenciar a conversa. Tente de novo.",
     "bipe_dm_error_unmuting": "Não deu para ligar o som da conversa. Tente de novo.",
