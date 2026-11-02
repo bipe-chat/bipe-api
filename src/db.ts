@@ -814,6 +814,10 @@ const MIGRATIONS = [
   `ALTER TABLE invites ADD COLUMN used_at timestamptz;
    UPDATE invites i SET used_at = coalesce((SELECT max(s.created_at) FROM signups s WHERE s.invite_id = i.id), i.created_at)
    WHERE i.uses_left = 0 OR EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id);`,
+  // Personal invites last 7 days, not 30 (MZ, 2 Nov 2026). Unused ones made earlier get the same 7 days from their
+  // creation, so those older than 7 days expire now and leave the invite list.
+  `UPDATE invites SET expires_at = created_at + interval '7 days'
+   WHERE created_by IS NOT NULL AND used_at IS NULL AND revoked_at IS NULL AND expires_at > created_at + interval '7 days';`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

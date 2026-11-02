@@ -6,6 +6,7 @@ import {
   inviteConnections,
   inviterReport,
   myInvites,
+  previewInvite,
   returnInviteUse,
   revokePersonalInvite,
   takeInviteUse,
@@ -59,4 +60,14 @@ test("an invite a company sign-up took shows as used, holds its slot and cannot 
   // A failed sign-up gives the use back: the invite is pending again.
   await returnInviteUse(db, inviteId);
   assert.equal((await myInvites(db, owner, policy)).invites[0].status, "pending");
+});
+
+test("a personal invite lasts 7 days and its preview gives the expiry", async (t) => {
+  const db = await isolatedDatabase(t);
+  const invite = await createPersonalInvite(db, owner, { perUser: 2, respawnDays: 7 }, "https://bipe.test");
+  const days = (Date.parse(invite.expires_at) - Date.now()) / 86_400_000;
+  assert.ok(days > 6.9 && days <= 7, `expires in ${days} days`);
+  const preview = await previewInvite(db, invite.code);
+  assert.equal(preview.valid, true);
+  assert.equal(preview.expires_at, invite.expires_at);
 });

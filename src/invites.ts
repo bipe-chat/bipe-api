@@ -48,8 +48,12 @@ export async function returnInviteUse(db: Db, inviteId: number): Promise<void> {
   await db.query("UPDATE invites SET uses_left = uses_left + 1, used_at = NULL WHERE id = $1", [inviteId]);
 }
 
-// Personal invites: single use, 30 days, revocable while pending (docs/growth.md "Throttle").
-const PERSONAL_INVITE_DAYS = 30;
+// Personal invites: single use, 7 days, revocable while pending (docs/growth.md "Throttle").
+const PERSONAL_INVITE_DAYS = 7;
+
+/** An expiry date as the invite page and the link preview show it: day and month in words, Brasília time. */
+export const inviteExpiryLabel = (d: Date) =>
+  new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", timeZone: "America/Sao_Paulo" }).format(d);
 
 type InviteStatus = "pending" | "used" | "expired" | "revoked";
 
@@ -191,17 +195,18 @@ export async function nameInvite(db: Db, userId: string, inviteId: string, name:
   if (rowCount !== 1) throw new ApiError("not_found");
 }
 
-/** Validity and, for a personal invite, the inviter's handle. Never says why a code is invalid. */
+/** Validity, the expiry and, for a personal invite, the inviter's handle. Never says why a code is invalid. */
 export async function previewInvite(db: Db, text: string) {
   const code = extractInviteCode(text);
   if (!code) return { valid: false };
-  const { rows } = await db.query<{ handle: string | null }>(
-    `SELECT h.handle FROM invites i LEFT JOIN handles h ON h.user_id = i.created_by
+  const { rows } = await db.query<{ handle: string | null; expires_at: Date }>(
+    `SELECT h.handle, i.expires_at FROM invites i LEFT JOIN handles h ON h.user_id = i.created_by
      WHERE i.code_hash = $1 AND i.uses_left > 0 AND i.expires_at > now() AND i.revoked_at IS NULL`,
     [inviteHash(code)],
   );
-  if (!rows[0]) return { valid: false };
-  return rows[0].handle ? { valid: true, inviter_handle: rows[0].handle } : { valid: true };
+  const row = rows[0];
+  if (!row) return { valid: false };
+  return { valid: true, ...(row.handle ? { inviter_handle: row.handle } : {}), expires_at: row.expires_at.toISOString() };
 }
 
 /** The user who created an invite, or null for admin invites. */
