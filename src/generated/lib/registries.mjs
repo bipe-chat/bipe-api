@@ -211,6 +211,8 @@ export function validateDmPowerLevels(pl) {
   for (const type of ["m.room.message", "m.reaction", "m.room.redaction", "org.matrix.msc3401.call.member"]) {
     if (pl.events?.[type] !== undefined && pl.events[type] > pl.usersDefault) fail(`dm-power-levels: ${type} must stay open`);
   }
+  // bipe-chat/bipe#879: room state is locked, so the assistant notice (ADR 0130) must be listed open.
+  if (!(pl.events?.["chat.bipe.assistant"] <= pl.usersDefault)) fail("dm-power-levels: chat.bipe.assistant must stay open");
 }
 
 /** Throws unless `hours` is a valid WorkHours value (api/openapi.yaml, registries/work-hours.json). */
