@@ -1,5 +1,6 @@
-// Public profiles (ADR 0041 in bipe/docs/adr). Opt-in, reachable by the exact handle only, separate from
-// the Matrix profile. A verified company's profile carries its signed badge (bipe#399).
+// Public profiles (ADR 0041 in bipe/docs/adr). Opt-in, reachable by the exact handle only. Name and bio are separate
+// from the Matrix profile; the photo is a copy of the Matrix avatar, uploaded by the apps (ADR 0041, amended
+// 2 Nov 2026). A verified company's profile carries its signed badge (bipe#399).
 import { randomBytes } from "node:crypto";
 import type { Badges } from "./badges.js";
 import type { Db } from "./db.js";
@@ -8,6 +9,9 @@ import { problemWithProfile, profileRules } from "./registry.js";
 import { recordProfileChange } from "./profile-facts.js";
 
 type Row = { enabled: boolean; name: string; bio: string; photo_version: string | null };
+
+/** The mxc URI of the Matrix avatar that a photo copies. Server name and media ID per the Matrix spec, bounded. */
+const MXC = /^mxc:\/\/[A-Za-z0-9.:-]{1,230}\/[A-Za-z0-9_-]{1,64}$/;
 
 const photoUrl = (apiUrl: string, handle: string, version: string) =>
   `${apiUrl.replace(/\/$/, "")}/v1/profiles/${encodeURIComponent(handle)}/photo?v=${version}`;
@@ -51,8 +55,8 @@ export async function publicPhoto(db: Db, raw: string): Promise<Buffer> {
 }
 
 export async function myProfile(db: Db, apiUrl: string, userId: string) {
-  const { rows } = await db.query<Row & { handle: string | null }>(
-    `SELECT h.handle, p.enabled, p.name, p.bio, p.photo_version
+  const { rows } = await db.query<Row & { handle: string | null; photo_source: string | null }>(
+    `SELECT h.handle, p.enabled, p.name, p.bio, p.photo_version, p.photo_source
      FROM (SELECT $1::text AS user_id) u
      LEFT JOIN public_profiles p ON p.user_id = u.user_id
      LEFT JOIN handles h ON h.user_id = u.user_id`,
@@ -66,6 +70,7 @@ export async function myProfile(db: Db, apiUrl: string, userId: string) {
     has_photo: row.photo_version !== null,
     ...(row.handle ? { handle: row.handle } : {}),
     ...(row.handle && row.photo_version ? { photo_url: photoUrl(apiUrl, row.handle, row.photo_version) } : {}),
+    ...(row.photo_version && row.photo_source ? { photo_source: row.photo_source } : {}),
   };
 }
 
@@ -97,12 +102,14 @@ export async function saveProfile(
   return myProfile(db, apiUrl, userId);
 }
 
-export async function setPhoto(db: Db, apiUrl: string, userId: string, body: Uint8Array) {
+export async function setPhoto(db: Db, apiUrl: string, userId: string, body: Uint8Array, source?: string) {
+  if (source !== undefined && !MXC.test(source)) throw new ApiError("photo_invalid", "bad_source");
   const photo = stripJpeg(body);
   await db.query(
-    `INSERT INTO public_profiles (user_id, photo, photo_version) VALUES ($1, $2, $3)
-     ON CONFLICT (user_id) DO UPDATE SET photo = EXCLUDED.photo, photo_version = EXCLUDED.photo_version, updated_at = now()`,
-    [userId, photo, randomBytes(6).toString("base64url")],
+    `INSERT INTO public_profiles (user_id, photo, photo_version, photo_source) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id) DO UPDATE SET photo = EXCLUDED.photo, photo_version = EXCLUDED.photo_version,
+       photo_source = EXCLUDED.photo_source, updated_at = now()`,
+    [userId, photo, randomBytes(6).toString("base64url"), source ?? null],
   );
   // ADR 0049: a new public photo is a change fact (the date only).
   await recordProfileChange(db, userId, "photo", "public");
@@ -111,7 +118,7 @@ export async function setPhoto(db: Db, apiUrl: string, userId: string, body: Uin
 
 export async function deletePhoto(db: Db, apiUrl: string, userId: string) {
   const { rowCount } = await db.query(
-    "UPDATE public_profiles SET photo = NULL, photo_version = NULL, updated_at = now() WHERE user_id = $1 AND photo IS NOT NULL",
+    "UPDATE public_profiles SET photo = NULL, photo_version = NULL, photo_source = NULL, updated_at = now() WHERE user_id = $1 AND photo IS NOT NULL",
     [userId],
   );
   if (rowCount) await recordProfileChange(db, userId, "photo", "public");
