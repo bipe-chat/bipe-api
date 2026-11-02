@@ -2197,6 +2197,20 @@
     "bipe_web_timeline_undecryptable": "Ainda não dá para ler esta mensagem neste computador.",
     "bipe_app_timeline_unsupported": "Este tipo de mensagem ainda não aparece aqui.",
     "bipe_app_upload_remove": "Remover",
-    "bipe_a11y_scroll_to_newest": "Ir para as mensagens mais novas"
+    "bipe_a11y_scroll_to_newest": "Ir para as mensagens mais novas",
+    "bipe_web_sign_out_history": "Suas mensagens antigas estão só neste navegador. Sem a chave de recuperação, elas não voltam.",
+    "bipe_web_history_banner": "Aprove este navegador para ler suas mensagens antigas.",
+    "bipe_web_recovery_history_note": "Para ler mensagens antigas neste navegador, aprove-o num aparelho já conectado ou use sua chave de recuperação.",
+    "bipe_web_history_none": "Este navegador ainda precisa de aprovação. Use um aparelho já conectado ou sua chave de recuperação.",
+    "bipe_web_encryption_verified": "Este navegador está aprovado e lê suas mensagens.",
+    "bipe_web_recovery_key_enter_body": "A chave traz suas mensagens antigas para este navegador.",
+    "bipe_web_verification_verified": "Aprovado",
+    "bipe_web_verification_unverified": "Precisa de aprovação",
+    "bipe_web_upload_cancel": "Parar o envio",
+    "bipe_web_emoji_search": "Buscar emoji",
+    "bipe_web_account_switcher_title": "Contas neste navegador",
+    "bipe_web_account_unread_last_sync": "Mensagens não lidas na última sincronização",
+    "bipe_web_account_cap_reached": "Este navegador já tem %1$s contas. É o limite.",
+    "bipe_web_sign_out_all": "Sair de todas as contas deste navegador"
   }
 }

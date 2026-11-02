@@ -2197,6 +2197,20 @@
     "bipe_web_timeline_undecryptable": "This message can't be read on this computer yet.",
     "bipe_app_timeline_unsupported": "This kind of message doesn't show here yet.",
     "bipe_app_upload_remove": "Remove",
-    "bipe_a11y_scroll_to_newest": "Go to the newest messages"
+    "bipe_a11y_scroll_to_newest": "Go to the newest messages",
+    "bipe_web_sign_out_history": "Your old messages are only in this browser. Without your recovery key, they won't come back.",
+    "bipe_web_history_banner": "Approve this browser to read your old messages.",
+    "bipe_web_recovery_history_note": "To read old messages in this browser, approve it on a linked device or use your recovery key.",
+    "bipe_web_history_none": "This browser still needs approval. Use a linked device or your recovery key.",
+    "bipe_web_encryption_verified": "This browser is approved and reads your messages.",
+    "bipe_web_recovery_key_enter_body": "The key brings your old messages to this browser.",
+    "bipe_web_verification_verified": "Approved",
+    "bipe_web_verification_unverified": "Needs approval",
+    "bipe_web_upload_cancel": "Stop sending",
+    "bipe_web_emoji_search": "Search emoji",
+    "bipe_web_account_switcher_title": "Accounts in this browser",
+    "bipe_web_account_unread_last_sync": "Unread messages at the last sync",
+    "bipe_web_account_cap_reached": "This browser already has %1$s accounts. That is the limit.",
+    "bipe_web_sign_out_all": "Sign out of all accounts in this browser"
   }
 }
