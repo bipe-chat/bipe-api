@@ -177,7 +177,8 @@
           "rows": [
             { "key": "terms", "title": "bipe_help_terms", "kind": "url", "url": "terms" },
             { "key": "privacy", "title": "bipe_help_privacy", "kind": "url", "url": "privacy" },
-            { "key": "licenses", "title": "bipe_help_licenses", "kind": "link" }
+            { "key": "licenses", "title": "bipe_help_licenses", "kind": "link" },
+            { "key": "versions", "title": "bipe_help_versions", "kind": "url", "url": "versions" }
           ]
         }
       ]
