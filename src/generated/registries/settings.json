@@ -52,7 +52,7 @@
           "title": "bipe_privacy_what_others_see",
           "rows": [
             { "key": "presence", "title": "bipe_privacy_presence", "footer": "bipe_privacy_presence_footer", "kind": "switch", "adr": "0050" },
-            { "key": "readReceipts", "title": "bipe_privacy_read_receipts", "footer": "bipe_privacy_read_receipts_footer", "kind": "info", "adr": "0050" },
+            { "key": "readReceipts", "title": "bipe_privacy_read_receipts", "footer": "bipe_privacy_read_receipts_footer", "kind": "switch", "adr": "0222" },
             { "key": "whoCanRead", "title": "bipe_privacy_who_can_read", "kind": "url", "url": "whoCanRead", "adr": "0109" }
           ]
         },
