@@ -56,6 +56,7 @@ import { GroupLinks, MatrixGroupRooms, pruneGroupLinks } from "./group-links.js"
 import { MEDIA_ID, VoiceMedia } from "./voice-media.js";
 import { type DevicePushDeps, pushToDevices } from "./device-push.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
+import { getNotificationPrefs, pushJoin, setNotificationPrefs } from "./notification-prefs.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
 import { orderHousekeeping } from "./orders.js";
@@ -79,7 +80,7 @@ const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseU
 const news = new NewsBot(db, config);
 // Synapse admin API (account deletion, voice audio expiry, device pushes). Null without SYNAPSE_ADMIN_TOKEN.
 const synapseAdmin = config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null;
-// Content-free pushes to an account's devices (approval nudge bipe#628, recovery alerts bipe#171).
+// Content-free pushes to an account's devices (approval nudge bipe#628, recovery alerts bipe#171, join pushes bipe#967).
 const devicePush: DevicePushDeps = { pushers: synapseAdmin ? (userId: string) => synapseAdmin.pushers(userId) : null, sygnalUrl: config.SYGNAL_URL ?? null };
 console.log(`device push: ${devicePush.pushers && devicePush.sygnalUrl ? "on" : "off (no SYNAPSE_ADMIN_TOKEN or SYGNAL_URL)"}`);
 const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
@@ -89,6 +90,7 @@ const groupLinks = new GroupLinks({
   rooms: config.GROUPS_ACCESS_TOKEN ? new MatrixGroupRooms(config.SYNAPSE_URL, config.GROUPS_ACCESS_TOKEN, config.GROUPS_USER_ID) : null,
   verified: async (userId) => (await badges.forUser(userId)).status === 200,
   siteUrl: config.PUBLIC_SITE_URL,
+  joined: (creatorId, roomId) => void pushJoin(db, devicePush, creatorId, "group_link_joined", { bipe_room_id: roomId }),
 });
 const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news, push: devicePush, groupLinks };
 const linkDeps: LinkDeps = { ...accounts, links: new Links(config) };
@@ -191,6 +193,7 @@ const limits = {
   assistantResolve: new RateLimiter(60, 60_000),
   mcp: new RateLimiter(60, 60_000),
   workHours: new RateLimiter(30, 3_600_000),
+  notificationPrefs: new RateLimiter(30, 3_600_000),
   // gov.br signed challenge (bipe#543).
   govbrChallenge: new RateLimiter(10, 3_600_000),
   govbrDocument: new RateLimiter(20, 3_600_000),
@@ -939,6 +942,20 @@ app.put("/v1/me/work-hours", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.workHours.check(userId);
   return c.json(await setWorkHours(db, userId, await parse(c, WorkHoursBody)));
+});
+
+// Join pushes (bipe-chat/bipe#967): whether the account gets invite_joined and group_link_joined.
+const NotificationPrefsBody = z.object({ invite_joined: z.boolean().optional(), group_link_joined: z.boolean().optional() });
+
+app.get("/v1/me/notification-prefs", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await getNotificationPrefs(db, userId));
+});
+
+app.put("/v1/me/notification-prefs", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.notificationPrefs.check(userId);
+  return c.json(await setNotificationPrefs(db, userId, await parse(c, NotificationPrefsBody)));
 });
 
 // Voice audio expiry (ADR 0164, bipe#622). Path: the server name and media ID of the mxc URI.
