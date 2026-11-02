@@ -2183,6 +2183,20 @@
     "bipe_group_link_joined_push_body": "Someone joined one of your groups through its link. Tap to open the group.",
     "bipe_notifications_invite_joined": "When someone joins with my invite",
     "bipe_notifications_group_link_joined": "When someone joins with my group link",
-    "bipe_notifications_joins_footer": "Applies to all your devices."
+    "bipe_notifications_joins_footer": "Applies to all your devices.",
+    "bipe_web_signin_title": "Use Bipe on your computer",
+    "bipe_web_signin_step_open": "Open Bipe on your phone.",
+    "bipe_web_signin_step_path": "Tap %1$s › %2$s › %3$s › %4$s.",
+    "bipe_web_signin_step_scan": "Point your phone's camera at this code.",
+    "bipe_web_signin_check_code_title": "Type the number your phone shows",
+    "bipe_web_signin_check_code_send": "Confirm",
+    "bipe_web_signin_approve": "Approve on your phone to sign in.",
+    "bipe_web_signin_keys": "Getting your keys from your phone…",
+    "bipe_web_signin_expired": "The code expired. Making a new one…",
+    "bipe_web_loading": "Loading…",
+    "bipe_web_timeline_undecryptable": "This message can't be read on this computer yet.",
+    "bipe_app_timeline_unsupported": "This kind of message doesn't show here yet.",
+    "bipe_app_upload_remove": "Remove",
+    "bipe_a11y_scroll_to_newest": "Go to the newest messages"
   }
 }

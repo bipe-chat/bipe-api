@@ -2183,6 +2183,20 @@
     "bipe_group_link_joined_push_body": "Alguém entrou num grupo seu pelo link. Toque para abrir o grupo.",
     "bipe_notifications_invite_joined": "Quando alguém entra com meu convite",
     "bipe_notifications_group_link_joined": "Quando alguém entra com meu link de grupo",
-    "bipe_notifications_joins_footer": "Vale para todos os seus aparelhos."
+    "bipe_notifications_joins_footer": "Vale para todos os seus aparelhos.",
+    "bipe_web_signin_title": "Use o Bipe no computador",
+    "bipe_web_signin_step_open": "Abra o Bipe no celular.",
+    "bipe_web_signin_step_path": "Toque em %1$s › %2$s › %3$s › %4$s.",
+    "bipe_web_signin_step_scan": "Aponte a câmera do celular para este código.",
+    "bipe_web_signin_check_code_title": "Digite o número que aparece no celular",
+    "bipe_web_signin_check_code_send": "Confirmar",
+    "bipe_web_signin_approve": "Aprove no celular para entrar.",
+    "bipe_web_signin_keys": "Trazendo suas chaves do celular…",
+    "bipe_web_signin_expired": "O código venceu. Criando outro…",
+    "bipe_web_loading": "Carregando…",
+    "bipe_web_timeline_undecryptable": "Ainda não dá para ler esta mensagem neste computador.",
+    "bipe_app_timeline_unsupported": "Este tipo de mensagem ainda não aparece aqui.",
+    "bipe_app_upload_remove": "Remover",
+    "bipe_a11y_scroll_to_newest": "Ir para as mensagens mais novas"
   }
 }
