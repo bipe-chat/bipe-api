@@ -1008,6 +1008,8 @@
     "bipe_link_computer_done": "Computer linked.",
     "bipe_app_link_computer_scan_title": "Scan the code on the computer",
     "bipe_app_link_computer_scan_body": "Point the camera at the QR code on web.bipe.chat.",
+    "bipe_app_link_computer_account": "Sign in on the computer as",
+    "bipe_app_link_computer_switch_account": "Switch account",
     "bipe_app_link_computer_connecting": "Connecting to the computer…",
     "bipe_app_link_computer_check_code_title": "Type this number on the computer",
     "bipe_app_link_computer_check_code_body": "The computer asks for it to make sure it's connected to this phone.",
