@@ -2,7 +2,7 @@
 
 const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss", "shareInvite", "shareProfile", "profileQr", "notes", "photoPicker", "pinCheck", "bringPeopleSheet", "bringPeopleResend", "osTheftSettings"];
 const STATES = ["syncedToken"];
-const CARD_STATES = ["hasHandle"];
+const CARD_STATES = ["hasHandle", "bringPeopleNotShown"];
 const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "voceWithoutPhoto", "pinReminderDue", "firstChatListAfterSignup", "bringPeopleDue", "voceAfterDays"];
 const CIRCLES = ["family", "building"];
 const TIERS = ["critical", "access", "safety", "identity", "growth", "discovery"];
@@ -234,6 +234,13 @@ ${screenMembers(o.firstList.cards)}
 ${o.firstList.cards.map((c) => `        case .${c.key}: ${c.when === "hasHandle"}`).join("\n")}
         }
     }
+
+    /// True when the card shows only while the bring-people sheet never showed on this account.
+    public var needsNoBringPeople: Bool {
+        switch self {
+${o.firstList.cards.map((c) => `        case .${c.key}: ${c.when === "bringPeopleNotShown"}`).join("\n")}
+        }
+    }
 }
 
 /// The one prompt card of the chat list (spec chat-list-prompt, bipe-chat/bipe#894). \`allCases\` is the queue order.
@@ -342,8 +349,10 @@ enum class BipeOnboardingCard(
     val text: List<BipeOnboardingButton>,
     /** True when the card shows only while the account has an @. */
     val needsHandle: Boolean,
+    /** True when the card shows only while the bring-people sheet never showed on this account. */
+    val needsNoBringPeople: Boolean,
 ) {
-${o.firstList.cards.map((c) => `    ${snake(c.key)}(${res(c.title)}, ${res(c.body)}, ${button(c.primary)}, listOf(${c.text.map(button).join(", ")}), ${c.when === "hasHandle"}),`).join("\n")}
+${o.firstList.cards.map((c) => `    ${snake(c.key)}(${res(c.title)}, ${res(c.body)}, ${button(c.primary)}, listOf(${c.text.map(button).join(", ")}), ${c.when === "hasHandle"}, ${c.when === "bringPeopleNotShown"}),`).join("\n")}
     ;
 }
 
