@@ -1281,7 +1281,6 @@
     "bipe_recovery_beta": "Entrar com e-mail e senha",
     "bipe_recovery_beta_body": "Para contas que usam e-mail e senha.",
     "bipe_recovery_beta_password": "Senha",
-    "bipe_notifications_prompt_title": "%1$s vai responder. Quer saber na hora?",
     "bipe_notifications_prompt_title_generic": "Quer saber na hora quando responderem?",
     "bipe_notifications_prompt_body": "O Bipe avisa quando chega mensagem nova. Dá para mudar depois em Configurações.",
     "bipe_notifications_prompt_allow": "Ligar notificações",
