@@ -809,6 +809,11 @@ const MIGRATIONS = [
    ALTER TABLE signups ADD COLUMN group_link_id bigint REFERENCES group_links(id) ON DELETE SET NULL;`,
   // The groups service account left the room after its last link ended (ADR 0184).
   `ALTER TABLE group_links ADD COLUMN service_left boolean NOT NULL DEFAULT false;`,
+  // When a code was last taken. A company sign-up takes its owner's invite but keeps no signups link (bipe#513),
+  // so used_at, not the signups row, says that a personal invite is used. Earlier uses: the join, else the creation.
+  `ALTER TABLE invites ADD COLUMN used_at timestamptz;
+   UPDATE invites i SET used_at = coalesce((SELECT max(s.created_at) FROM signups s WHERE s.invite_id = i.id), i.created_at)
+   WHERE i.uses_left = 0 OR EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id);`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
