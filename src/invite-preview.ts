@@ -1,21 +1,22 @@
 // Link preview head for invite links (bipe#459). The site edge sends only link-preview crawlers here;
 // browsers get the static invite page. Public profile fields only, and the image URL never holds the code.
 import type { Db } from "./db.js";
-import { extractInviteCode, inviteHash } from "./invites.js";
+import { extractInviteCode, inviteExpiryLabel, inviteHash } from "./invites.js";
 import { appString } from "./registry.js";
 
-type Inviter = { handle: string; name: string | null; photo_version: string | null };
+type Invite = { handle: string | null; name: string | null; photo_version: string | null; expires_at: Date };
 
 const escape = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-/** The inviter of a usable personal invite with a handle, or null. Never says why. */
-async function inviterOf(db: Db, text: string): Promise<Inviter | null> {
+/** A usable invite: its expiry and, for a personal invite with a handle, the inviter. Null when unusable; never says why. */
+async function inviteOf(db: Db, text: string): Promise<Invite | null> {
   const code = extractInviteCode(text);
   if (!code) return null;
-  const { rows } = await db.query<Inviter>(
-    `SELECT h.handle, CASE WHEN p.enabled THEN p.name END AS name, CASE WHEN p.enabled THEN p.photo_version END AS photo_version
-     FROM invites i JOIN handles h ON h.user_id = i.created_by
+  const { rows } = await db.query<Invite>(
+    `SELECT h.handle, CASE WHEN p.enabled THEN p.name END AS name, CASE WHEN p.enabled THEN p.photo_version END AS photo_version,
+            i.expires_at
+     FROM invites i LEFT JOIN handles h ON h.user_id = i.created_by
      LEFT JOIN public_profiles p ON p.user_id = i.created_by
      WHERE i.code_hash = $1 AND i.uses_left > 0 AND i.expires_at > now() AND i.revoked_at IS NULL`,
     [inviteHash(code)],
@@ -25,11 +26,13 @@ async function inviterOf(db: Db, text: string): Promise<Inviter | null> {
 
 export async function invitePreviewHtml(db: Db, siteUrl: string, apiUrl: string, text: string): Promise<string> {
   const site = siteUrl.replace(/\/$/, "");
-  const inviter = await inviterOf(db, text);
+  const invite = await inviteOf(db, text);
+  const inviter = invite?.handle ? { ...invite, handle: invite.handle } : null;
   const who = inviter ? (inviter.name?.trim() || `@${inviter.handle}`) : null;
   const title = who ? appString("pt", "bipe_onboarding_invited_by", who).replace(/\.$/, "") : "Convite para o Bipe";
-  // Same text as the static invite page (bipe-web copy.ts invite.lead and route title).
-  const description = "Um app de mensagens brasileiro que avisa quando tem golpe e esconde seu número.";
+  // Same text as the static invite page (bipe-web copy.ts invite.lead and route title), after the expiry for urgency.
+  const lead = "Um app de mensagens brasileiro que avisa quando tem golpe e esconde seu número.";
+  const description = invite ? `${appString("pt", "bipe_invite_link_expires", inviteExpiryLabel(invite.expires_at))} ${lead}` : lead;
   const photo = inviter?.photo_version
     ? `${apiUrl.replace(/\/$/, "")}/v1/profiles/${encodeURIComponent(inviter.handle)}/photo?v=${inviter.photo_version}`
     : null;
