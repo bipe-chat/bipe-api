@@ -1278,7 +1278,7 @@ app.put(PHOTO_PATH, async (c) => {
   limits.setProfilePhoto.check(userId);
   if (c.req.header("content-type")?.split(";")[0]?.trim() !== "image/jpeg") throw new ApiError("photo_invalid", "not_jpeg");
   const body = new Uint8Array(await c.req.arrayBuffer());
-  return c.json(await setPhoto(db, config.PUBLIC_API_URL, userId, body));
+  return c.json(await setPhoto(db, config.PUBLIC_API_URL, userId, body, c.req.query("source")));
 });
 
 app.delete(PHOTO_PATH, async (c) => {

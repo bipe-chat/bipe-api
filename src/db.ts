@@ -818,6 +818,8 @@ const MIGRATIONS = [
   // creation, so those older than 7 days expire now and leave the invite list.
   `UPDATE invites SET expires_at = created_at + interval '7 days'
    WHERE created_by IS NOT NULL AND used_at IS NULL AND revoked_at IS NULL AND expires_at > created_at + interval '7 days';`,
+  // The public photo is a copy of the Matrix avatar (ADR 0041, amended 2 Nov 2026): the mxc URI it copies.
+  `ALTER TABLE public_profiles ADD COLUMN photo_source text;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
