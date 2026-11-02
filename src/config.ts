@@ -49,6 +49,8 @@ const Env = z.object({
   // Shared with the Synapse module bipe_messaging only. Guards /internal/*.
   BIPE_INTERNAL_SECRET: z.string().min(32),
   PUBLIC_SITE_URL: z.url().default("https://bipe.chat"),
+  // The own web client (ADR 0216, ADR 0225): a browser on this origin calls the app routes with the account's token.
+  WEB_CLIENT_ORIGIN: z.url().default("https://web.bipe.chat"),
   // CNPJ verification (ADR 0042): where Receita releases live on disk, and the public share they come from.
   RECEITA_DIR: z.string().default("/data/receita"),
   RECEITA_WEBDAV_URL: z.url().default("https://arquivos.receitafederal.gov.br/public.php/webdav"),

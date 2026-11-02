@@ -453,6 +453,23 @@ app.use("*", (c, next) => {
   return smallBody(c, next);
 });
 
+// The own web client (ADR 0216, ADR 0225) calls the same routes as the apps, from WEB_CLIENT_ORIGIN, with the
+// account's Matrix token in authorization. Only that origin gets CORS here; staff and internal routes never do.
+const webOrigin = config.WEB_CLIENT_ORIGIN.replace(/\/$/, "");
+const siteOrigin = config.PUBLIC_SITE_URL.replace(/\/$/, "");
+/** Public routes the site and the web client both read. */
+const siteAndWeb = [siteOrigin, webOrigin];
+const webCors = cors({
+  origin: (origin) => (origin === webOrigin ? origin : null),
+  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowHeaders: ["authorization", "content-type", "x-matrix-server-name"],
+  maxAge: 600,
+});
+// Only a request from the web origin reaches webCors, so the site's own preflights keep their route's CORS.
+app.use("/v1/*", (c, next) =>
+  c.req.header("origin") === webOrigin && !c.req.path.startsWith("/v1/admin/") ? webCors(c, next) : next(),
+);
+
 /** Core routes (ADR 0168, bipe-chat/bipe#646): a token of this homeserver, or an OpenID token with X-Matrix-Server-Name. */
 function coreSession(c: Context): Promise<{ userId: string; deviceId: string | null }> {
   return auth.coreSession(c.req.header("authorization"), c.req.header("x-matrix-server-name"));
@@ -776,7 +793,7 @@ app.post("/v1/links/callback/apple", async (c) => {
 
 
 // The invite page on the public site reads the preview from the browser.
-app.use("/v1/invites/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/invites/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 // The waitlist form on the public site posts from the browser.
 app.use("/v1/waitlist", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
@@ -811,7 +828,7 @@ app.get("/v1/web/convite/:code", async (c) => {
 });
 
 // Group links (ADR 0184, bipe#744). The group link page on the public site reads the preview from the browser.
-app.use("/v1/group-links/:code", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/group-links/:code", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 app.get("/v1/group-links/:code", async (c) => {
   limits.groupLinkPreview.check(clientIp(c));
@@ -1163,7 +1180,7 @@ app.get("/v1/handles/:handle", async (c) => {
 });
 
 // Public profiles (ADR 0041). The profile page on the public site reads them from the browser.
-app.use("/v1/profiles/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/profiles/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 app.get("/v1/profiles/:handle", async (c) => {
   limits.profile.check(clientIp(c));
@@ -1185,7 +1202,7 @@ app.get("/v1/profiles/:handle/photo", async (c) => {
 
 // Badges (bipe#399, ADR 0123). Public: anyone who sees a message may check the sender's seal. Apps verify the
 // envelope locally and never trust the status alone.
-app.use("/v1/badges/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/badges/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 app.get("/v1/badges/:userId", async (c) => {
   limits.badge.check(clientIp(c));
@@ -1200,7 +1217,7 @@ app.get("/v1/badges/:userId", async (c) => {
 });
 
 // Assistants as chat members (ADR 0210, bipe#867). Public like the badge: anyone who sees the account may check it.
-app.use("/v1/assistants/:userId", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/assistants/:userId", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 app.post("/v1/assistants/resolve", smallBody, async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.assistantResolve.check(userId);
@@ -1216,7 +1233,7 @@ app.get("/v1/assistants/:userId", async (c) => {
 
 // Brand marks (ADR 0162, bipe#483). Public like the badge: customers check a reseller's marks. The apps verify each
 // envelope locally and keep the answer for at most recheckMinutes.
-app.use("/v1/brand-marks/:userId", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/brand-marks/:userId", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 app.get("/v1/brand-marks/:userId", async (c) => {
   limits.brandMarks.check(clientIp(c));
   const userId = c.req.param("userId");
@@ -1514,7 +1531,7 @@ staffGet("/v1/admin/reports", (c) => {
 });
 
 // Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
-app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, clientIp }));
+app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp }));
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 app.onError((err, c) => {
