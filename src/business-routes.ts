@@ -21,6 +21,8 @@ export type BusinessDeps = {
   auth: MatrixAuth;
   apiUrl: string;
   siteUrl: string;
+  /** The own web client origin (ADR 0225); the site only when absent. */
+  webOrigin?: string;
   clientIp: (c: Context) => string;
 };
 
@@ -39,7 +41,7 @@ function query<T>(c: Context, schema: z.ZodType<T>): T {
   return parsed.data;
 }
 
-export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: BusinessDeps): Hono {
+export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp }: BusinessDeps): Hono {
   const app = new Hono();
   const limits = {
     ownerWrite: new RateLimiter(600, 3_600_000),
@@ -76,7 +78,8 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
     c.header("cache-control", "no-store");
     return businessOf(db, c.req.param("handle")!);
   };
-  const origin = siteUrl.replace(/\/$/, "");
+  // The site and the own web client (ADR 0225) both read the public business routes.
+  const origin = [siteUrl, ...(webOrigin ? [webOrigin] : [])].map((o) => o.replace(/\/$/, ""));
   app.use("/v1/businesses/*", cors({ origin, allowMethods: ["GET", "POST"], allowHeaders: ["authorization", "content-type"] }));
 
   // ---- Catálogo, owner ----
