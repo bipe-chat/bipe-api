@@ -126,6 +126,7 @@
     {
       "key": "bringPeople",
       "trigger": "firstChatListAfterSignup",
+      "slot": true,
       "title": "bipe_bring_people_title",
       "body": "bipe_bring_people_body",
       "primary": { "title": "bipe_first_card_invite_action", "to": "bringPeopleSheet" },
@@ -163,7 +164,7 @@
     "stopAfterDeclines": 2
   },
   "chatListPrompt": {
-    "$comment": "The one prompt card of the chat list (spec chat-list-prompt, bipe-chat/bipe#894), in queue order: the first entry whose source condition holds and that the slot allows shows. tier critical and access preempt the slot; every other entry shares BipePromptSlot (promptSlot.hours) with the Você prompts. Keys equal to a prompts key keep that prompt's slot memory.",
+    "$comment": "The one prompt card of the chat list (spec chat-list-prompt, bipe-chat/bipe#894), in queue order: the first entry whose source condition holds and that the slot allows shows. tier critical and access preempt the slot; every other entry shares BipePromptSlot (promptSlot.hours) with the Você prompts. Keys equal to a prompts key keep that prompt's slot memory. The bring-people sheet (prompts.bringPeople, slot true) is not an entry but claims the slot when it opens, so no card shows for promptSlot.hours after the sheet (MZ, 2 Nov 2026).",
     "entries": [
       { "key": "remoteBanner", "tier": "critical" },
       { "key": "approvePhone", "tier": "access" },
@@ -178,11 +179,12 @@
     ]
   },
   "firstList": {
-    "$comment": "Cards at the top of Conversas while it lists at most maxChats chats (bipe-chat/bipe#198, spec chat-list-cards). A card goes away for good once used or dismissed.",
+    "$comment": "Cards at the top of Conversas while it lists at most maxChats chats (bipe-chat/bipe#198, spec chat-list-cards). A card goes away for good once used or dismissed. `when`: hasHandle shows the card only while the account has an @; bringPeopleNotShown shows it only while the bring-people sheet never showed on this account (MZ, 2 Nov 2026: the sheet and its reminder do the asking, so the invite card is for accounts that never saw the sheet).",
     "maxChats": 3,
     "cards": [
       {
         "key": "invite",
+        "when": "bringPeopleNotShown",
         "title": "bipe_first_card_invite_title",
         "body": "bipe_first_card_invite_body",
         "primary": { "title": "bipe_first_card_invite_action", "to": "shareInvite" },
