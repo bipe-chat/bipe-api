@@ -2167,6 +2167,13 @@
     "bipe_year_recap_longest_voice": "Longest voice message",
     "bipe_year_recap_partial": "This phone does not have the whole year's history, so the numbers count only what is on it.",
     "bipe_year_recap_empty": "You have not sent any messages in %1$s yet.",
-    "bipe_year_recap_share_note": "The image shows only the numbers, with no names of people or chats."
+    "bipe_year_recap_share_note": "The image shows only the numbers, with no names of people or chats.",
+    "bipe_invite_joined_push_title": "Invite accepted",
+    "bipe_invite_joined_push_body": "Someone joined Bipe with your invite. Tap to see who.",
+    "bipe_group_link_joined_push_title": "New group member",
+    "bipe_group_link_joined_push_body": "Someone joined one of your groups through its link. Tap to open the group.",
+    "bipe_notifications_invite_joined": "When someone joins with my invite",
+    "bipe_notifications_group_link_joined": "When someone joins with my group link",
+    "bipe_notifications_joins_footer": "Applies to all your devices."
   }
 }

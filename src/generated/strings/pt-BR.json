@@ -2167,6 +2167,13 @@
     "bipe_year_recap_longest_voice": "Áudio mais longo",
     "bipe_year_recap_partial": "Este celular não tem o histórico do ano inteiro, então os números contam só o que está nele.",
     "bipe_year_recap_empty": "Você ainda não mandou mensagens em %1$s.",
-    "bipe_year_recap_share_note": "A imagem mostra só os números, sem nomes de pessoas ou conversas."
+    "bipe_year_recap_share_note": "A imagem mostra só os números, sem nomes de pessoas ou conversas.",
+    "bipe_invite_joined_push_title": "Convite aceito",
+    "bipe_invite_joined_push_body": "Alguém entrou no Bipe com seu convite. Toque para ver quem.",
+    "bipe_group_link_joined_push_title": "Novo membro no grupo",
+    "bipe_group_link_joined_push_body": "Alguém entrou num grupo seu pelo link. Toque para abrir o grupo.",
+    "bipe_notifications_invite_joined": "Quando alguém entra com meu convite",
+    "bipe_notifications_group_link_joined": "Quando alguém entra com meu link de grupo",
+    "bipe_notifications_joins_footer": "Vale para todos os seus aparelhos."
   }
 }

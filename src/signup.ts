@@ -6,6 +6,7 @@ import { type KeyAttestation, verifyKeyAttestation } from "./key-attest.js";
 import { ApiError } from "./errors.js";
 import { skeletonFree, validHandle } from "./handles.js";
 import { inviterOf, returnInviteUse, takeInviteUse } from "./invites.js";
+import { pushJoin } from "./notification-prefs.js";
 import { returnGroupSignup, takeGroupSignup } from "./group-links.js";
 import type { Lang } from "./registry.js";
 import { newSecret, secretHash } from "./secrets.js";
@@ -278,6 +279,8 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
     deps.growth?.record(userId, "signup_done");
     deps.news?.welcome(userId);
     if (inviter) deps.growth?.record(inviter, "invite_redeemed");
+    // The inviter learns of the join at once (bipe-chat/bipe#967). Best effort, not awaited: never slows the sign-up.
+    if (inviter) void pushJoin(deps.db, deps.push, inviter, "invite_joined");
     // The service account invites the new account; the app joins the group after sign-in.
     const groupRoomId = group && (await deps.groupLinks?.inviteNewAccount(group.linkId, group.roomId, userId)) ? group.roomId : null;
     return {
