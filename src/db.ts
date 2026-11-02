@@ -818,6 +818,13 @@ const MIGRATIONS = [
   // creation, so those older than 7 days expire now and leave the invite list.
   `UPDATE invites SET expires_at = created_at + interval '7 days'
    WHERE created_by IS NOT NULL AND used_at IS NULL AND revoked_at IS NULL AND expires_at > created_at + interval '7 days';`,
+  // Join pushes (bipe-chat/bipe#967): no row means both on.
+  `CREATE TABLE notification_prefs (
+     user_id text PRIMARY KEY,
+     invite_joined boolean NOT NULL DEFAULT true,
+     group_link_joined boolean NOT NULL DEFAULT true,
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

@@ -137,6 +137,8 @@ export interface GroupLinkDeps {
   /** True when the account has a badge (CNPJ, Pix or gov.br). */
   verified(userId: string): Promise<boolean>;
   siteUrl: string;
+  /** A person who was not a member got the invite through a link: push the link's creator (bipe-chat/bipe#967). */
+  joined?(creatorId: string, roomId: string): void;
 }
 
 export class GroupLinks {
@@ -313,14 +315,17 @@ export class GroupLinks {
     const rooms = this.rooms();
     const facts = await this.facts(link.room_id, true);
     if (!facts) throw new ApiError("not_found");
-    if (facts.membership(userId) !== "join") {
+    const membership = facts.membership(userId);
+    if (membership !== "join") {
       try {
-        if (facts.membership(userId) !== "invite") await rooms.invite(link.room_id, userId);
+        if (membership !== "invite") await rooms.invite(link.room_id, userId);
       } catch (e) {
         if (e instanceof RoomRefused) throw new ApiError("group_link_no_access");
         throw e;
       }
       await recordJoin(this.deps.db, link.id, userId, false);
+      // A repeated call while the invite waits pushes nothing.
+      if (membership !== "invite") this.notifyCreator(link.created_by, link.room_id, userId);
     }
     return { room_id: link.room_id };
   }
@@ -330,11 +335,17 @@ export class GroupLinks {
     try {
       await this.rooms().invite(roomId, userId);
       await recordJoin(this.deps.db, String(linkId), userId, true);
+      const { rows } = await this.deps.db.query<{ created_by: string | null }>("SELECT created_by FROM group_links WHERE id = $1", [linkId]);
+      this.notifyCreator(rows[0]?.created_by ?? null, roomId, userId);
       return true;
     } catch (e) {
       console.error(`group link: invite after sign-up failed (${(e as Error).message})`);
       return false;
     }
+  }
+
+  private notifyCreator(creatorId: string | null, roomId: string, userId: string): void {
+    if (creatorId && creatorId !== userId) this.deps.joined?.(creatorId, roomId);
   }
 }
 

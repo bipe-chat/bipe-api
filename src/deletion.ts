@@ -368,6 +368,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "link_nonces",
       "link_flows",
       "work_hours",
+      "notification_prefs",
       "profile_changes",
       "profile_snapshots",
       "kept_media",
