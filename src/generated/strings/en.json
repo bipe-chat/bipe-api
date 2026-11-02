@@ -1658,7 +1658,6 @@
     "bipe_app_notification_mark_read": "Mark as read",
     "bipe_app_notification_channel_messages": "Messages",
     "bipe_app_notification_mode_all": "All messages",
-    "bipe_app_notification_mode_mentions": "Only when someone mentions you",
     "bipe_app_notification_mode_off": "Mute",
     "bipe_app_notification_mode_default": "Same as in settings (%1$s)",
     "bipe_app_requests_empty": "No chat requests. When someone you don't know writes to you, the request shows here.",

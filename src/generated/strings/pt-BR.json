@@ -1658,7 +1658,6 @@
     "bipe_app_notification_mark_read": "Marcar como lida",
     "bipe_app_notification_channel_messages": "Mensagens",
     "bipe_app_notification_mode_all": "Todas as mensagens",
-    "bipe_app_notification_mode_mentions": "Só quando te mencionam",
     "bipe_app_notification_mode_off": "Silenciar",
     "bipe_app_notification_mode_default": "Como nas configurações (%1$s)",
     "bipe_app_requests_empty": "Nenhum pedido de conversa. Quando alguém que você não conhece te escrever, o pedido aparece aqui.",
