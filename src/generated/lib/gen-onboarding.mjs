@@ -3,7 +3,7 @@
 const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss", "shareInvite", "shareProfile", "profileQr", "notes", "photoPicker", "pinCheck", "bringPeopleSheet", "bringPeopleResend", "osTheftSettings"];
 const STATES = ["syncedToken"];
 const CARD_STATES = ["hasHandle", "bringPeopleNotShown"];
-const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "voceWithoutPhoto", "pinReminderDue", "firstChatListAfterSignup", "bringPeopleDue", "voceAfterDays"];
+const TRIGGERS = ["messageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "withoutPhoto", "pinReminderDue", "firstChatListAfterSignup", "bringPeopleDue", "afterDaysOnPhone"];
 const CIRCLES = ["family", "building"];
 const TIERS = ["critical", "access", "safety", "identity", "growth", "discovery"];
 const PREEMPTS = ["critical", "access"];
@@ -262,7 +262,7 @@ public enum BipeOnboarding {
     /// Trigger pinReminderDue (bipe-chat/bipe#202): the gap in days after each step, then pinReminderThenEveryDays.
     public static let pinReminderDays = [${o.pinReminder.days.join(", ")}]
     public static let pinReminderThenEveryDays = ${o.pinReminder.thenEveryDays}
-    /// Trigger voceAfterDays (bipe-chat/bipe#125): days after this phone first saw the account.
+    /// Trigger afterDaysOnPhone (bipe-chat/bipe#125): days after this phone first saw the account.
     public static let osTheftProtectionAfterDays = ${o.osTheftProtection.afterDays}
     /// Specs bring-people and bring-people-reminder (bipe-chat/bipe#752).
     public static let bringPeopleSlots = ${o.bringPeople.slots}
@@ -378,7 +378,7 @@ object BipeOnboarding {
     /** Trigger pinReminderDue (bipe-chat/bipe#202): the gap in days after each step, then [PIN_REMINDER_THEN_EVERY_DAYS]. */
     val PIN_REMINDER_DAYS: List<Int> = listOf(${o.pinReminder.days.join(", ")})
     const val PIN_REMINDER_THEN_EVERY_DAYS: Int = ${o.pinReminder.thenEveryDays}
-    /** Trigger voceAfterDays (bipe-chat/bipe#125): days after this phone first saw the account. */
+    /** Trigger afterDaysOnPhone (bipe-chat/bipe#125): days after this phone first saw the account. */
     const val OS_THEFT_PROTECTION_AFTER_DAYS: Int = ${o.osTheftProtection.afterDays}
     /** Specs bring-people and bring-people-reminder (bipe-chat/bipe#752). */
     const val BRING_PEOPLE_SLOTS: Int = ${o.bringPeople.slots}
