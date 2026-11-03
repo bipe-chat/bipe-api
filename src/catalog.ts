@@ -213,6 +213,16 @@ export async function deleteItemPhoto(db: Db, businessId: string, itemId: string
   await db.query("UPDATE catalog_items SET photo = NULL, photo_version = NULL, updated_at = now() WHERE business_id = $1 AND id = $2", [businessId, itemId]);
 }
 
+/** The owner's read: any item that is not archived, hidden ones too (the public read serves active items only). */
+export async function ownerItemPhoto(db: Db, businessId: string, itemId: string): Promise<Buffer> {
+  const { rows } = await db.query<{ photo: Buffer }>(
+    "SELECT photo FROM catalog_items WHERE business_id = $1 AND id = $2 AND archived_at IS NULL AND photo IS NOT NULL",
+    [businessId, itemId],
+  );
+  if (!rows[0]) throw new ApiError("not_found");
+  return rows[0].photo;
+}
+
 export async function publicItemPhoto(db: Db, businessId: string, itemId: string): Promise<Buffer> {
   const { rows } = await db.query<{ photo: Buffer }>(
     "SELECT photo FROM catalog_items WHERE business_id = $1 AND id = $2 AND archived_at IS NULL AND active AND photo IS NOT NULL",
