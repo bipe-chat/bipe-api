@@ -100,6 +100,10 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp 
     const businessId = await owner(c);
     return c.json(await catalog.reorder(db, apiUrl, businessId, (await parse(c, catalog.CatalogOrderBody)).item_ids));
   });
+  app.get("/v1/me/business/catalog/items/:itemId/photo", async (c) => {
+    const photo = await catalog.ownerItemPhoto(db, await owner(c, false), c.req.param("itemId"));
+    return c.body(new Uint8Array(photo), 200, { "content-type": "image/jpeg", "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
+  });
   app.put("/v1/me/business/catalog/items/:itemId/photo", async (c) => {
     const businessId = await owner(c);
     limits.photo.check(businessId);
