@@ -98,8 +98,9 @@ export function otherNames(cert: pkijs.Certificate, oid: string): string[] {
   for (const n of names) {
     if (n.type !== 0) continue; // otherName
     const v = n.value as { typeId?: string; value?: asn1js.AsnType } | asn1js.Sequence;
-    // pkijs keeps otherName as the raw SEQUENCE { type-id OID, [0] value }.
-    const seq = v instanceof asn1js.Sequence ? v.valueBlock.value : null;
+    // pkijs keeps otherName raw: a SEQUENCE { type-id OID, [0] value }, or, as parsed from a real certificate,
+    // the implicit [0] Constructed block with the same two children (bipe#542). Sequence is a Constructed.
+    const seq = v instanceof asn1js.Constructed && v.valueBlock.value[0] instanceof asn1js.ObjectIdentifier ? v.valueBlock.value : null;
     const id = seq ? (seq[0] as asn1js.ObjectIdentifier).valueBlock.toString() : (v as { typeId?: string }).typeId;
     if (id !== oid) continue;
     out.push(otherNameText(seq ? (seq[1] as asn1js.AsnType) : (v as { value: asn1js.AsnType }).value));
