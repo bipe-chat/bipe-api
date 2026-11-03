@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from bipe-shared by `pnpm gen`. Never edit generated/.
-import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, isBipeUserID, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, workHoursProblem } from "./generated/lib/registries.mjs";
+import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, isBipeUserID, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, socialHandleClean, socialHandleProblem, workHoursProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
@@ -100,7 +100,7 @@ export function reservedNameClaims(names: (string | null)[], root: string): { na
   return [...found].map((name) => ({ name, approved: (reservedOwners[name] ?? []).includes(root) }));
 }
 
-export type ProfileProblem = "name_empty" | "name_too_long" | "name_reserved" | "bio_too_long" | "bio_too_many_lines";
+export type ProfileProblem = "name_empty" | "name_too_long" | "name_reserved" | "bio_too_long" | "bio_too_many_lines" | "social_invalid" | "social_reserved";
 
 export const profileRules = reg.profiles as {
   nameMaxLength: number;
@@ -113,6 +113,17 @@ export const profileRules = reg.profiles as {
 /** Public profile name and bio check (registries/profiles.json and the reserved names). */
 export function problemWithProfile(name: string, bio: string): ProfileProblem | null {
   return profileProblem({ name, bio }, reg) as ProfileProblem | null;
+}
+
+/** Social networks a public profile may link to, in display order (ADR 0228, registries/profiles.json socials). */
+export const socialIds: readonly string[] = (reg.profiles.socials as { id: string }[]).map((s) => s.id);
+
+/** The handle without spaces and one leading @. */
+export const cleanSocialHandle = (input: string): string => socialHandleClean(input) as string;
+
+/** Social handle check with the caller's own Bipe @ (owner of a reserved skeleton). Null when valid or empty. */
+export function problemWithSocial(platform: string, input: string, ownHandle: string | null): "social_invalid" | "social_reserved" | null {
+  return socialHandleProblem(platform, input, ownHandle, reg) as "social_invalid" | "social_reserved" | null;
 }
 
 // --- Device-first accounts (ADR 0057, ADR 0059) ------------------------------------------------------

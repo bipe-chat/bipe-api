@@ -5,10 +5,20 @@ import { randomBytes } from "node:crypto";
 import type { Badges } from "./badges.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import { problemWithProfile, profileRules } from "./registry.js";
+import { cleanSocialHandle, problemWithProfile, problemWithSocial, profileRules, socialIds } from "./registry.js";
 import { recordProfileChange } from "./profile-facts.js";
 
-type Row = { enabled: boolean; name: string; bio: string; photo_version: string | null };
+type Row = { enabled: boolean; name: string; bio: string; socials: Record<string, string> | null; photo_version: string | null };
+
+/** Stored social handles of known networks, in registry order (ADR 0228). A network removed from the registry is skipped. */
+function knownSocials(stored: Record<string, string> | null): Record<string, string> {
+  const known: Record<string, string> = {};
+  for (const id of socialIds) {
+    const handle = stored?.[id];
+    if (handle) known[id] = handle;
+  }
+  return known;
+}
 
 /** The mxc URI of the Matrix avatar that a photo copies. Server name and media ID per the Matrix spec, bounded. */
 const MXC = /^mxc:\/\/[A-Za-z0-9.:-]{1,230}\/[A-Za-z0-9_-]{1,64}$/;
@@ -23,7 +33,7 @@ function handleKey(raw: string): string {
 
 export async function publicProfile(db: Db, apiUrl: string, raw: string, badges: Badges) {
   const { rows } = await db.query<Row & { handle: string; user_id: string }>(
-    `SELECT h.handle, h.user_id, p.enabled, p.name, p.bio, p.photo_version
+    `SELECT h.handle, h.user_id, p.enabled, p.name, p.bio, p.socials, p.photo_version
      FROM handles h JOIN public_profiles p ON p.user_id = h.user_id
      WHERE h.handle = $1 AND p.enabled`,
     [handleKey(raw)],
@@ -35,11 +45,13 @@ export async function publicProfile(db: Db, apiUrl: string, raw: string, badges:
     console.error(`profile badge failed: ${e.message}`);
     return null;
   });
+  const socials = knownSocials(row.socials);
   return {
     handle: row.handle,
     name: row.name,
     ...(row.bio ? { bio: row.bio } : {}),
     ...(row.photo_version ? { photo_url: photoUrl(apiUrl, row.handle, row.photo_version) } : {}),
+    ...(Object.keys(socials).length ? { socials } : {}),
     ...(badge?.status === 200 ? { badge: badge.envelope } : {}),
   };
 }
@@ -56,7 +68,7 @@ export async function publicPhoto(db: Db, raw: string): Promise<Buffer> {
 
 export async function myProfile(db: Db, apiUrl: string, userId: string) {
   const { rows } = await db.query<Row & { handle: string | null; photo_source: string | null }>(
-    `SELECT h.handle, p.enabled, p.name, p.bio, p.photo_version, p.photo_source
+    `SELECT h.handle, p.enabled, p.name, p.bio, p.socials, p.photo_version, p.photo_source
      FROM (SELECT $1::text AS user_id) u
      LEFT JOIN public_profiles p ON p.user_id = u.user_id
      LEFT JOIN handles h ON h.user_id = u.user_id`,
@@ -71,6 +83,7 @@ export async function myProfile(db: Db, apiUrl: string, userId: string) {
     ...(row.handle ? { handle: row.handle } : {}),
     ...(row.handle && row.photo_version ? { photo_url: photoUrl(apiUrl, row.handle, row.photo_version) } : {}),
     ...(row.photo_version && row.photo_source ? { photo_source: row.photo_source } : {}),
+    socials: knownSocials(row.socials),
   };
 }
 
@@ -78,7 +91,7 @@ export async function saveProfile(
   db: Db,
   apiUrl: string,
   userId: string,
-  update: { enabled: boolean; name: string; bio: string },
+  update: { enabled: boolean; name: string; bio: string; socials?: Record<string, string> },
 ) {
   const name = update.name.trim();
   const bio = update.bio.trim().replace(/\r\n?/g, "\n");
@@ -87,15 +100,27 @@ export async function saveProfile(
     const problem = problemWithProfile(name, bio);
     if (problem && (update.enabled || problem !== "name_empty")) throw new ApiError("profile_invalid", problem);
   }
-  if (update.enabled) {
-    const { rowCount } = await db.query("SELECT 1 FROM handles WHERE user_id = $1", [userId]);
-    if (!rowCount) throw new ApiError("profile_invalid", "no_handle");
+  const { rows: handles } = await db.query<{ handle: string }>("SELECT handle FROM handles WHERE user_id = $1", [userId]);
+  const ownHandle = handles[0]?.handle ?? null;
+  if (update.enabled && !ownHandle) throw new ApiError("profile_invalid", "no_handle");
+  // ADR 0228: absent keeps the stored handles; present replaces them all. An empty value removes that network.
+  let socials: Record<string, string> | null = null;
+  if (update.socials) {
+    socials = {};
+    for (const [id, input] of Object.entries(update.socials)) {
+      if (!socialIds.includes(id)) throw new ApiError("bad_request");
+      const problem = problemWithSocial(id, input, ownHandle);
+      if (problem) throw new ApiError("profile_invalid", problem);
+      const handle = cleanSocialHandle(input);
+      if (handle) socials[id] = handle;
+    }
   }
   const { rows: before } = await db.query<{ name: string }>("SELECT name FROM public_profiles WHERE user_id = $1", [userId]);
   await db.query(
-    `INSERT INTO public_profiles (user_id, enabled, name, bio) VALUES ($1, $2, $3, $4)
-     ON CONFLICT (user_id) DO UPDATE SET enabled = EXCLUDED.enabled, name = EXCLUDED.name, bio = EXCLUDED.bio, updated_at = now()`,
-    [userId, update.enabled, name, bio],
+    `INSERT INTO public_profiles (user_id, enabled, name, bio, socials) VALUES ($1, $2, $3, $4, coalesce($5::jsonb, '{}'::jsonb))
+     ON CONFLICT (user_id) DO UPDATE SET enabled = EXCLUDED.enabled, name = EXCLUDED.name, bio = EXCLUDED.bio,
+       socials = coalesce($5::jsonb, public_profiles.socials), updated_at = now()`,
+    [userId, update.enabled, name, bio, socials === null ? null : JSON.stringify(socials)],
   );
   // ADR 0049: a changed public name is a change fact (the date only). A first name is not a change.
   if (before[0]?.name && before[0].name !== name) await recordProfileChange(db, userId, "name", "public");

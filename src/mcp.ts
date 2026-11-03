@@ -93,6 +93,7 @@ async function callTool(name: string, args: unknown, lookup: PublicProfileLookup
         name: profile.name,
         ...(profile.bio ? { bio: profile.bio } : {}),
         ...(profile.photo_url ? { photo_url: profile.photo_url } : {}),
+        ...(profile.socials ? { socials: profile.socials } : {}),
         verified_company: seal !== null,
         page,
       });

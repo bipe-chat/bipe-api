@@ -421,7 +421,12 @@ const TheftMarksBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).
 const ProfileFactsBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
 const HandleChangesBody = z.object({ user_ids: z.array(z.string().max(255)).max(100), since: z.iso.datetime({ offset: true }).optional() });
 // Lengths are checked by problemWithProfile(); these caps only bound the request.
-const ProfileBody = z.object({ enabled: z.boolean(), name: z.string().max(400), bio: z.string().max(2000) });
+const ProfileBody = z.object({
+  enabled: z.boolean(),
+  name: z.string().max(400),
+  bio: z.string().max(2000),
+  socials: z.record(z.string().max(40), z.string().max(400)).optional(),
+});
 const PHOTO_PATH = "/v1/me/profile/photo";
 const BUG_REPORT_PATH = "/v1/bug-reports/submit";
 const GOVBR_DOCUMENT_PATH = /^\/v1\/verifications\/govbr\/[^/]+\/document$/;
