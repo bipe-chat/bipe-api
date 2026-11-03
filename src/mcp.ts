@@ -12,6 +12,7 @@ export type PublicProfileLookup = (handle: string) => Promise<{
   name: string;
   bio?: string;
   photo_url?: string;
+  socials?: Record<string, string>;
   badge?: { payload: string };
 } | null>;
 
@@ -93,6 +94,7 @@ async function callTool(name: string, args: unknown, lookup: PublicProfileLookup
         name: profile.name,
         ...(profile.bio ? { bio: profile.bio } : {}),
         ...(profile.photo_url ? { photo_url: profile.photo_url } : {}),
+        ...(profile.socials ? { socials: profile.socials } : {}),
         verified_company: seal !== null,
         page,
       });

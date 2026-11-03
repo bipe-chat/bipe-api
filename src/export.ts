@@ -24,9 +24,9 @@ const all = async <T extends Record<string, unknown>>(db: Db, sql: string, userI
   (await db.query<T>(sql, [userId])).rows;
 
 export async function exportData(db: Db, growth: Growth, userId: string, now = new Date(), phones?: PhoneHasher) {
-  const profile = await one<{ enabled: boolean; name: string; bio: string; photo: Buffer | null; updated_at: Date }>(
+  const profile = await one<{ enabled: boolean; name: string; bio: string; socials: Record<string, string>; photo: Buffer | null; updated_at: Date }>(
     db,
-    "SELECT enabled, name, bio, photo, updated_at FROM public_profiles WHERE user_id = $1",
+    "SELECT enabled, name, bio, socials, photo, updated_at FROM public_profiles WHERE user_id = $1",
     userId,
   );
   return {
@@ -81,6 +81,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       enabled: profile.enabled,
       name: profile.name,
       bio: profile.bio,
+      socials: profile.socials,
       photo_jpeg_base64: profile.photo ? profile.photo.toString("base64") : null,
       updated_at: profile.updated_at,
     },

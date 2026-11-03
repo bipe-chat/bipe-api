@@ -844,6 +844,8 @@ const MIGRATIONS = [
      method text,
      checked_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Social handles on the public profile (ADR 0228): { <registries/profiles.json socials id>: handle }.
+  `ALTER TABLE public_profiles ADD COLUMN socials jsonb NOT NULL DEFAULT '{}'::jsonb;`,
 ];
 
 export async function migrate(db: Db): Promise<void> {
