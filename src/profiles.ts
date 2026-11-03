@@ -55,11 +55,12 @@ export async function publicPhoto(db: Db, raw: string): Promise<Buffer> {
 }
 
 export async function myProfile(db: Db, apiUrl: string, userId: string) {
-  const { rows } = await db.query<Row & { handle: string | null; photo_source: string | null }>(
-    `SELECT h.handle, p.enabled, p.name, p.bio, p.photo_version, p.photo_source
+  const { rows } = await db.query<Row & { handle: string | null; photo_source: string | null; member_since: Date | null }>(
+    `SELECT h.handle, p.enabled, p.name, p.bio, p.photo_version, p.photo_source, s.created_at AS member_since
      FROM (SELECT $1::text AS user_id) u
      LEFT JOIN public_profiles p ON p.user_id = u.user_id
-     LEFT JOIN handles h ON h.user_id = u.user_id`,
+     LEFT JOIN handles h ON h.user_id = u.user_id
+     LEFT JOIN signups s ON s.user_id = u.user_id`,
     [userId],
   );
   const row = rows[0]!;
@@ -71,6 +72,8 @@ export async function myProfile(db: Db, apiUrl: string, userId: string) {
     ...(row.handle ? { handle: row.handle } : {}),
     ...(row.handle && row.photo_version ? { photo_url: photoUrl(apiUrl, row.handle, row.photo_version) } : {}),
     ...(row.photo_version && row.photo_source ? { photo_source: row.photo_source } : {}),
+    // Seu perfil shows "Membro desde" (bipe-shared profile-edit). Absent for an account without a sign-up row.
+    ...(row.member_since ? { member_since: row.member_since.toISOString() } : {}),
   };
 }
 
