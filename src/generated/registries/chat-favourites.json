@@ -1,0 +1,6 @@
+{
+  "$comment": "Favourites order (spec chat-list, MZ 3 Nov 2026). The favourites row shows in the order the user sets. The global account data event below holds it: { \"rooms\": [\"<room_id>\", ...] }, first room first. The m.favourite tag stays the source of which chats are favourites; this list only orders them. The SDK can write the m.favourite tag order but cannot read it back (matrix-sdk-ffi 26.08.11 has Room.setIsFavourite(tagOrder) and no getter), so the order lives here. Display: favourites in the list come first, in list order; favourites not in the list follow, by name (case-insensitive), then room ID. A room ID that is no longer a favourite stays in the list and has no effect. A new favourite goes last. Removing a favourite removes its room ID. A reorder in one scope keeps the positions of the other scope's rooms. A write keeps at most orderMax room IDs; the oldest entries go first. A malformed event counts as an empty list. A failed write keeps the order on this phone and writes again at the next change.",
+  "version": 1,
+  "orderEventType": "chat.bipe.favourites_order",
+  "orderMax": 200
+}
