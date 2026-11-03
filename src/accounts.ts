@@ -10,6 +10,7 @@ import { type Mailer, mailBody } from "./mailer.js";
 import type { Mas } from "./mas.js";
 import { accountRules, appString, type Lang, problemWithPin } from "./registry.js";
 import { newSecret, PinHasher, sameSecret, SECRET_PATTERN, secretHash } from "./secrets.js";
+import { ageSignalOf } from "./age.js";
 import { acceptedTermsVersion } from "./terms.js";
 import { linkState } from "./links.js";
 import { hasIndependentRecovery } from "./transfer.js";
@@ -241,7 +242,7 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
  * `deviceId`: the caller's device, so a waiting deletion says whether this device asked (ADR 0140).
  */
 export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts, deviceId: string | null = null) {
-  const [secrets, emails, recoveries, termsVersion, signupRow, links, independent, deletion] = await Promise.all([
+  const [secrets, emails, recoveries, termsVersion, signupRow, links, independent, deletion, age] = await Promise.all([
     db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
       "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
       [userId],
@@ -261,6 +262,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     linkState(db, userId),
     hasIndependentRecovery(db, userId),
     pendingDeletion(db, userId, deviceId),
+    ageSignalOf(db, userId),
   ]);
   const s = secrets.rows[0];
   const e = emails.rows[0];
@@ -294,6 +296,9 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     ...links,
     // ADR 0140: the waiting deletion. The device that asked shows a banner; every other device shows the alert.
     ...(deletion ? { deletion } : {}),
+    // ADR 0229: the band from the last OS age signal; without age_checked_at the app reads the OS and sends it.
+    age_band: age.band,
+    ...(age.checkedAt ? { age_checked_at: age.checkedAt.toISOString() } : {}),
   };
 }
 

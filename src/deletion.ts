@@ -358,6 +358,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "phone_links",
       "invite_grants",
       "terms_acceptances",
+      "age_signals",
       "signup_replays",
       "support_rooms",
       "news_deliveries",
