@@ -333,6 +333,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     // user made or cleared for someone else stay for that account, without the user's ID.
     await q("DELETE FROM guardians WHERE owner_id = $1 OR guardian_id = $1");
     await q("DELETE FROM account_phones WHERE user_id = $1");
+    await q("DELETE FROM web_links WHERE user_id = $1");
     await q("UPDATE theft_marks SET root_id = NULL WHERE root_id IN (SELECT id FROM theft_marks WHERE user_id = $1)");
     await q("DELETE FROM theft_marks WHERE user_id = $1");
     // ADR 0164: the voice uploads stay registered without their owner, so the purge still deletes the files.
@@ -357,6 +358,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "phone_links",
       "invite_grants",
       "terms_acceptances",
+      "age_signals",
       "signup_replays",
       "support_rooms",
       "news_deliveries",

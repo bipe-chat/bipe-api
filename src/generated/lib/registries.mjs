@@ -32,6 +32,7 @@ export function loadRegistries(root) {
     haptics: read("registries/haptics.json"),
     badgeKeys: read("registries/badge-keys.json"),
     clearedChats: read("registries/cleared-chats.json"),
+    chatFavourites: read("registries/chat-favourites.json"),
     imageDescriptions: read("registries/image-descriptions.json"),
     pixMarks: read("registries/pix-marks.json"),
     dataUse: read("registries/data-use.json"),
@@ -53,6 +54,7 @@ export function loadRegistries(root) {
     mcpTools: read("registries/mcp-tools.json"),
     drafts: read("registries/drafts.json"),
     assistants: read("registries/assistants.json"),
+    ageSignals: read("registries/age-signals.json"),
     reportCategories: read("registries/report-categories.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -65,6 +67,42 @@ export function loadRegistries(root) {
 
 function fail(msg) {
   throw new Error(`registry validation failed: ${msg}`);
+}
+
+// Age signals (bipe ADR 0229, registries/age-signals.json).
+export function validateAgeSignals(a) {
+  const gates = a.appleGates;
+  if (!(Array.isArray(gates) && gates.length >= 1 && gates.length <= 3 && gates.every((g, i) => Number.isInteger(g) && g > 0 && (i === 0 || g > gates[i - 1])))) {
+    fail("age-signals: appleGates must be 1 to 3 rising positive integers (Apple allows 3)");
+  }
+  const bands = a.bands;
+  if (!(Array.isArray(bands) && bands.length >= 2)) fail("age-signals: bands");
+  if (bands[0].min !== undefined || bands.at(-1).max !== undefined) fail("age-signals: the first band has no min, the last no max");
+  bands.forEach((b, i) => {
+    if (!(typeof b.id === "string" && /^[a-z0-9_]+$/.test(b.id))) fail(`age-signals: band id ${b.id}`);
+    if (i > 0 && b.min !== bands[i - 1].max + 1) fail(`age-signals: band ${b.id} must start one year after ${bands[i - 1].id}`);
+    if (b.max !== undefined && !(Number.isInteger(b.max) && b.max >= (b.min ?? 0))) fail(`age-signals: band ${b.id} max`);
+  });
+  const ids = bands.map((b) => b.id);
+  if (new Set(ids).size !== ids.length || ids.includes(a.unknownBand)) fail("age-signals: band ids must be unique and differ from unknownBand");
+  if (!ids.includes(a.adultBand)) fail("age-signals: adultBand must be a band");
+  if (!(Number.isInteger(a.recheckDays) && a.recheckDays > 0)) fail("age-signals: recheckDays");
+  if (!(Array.isArray(a.sources) && a.sources.includes("none"))) fail("age-signals: sources must include none");
+}
+
+// The band of the lowest age the OS range allows; unknownBand when there is no range. lower and upper are
+// whole years, inclusive, and either may be absent (null or undefined).
+export function ageBand(lower, upper, reg) {
+  const a = reg.ageSignals;
+  const has = (v) => Number.isInteger(v) && v >= 0;
+  if (!has(lower) && !has(upper)) return a.unknownBand;
+  const age = has(lower) ? lower : 0;
+  return a.bands.find((b) => b.max === undefined || age <= b.max).id;
+}
+
+// True for every band except adultBand: unknown gets the under-18 defaults (ADR 0229 point 4).
+export function ageTreatedAsMinor(band, reg) {
+  return band !== reg.ageSignals.adultBand;
 }
 
 // MCP tools (bipe ADR 0130, ADR 0210; bipe-chat/bipe#436): one data class per tool, content off by default.
@@ -314,6 +352,8 @@ function validate(reg, phosphor) {
   const rn = reg.relationshipNames;
   if (rn.comparison !== "normalised-exact" || rn.fullNameMinimumWords !== 2 || rn.familyTerms !== "whole-words" || rn.confirmation !== "saved-label-and-verified-name") fail("relationship-names: unsupported ADR 0018 policy");
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
+  if (reg.chatFavourites.version !== 1 || reg.chatFavourites.orderEventType !== "chat.bipe.favourites_order") fail("chat-favourites: orderEventType must be chat.bipe.favourites_order");
+  if (!Number.isSafeInteger(reg.chatFavourites.orderMax) || reg.chatFavourites.orderMax < 1) fail("chat-favourites: orderMax must be a positive integer");
   const du = reg.dataUse;
   if (!Number.isInteger(du.budgetMegabytesPerDay) || du.budgetMegabytesPerDay < 1 || typeof du.dataSaverDefault !== "boolean") fail("data-use: budgetMegabytesPerDay must be a positive integer and dataSaverDefault a boolean");
   const bm = reg.brandMarks;
@@ -428,6 +468,7 @@ function validate(reg, phosphor) {
     if (!(Number.isInteger(tp[k]) && tp[k] > 0)) fail(`theft-protection: ${k} must be a positive integer`);
   }
   if (tp.maxGuardians > 3) fail("theft-protection: ADR 0044 allows 1 to 3 guardians");
+  validateAgeSignals(reg.ageSignals);
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   if (!(Number.isInteger(h.ownerMinLength) && h.ownerMinLength >= 1 && h.ownerMinLength <= h.minLength)) fail("handles: ownerMinLength");

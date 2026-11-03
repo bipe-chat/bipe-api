@@ -12,6 +12,7 @@ export type PublicProfileLookup = (handle: string) => Promise<{
   name: string;
   bio?: string;
   photo_url?: string;
+  socials?: Record<string, string>;
   badge?: { payload: string };
 } | null>;
 

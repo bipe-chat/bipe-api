@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from bipe-shared by `pnpm gen`. Never edit generated/.
-import { cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, isBipeUserID, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, socialHandleClean, socialHandleProblem, workHoursProblem } from "./generated/lib/registries.mjs";
+import { ageBand, cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, isBipeUserID, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, socialHandleClean, socialHandleProblem, workHoursProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
@@ -23,6 +23,14 @@ export const voiceMediaRules = reg.voiceMedia as { transcriptDays: number; noTra
 
 /** Profile change facts (ADR 0049, registries/profile-facts.json). */
 export const profileFactRules = reg.profileFacts as { windowDays: number; newAccountDays: number; noticePairHours: number; noticeDays: number };
+
+/** Age signals (ADR 0229, registries/age-signals.json). */
+export const ageRules = reg.ageSignals as { bands: { id: string; min?: number; max?: number }[]; unknownBand: string; adultBand: string; recheckDays: number; sources: string[] };
+
+/** The band of an OS age range (reference ageBand() in bipe-shared). */
+export function ageBandOf(lower: number | undefined, upper: number | undefined): string {
+  return ageBand(lower, upper, reg);
+}
 
 /** Theft protection (ADR 0044, ADR 0051, registries/theft-protection.json). */
 export const theftRules = reg.theft as { maxGuardians: number; markedMessageMinutes: number; statementLifeHours: number; checkMinutes: number };

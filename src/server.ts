@@ -19,6 +19,7 @@ import { refreshKeyAttestationStatus } from "./key-attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
+import { recordAgeSignal } from "./age.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
@@ -36,7 +37,7 @@ import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
 import { researchRoutes } from "./research/routes.js";
-import { finishWebLink, Geo } from "./weblink.js";
+import { finishWebLink, Geo, signOutWebLinks } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
@@ -119,6 +120,7 @@ const limits = {
   signup: new SignupLimits(config.SIGNUP_MAX_PER_HOUR),
   signupResume: new RateLimiter(30, 3_600_000),
   terms: new RateLimiter(10, 3_600_000),
+  age: new RateLimiter(10, 3_600_000),
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
@@ -389,6 +391,13 @@ const SignupBody = z.object({
   account_type: z.enum(["personal", "company"]).optional(),
 });
 const TermsBody = z.object({ terms_version: z.string().regex(TERMS_VERSION_PATTERN) });
+const AgeYears = z.number().int().min(0).max(150);
+const AgeBody = z.object({
+  source: z.enum(["apple", "play", "none"]),
+  lower: AgeYears.optional(),
+  upper: AgeYears.optional(),
+  method: z.string().max(64).optional(),
+});
 const SignupResumeBody = z.object({ signup_key: z.string().regex(SECRET_PATTERN) });
 const HandleBody = z.object({ handle: z.string().max(64) });
 const PinBody = z.object({ pin: PinField });
@@ -569,6 +578,15 @@ app.post("/v1/me/terms", async (c) => {
   return c.body(null, 204);
 });
 
+// ADR 0229: the OS age range. The server keeps only the band.
+app.put("/v1/me/age", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.age.check(userId);
+  const body = await parse(c, AgeBody);
+  if (body.lower !== undefined && body.upper !== undefined && body.lower > body.upper) throw new ApiError("bad_request", "range");
+  return c.json({ age_band: await recordAgeSignal(db, userId, body) });
+});
+
 app.put("/v1/me/pin", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.pinSet.check(userId);
@@ -584,12 +602,20 @@ app.post("/v1/me/pin/check", async (c) => {
 });
 
 // Web sign-in approval on the phone (ADR 0118). Never log the IP.
-const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }) });
+const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }), kind: z.enum(["computer", "phone"]).optional() });
 app.post("/v1/web-link/finish", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   limits.webLinkFinish.check(userId);
-  const finished = await finishWebLink(mas, userId, (await parse(c, WebLinkFinishBody)).since);
+  const body = await parse(c, WebLinkFinishBody);
+  const finished = await finishWebLink(mas, userId, body.since, { db, deviceId, kind: body.kind });
   return c.json({ finished });
+});
+
+// The phone signs out the web sessions it approved before it leaves a company account (bipe#398).
+app.post("/v1/web-link/sign-out", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  limits.webLinkFinish.check(userId);
+  return c.json({ signed_out: await signOutWebLinks(mas, db, userId, deviceId) });
 });
 
 app.get("/v1/web-link/place", async (c) => {
