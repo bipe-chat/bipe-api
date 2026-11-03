@@ -844,6 +844,8 @@ export const MIGRATIONS: readonly string[] = [
      method text,
      checked_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Social handles on the public profile (ADR 0228): { <registries/profiles.json socials id>: handle }.
+  `ALTER TABLE public_profiles ADD COLUMN socials jsonb NOT NULL DEFAULT '{}'::jsonb;`,
   // User numbers (MZ, 3 Nov 2026): 1, 2, 3 in sign-up order, never reused, never changed. One counter row gives
   // them in the transaction of the signups row: a concurrent sign-up waits on the row lock, and a failed one rolls
   // the counter back, so there is no gap (a sequence leaves one). Deleted accounts keep their number unused, so
