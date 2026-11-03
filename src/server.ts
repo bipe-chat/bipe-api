@@ -36,7 +36,7 @@ import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
 import { researchRoutes } from "./research/routes.js";
-import { finishWebLink, Geo } from "./weblink.js";
+import { finishWebLink, Geo, signOutWebLinks } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
@@ -579,12 +579,20 @@ app.post("/v1/me/pin/check", async (c) => {
 });
 
 // Web sign-in approval on the phone (ADR 0118). Never log the IP.
-const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }) });
+const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }), kind: z.enum(["computer", "phone"]).optional() });
 app.post("/v1/web-link/finish", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   limits.webLinkFinish.check(userId);
-  const finished = await finishWebLink(mas, userId, (await parse(c, WebLinkFinishBody)).since);
+  const body = await parse(c, WebLinkFinishBody);
+  const finished = await finishWebLink(mas, userId, body.since, { db, deviceId, kind: body.kind });
   return c.json({ finished });
+});
+
+// The phone signs out the web sessions it approved before it leaves a company account (bipe#398).
+app.post("/v1/web-link/sign-out", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  limits.webLinkFinish.check(userId);
+  return c.json({ signed_out: await signOutWebLinks(mas, db, userId, deviceId) });
 });
 
 app.get("/v1/web-link/place", async (c) => {

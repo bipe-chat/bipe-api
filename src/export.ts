@@ -185,12 +185,13 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
   };
 }
 
-/** Guardians the caller chose, the caller's marks and phone records (bipe#600). */
+/** Guardians the caller chose, the caller's marks, phone records (bipe#600) and the web sessions its phones approved (bipe#398). */
 async function theftExport(db: Db, userId: string) {
   return {
     guardians: await all(db, "SELECT guardian_id, added_at FROM guardians WHERE owner_id = $1 ORDER BY added_at", userId),
     marks: await all(db, "SELECT stolen_at, cleared_at FROM theft_marks WHERE user_id = $1 ORDER BY stolen_at", userId),
     phones: await all(db, "SELECT device_id, seen_at FROM account_phones WHERE user_id = $1 ORDER BY seen_at", userId),
+    web_links: await all(db, "SELECT web_device_id, approver_device_id, linked_at FROM web_links WHERE user_id = $1 ORDER BY linked_at", userId),
   };
 }
 
