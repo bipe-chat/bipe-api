@@ -827,6 +827,15 @@ const MIGRATIONS = [
      group_link_joined boolean NOT NULL DEFAULT true,
      updated_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Web sessions a phone approved (bipe#398): signing that phone out of a company account, or the theft mark, ends them.
+  `CREATE TABLE web_links (
+     user_id text NOT NULL,
+     web_device_id text NOT NULL,
+     approver_device_id text NOT NULL,
+     linked_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, web_device_id)
+   );
+   CREATE INDEX web_links_approver ON web_links (user_id, approver_device_id);`,
   // Age signals (ADR 0229, bipe-chat/bipe#994): one band per account from the OS age range. No range, no date of birth.
   `CREATE TABLE age_signals (
      user_id text PRIMARY KEY,

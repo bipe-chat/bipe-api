@@ -4,8 +4,8 @@
 // whole file, that it holds the caller's open code, then read name and CPF from the signer certificate.
 // We keep the verified name and a keyed CPF hash. Never the PDF, the CPF or the certificate.
 //
-// Two parts wait on a real gov.br-signed file (bipe#542): where the certificate keeps the CPF (personOf) and
-// how the code survives signing (containsCode). Both take the best guess and fail closed.
+// bipe#542 (a real gov.br-signed file, 3 Nov 2026) confirmed both guesses: the CPF is in SAN 2.16.76.1.3.1 (personOf) and
+// the code survives signing as an incremental update (containsCode). Both still fail closed.
 import { createHmac, randomInt, randomUUID } from "node:crypto";
 import { inflateSync } from "node:zlib";
 import type * as pkijs from "pkijs";
