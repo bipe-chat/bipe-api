@@ -1837,6 +1837,7 @@
     "bipe_chat_actions": "Chat actions",
     "bipe_message_actions": "Message actions",
     "bipe_chat_mark_unread": "Mark as unread",
+    "bipe_chat_send_media": "Send photo or video",
     "bipe_chat_favourite_action": "Favourite",
     "bipe_chat_unfavourite_action": "Remove from favourites",
     "bipe_chat_favourites": "Favourites",
