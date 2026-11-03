@@ -53,6 +53,7 @@ export function loadRegistries(root) {
     mcpTools: read("registries/mcp-tools.json"),
     drafts: read("registries/drafts.json"),
     assistants: read("registries/assistants.json"),
+    ageSignals: read("registries/age-signals.json"),
     reportCategories: read("registries/report-categories.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
@@ -65,6 +66,42 @@ export function loadRegistries(root) {
 
 function fail(msg) {
   throw new Error(`registry validation failed: ${msg}`);
+}
+
+// Age signals (bipe ADR 0229, registries/age-signals.json).
+export function validateAgeSignals(a) {
+  const gates = a.appleGates;
+  if (!(Array.isArray(gates) && gates.length >= 1 && gates.length <= 3 && gates.every((g, i) => Number.isInteger(g) && g > 0 && (i === 0 || g > gates[i - 1])))) {
+    fail("age-signals: appleGates must be 1 to 3 rising positive integers (Apple allows 3)");
+  }
+  const bands = a.bands;
+  if (!(Array.isArray(bands) && bands.length >= 2)) fail("age-signals: bands");
+  if (bands[0].min !== undefined || bands.at(-1).max !== undefined) fail("age-signals: the first band has no min, the last no max");
+  bands.forEach((b, i) => {
+    if (!(typeof b.id === "string" && /^[a-z0-9_]+$/.test(b.id))) fail(`age-signals: band id ${b.id}`);
+    if (i > 0 && b.min !== bands[i - 1].max + 1) fail(`age-signals: band ${b.id} must start one year after ${bands[i - 1].id}`);
+    if (b.max !== undefined && !(Number.isInteger(b.max) && b.max >= (b.min ?? 0))) fail(`age-signals: band ${b.id} max`);
+  });
+  const ids = bands.map((b) => b.id);
+  if (new Set(ids).size !== ids.length || ids.includes(a.unknownBand)) fail("age-signals: band ids must be unique and differ from unknownBand");
+  if (!ids.includes(a.adultBand)) fail("age-signals: adultBand must be a band");
+  if (!(Number.isInteger(a.recheckDays) && a.recheckDays > 0)) fail("age-signals: recheckDays");
+  if (!(Array.isArray(a.sources) && a.sources.includes("none"))) fail("age-signals: sources must include none");
+}
+
+// The band of the lowest age the OS range allows; unknownBand when there is no range. lower and upper are
+// whole years, inclusive, and either may be absent (null or undefined).
+export function ageBand(lower, upper, reg) {
+  const a = reg.ageSignals;
+  const has = (v) => Number.isInteger(v) && v >= 0;
+  if (!has(lower) && !has(upper)) return a.unknownBand;
+  const age = has(lower) ? lower : 0;
+  return a.bands.find((b) => b.max === undefined || age <= b.max).id;
+}
+
+// True for every band except adultBand: unknown gets the under-18 defaults (ADR 0229 point 4).
+export function ageTreatedAsMinor(band, reg) {
+  return band !== reg.ageSignals.adultBand;
 }
 
 // MCP tools (bipe ADR 0130, ADR 0210; bipe-chat/bipe#436): one data class per tool, content off by default.
@@ -428,6 +465,7 @@ function validate(reg, phosphor) {
     if (!(Number.isInteger(tp[k]) && tp[k] > 0)) fail(`theft-protection: ${k} must be a positive integer`);
   }
   if (tp.maxGuardians > 3) fail("theft-protection: ADR 0044 allows 1 to 3 guardians");
+  validateAgeSignals(reg.ageSignals);
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   if (!(Number.isInteger(h.ownerMinLength) && h.ownerMinLength >= 1 && h.ownerMinLength <= h.minLength)) fail("handles: ownerMinLength");
@@ -445,6 +483,14 @@ function validate(reg, phosphor) {
   if (!Array.isArray(pr.sealLookalikeEmoji) || pr.sealLookalikeEmoji.length === 0
     || pr.sealLookalikeEmoji.some((e) => typeof e !== "string" || e.replace(/[\uFE0E\uFE0F]/g, "").length === 0)
     || new Set(pr.sealLookalikeEmoji).size !== pr.sealLookalikeEmoji.length) fail("profiles: sealLookalikeEmoji must be distinct, non-empty strings");
+  if (!Array.isArray(pr.socials) || pr.socials.length === 0) fail("profiles: socials");
+  for (const s of pr.socials ?? []) {
+    if (!/^[a-z]+$/.test(s.id) || typeof s.name !== "string" || s.name.length === 0) fail(`profiles: social ${s.id} id or name`);
+    try { new RegExp(s.pattern); } catch (e) { fail(`profiles: social ${s.id} pattern: ${e.message}`); }
+    if (!s.pattern.startsWith("^") || !s.pattern.endsWith("$")) fail(`profiles: social ${s.id} pattern must be anchored`);
+    if (!/^https:\/\/[a-z0-9.-]+\/[^{}]*\{handle\}$/.test(s.url)) fail(`profiles: social ${s.id} url must be https with {handle} once, at the end`);
+  }
+  if (new Set((pr.socials ?? []).map((s) => s.id)).size !== (pr.socials ?? []).length) fail("profiles: duplicate social id");
   const ic = reg.inviteCodes;
   try { new RegExp(ic.pattern); } catch (e) { fail(`invite code pattern: ${e.message}`); }
   if (!(Number.isInteger(ic.maxInputLength) && ic.maxInputLength > 0)) fail("invite codes: maxInputLength");
@@ -806,6 +852,32 @@ export function profileProblem({ name, bio }, reg) {
   if ([...b].length > p.bioMaxLength) return "bio_too_long";
   if (b.split("\n").length > p.bioMaxLines) return "bio_too_many_lines";
   return null;
+}
+
+// Social handles on a public profile (ADR 0228). The input without surrounding spaces and one leading "@".
+export function socialHandleClean(input) {
+  return input.trim().replace(/^@/, "");
+}
+
+// Returns null when the cleaned input is empty (no handle) or valid, else "social_invalid" or "social_reserved".
+// ownHandle: the account's own Bipe @, or null. A handle with the skeleton of a reserved name is refused unless it
+// is the skeleton of ownHandle: an account that holds that Bipe @ already passed the reserved-name check.
+export function socialHandleProblem(platform, input, ownHandle, reg) {
+  const social = reg.profiles.socials.find((s) => s.id === platform);
+  if (!social) throw new Error(`socialHandleProblem: unknown platform ${platform}`);
+  const handle = socialHandleClean(input);
+  if (handle.length === 0) return null;
+  if (!new RegExp(social.pattern).test(handle)) return "social_invalid";
+  const skeleton = handleSkeleton(handle, reg);
+  if (reservedHandleSkeletons(reg).includes(skeleton) && !(ownHandle && handleSkeleton(ownHandle, reg) === skeleton)) return "social_reserved";
+  return null;
+}
+
+// The link to a valid social handle: the registry template with the cleaned handle.
+export function socialUrl(platform, input, reg) {
+  const social = reg.profiles.socials.find((s) => s.id === platform);
+  if (!social) throw new Error(`socialUrl: unknown platform ${platform}`);
+  return social.url.replace("{handle}", socialHandleClean(input));
 }
 
 // ADR 0049 photo match. gray: height rows of width values 0..255 (registries/photo-match.json). Returns the dHash
