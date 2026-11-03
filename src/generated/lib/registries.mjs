@@ -44,6 +44,7 @@ export function loadRegistries(root) {
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
+    groupPowerLevels: read("registries/group-power-levels.json"),
     relationshipNames: read("registries/relationship-names.json"),
     messageFormatting: read("registries/message-formatting.json"),
     photoMatch: read("registries/photo-match.json"),
@@ -255,6 +256,28 @@ export function validateDmPowerLevels(pl) {
   if (!(pl.events?.["chat.bipe.assistant"] <= pl.usersDefault)) fail("dm-power-levels: chat.bipe.assistant must stay open");
 }
 
+// bipe-chat/bipe#733: each permission of a new group sits at exactly one of the three roles.
+export function validateGroupPowerLevels(pl) {
+  const level = (v) => Number.isInteger(v) && v >= 0 && v <= 100;
+  const { admin, moderator, member } = pl.roles ?? {};
+  if (![admin, moderator, member, pl.usersDefault, pl.eventsDefault, pl.stateDefault, pl.invite, pl.kick, pl.ban, pl.redact, pl.notifications?.room].every(level)) fail("group-power-levels: levels must be integers from 0 to 100");
+  if (Object.keys(pl.roles).join() !== "admin,moderator,member" || !(admin > moderator && moderator > member)) fail("group-power-levels: roles must be admin > moderator > member");
+  if (pl.usersDefault !== member) fail("group-power-levels: usersDefault must be member");
+  if (pl.eventsDefault > member) fail("group-power-levels: messages must stay open to members");
+  for (const key of ["kick", "ban", "redact"]) if (pl[key] !== moderator) fail(`group-power-levels: ${key} must be moderator`);
+  if (pl.stateDefault !== admin || pl.notifications.room !== admin) fail("group-power-levels: room state and @room must be admin");
+  const roles = new Set([admin, moderator, member]);
+  for (const [type, v] of Object.entries(pl.events ?? {})) {
+    if (!roles.has(v) || !/^[a-z0-9._]+$/.test(type)) fail(`group-power-levels: event ${type} must sit at a role`);
+  }
+  for (const type of ["m.room.name", "m.room.avatar", "m.room.topic", "m.room.power_levels", "m.room.join_rules", "m.room.history_visibility", "m.room.encryption"]) {
+    if (pl.events?.[type] !== admin) fail(`group-power-levels: ${type} must be admin`);
+  }
+  for (const type of ["m.room.message", "m.reaction", "m.room.redaction", "org.matrix.msc3401.call.member", "chat.bipe.assistant"]) {
+    if (!(pl.events?.[type] <= member)) fail(`group-power-levels: ${type} must stay open`);
+  }
+}
+
 /** Throws unless `hours` is a valid WorkHours value (api/openapi.yaml, registries/work-hours.json). */
 export function workHoursProblem(hours, maxRangesPerDay) {
   const time = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$/;
@@ -411,6 +434,7 @@ function validate(reg, phosphor) {
   if (dm.order !== "latest-event-descending" || dm.missingActivity !== "last" || dm.tieBreak !== "room-id-ascending"
       || dm.eligibility !== "joined-dm-with-peer" || dm.clearedRooms !== "hide-before-selection" || dm.allClearedStartChat !== "reuse-newest-existing" || dm.filterOrder !== "select-before-unread-or-name") fail("dm-selection: unsupported ADR 0141 policy");
   validateDmPowerLevels(reg.dmPowerLevels);
+  validateGroupPowerLevels(reg.groupPowerLevels);
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
