@@ -445,6 +445,14 @@ function validate(reg, phosphor) {
   if (!Array.isArray(pr.sealLookalikeEmoji) || pr.sealLookalikeEmoji.length === 0
     || pr.sealLookalikeEmoji.some((e) => typeof e !== "string" || e.replace(/[\uFE0E\uFE0F]/g, "").length === 0)
     || new Set(pr.sealLookalikeEmoji).size !== pr.sealLookalikeEmoji.length) fail("profiles: sealLookalikeEmoji must be distinct, non-empty strings");
+  if (!Array.isArray(pr.socials) || pr.socials.length === 0) fail("profiles: socials");
+  for (const s of pr.socials ?? []) {
+    if (!/^[a-z]+$/.test(s.id) || typeof s.name !== "string" || s.name.length === 0) fail(`profiles: social ${s.id} id or name`);
+    try { new RegExp(s.pattern); } catch (e) { fail(`profiles: social ${s.id} pattern: ${e.message}`); }
+    if (!s.pattern.startsWith("^") || !s.pattern.endsWith("$")) fail(`profiles: social ${s.id} pattern must be anchored`);
+    if (!/^https:\/\/[a-z0-9.-]+\/[^{}]*\{handle\}$/.test(s.url)) fail(`profiles: social ${s.id} url must be https with {handle} once, at the end`);
+  }
+  if (new Set((pr.socials ?? []).map((s) => s.id)).size !== (pr.socials ?? []).length) fail("profiles: duplicate social id");
   const ic = reg.inviteCodes;
   try { new RegExp(ic.pattern); } catch (e) { fail(`invite code pattern: ${e.message}`); }
   if (!(Number.isInteger(ic.maxInputLength) && ic.maxInputLength > 0)) fail("invite codes: maxInputLength");
@@ -806,6 +814,32 @@ export function profileProblem({ name, bio }, reg) {
   if ([...b].length > p.bioMaxLength) return "bio_too_long";
   if (b.split("\n").length > p.bioMaxLines) return "bio_too_many_lines";
   return null;
+}
+
+// Social handles on a public profile (ADR 0228). The input without surrounding spaces and one leading "@".
+export function socialHandleClean(input) {
+  return input.trim().replace(/^@/, "");
+}
+
+// Returns null when the cleaned input is empty (no handle) or valid, else "social_invalid" or "social_reserved".
+// ownHandle: the account's own Bipe @, or null. A handle with the skeleton of a reserved name is refused unless it
+// is the skeleton of ownHandle: an account that holds that Bipe @ already passed the reserved-name check.
+export function socialHandleProblem(platform, input, ownHandle, reg) {
+  const social = reg.profiles.socials.find((s) => s.id === platform);
+  if (!social) throw new Error(`socialHandleProblem: unknown platform ${platform}`);
+  const handle = socialHandleClean(input);
+  if (handle.length === 0) return null;
+  if (!new RegExp(social.pattern).test(handle)) return "social_invalid";
+  const skeleton = handleSkeleton(handle, reg);
+  if (reservedHandleSkeletons(reg).includes(skeleton) && !(ownHandle && handleSkeleton(ownHandle, reg) === skeleton)) return "social_reserved";
+  return null;
+}
+
+// The link to a valid social handle: the registry template with the cleaned handle.
+export function socialUrl(platform, input, reg) {
+  const social = reg.profiles.socials.find((s) => s.id === platform);
+  if (!social) throw new Error(`socialUrl: unknown platform ${platform}`);
+  return social.url.replace("{handle}", socialHandleClean(input));
 }
 
 // ADR 0049 photo match. gray: height rows of width values 0..255 (registries/photo-match.json). Returns the dHash
