@@ -5,7 +5,7 @@ import { deflateSync } from "node:zlib";
 import { webcrypto } from "node:crypto";
 import * as asn1 from "asn1js";
 import * as pki from "pkijs";
-import { challengePdf, checkSignedPdf, containsCode, personOf, validCpf } from "../dist/govbr.js";
+import { challengePdf, checkSignedPdf, containsCode, matchingChallenge, personOf, validCpf } from "../dist/govbr.js";
 
 pki.setEngine("node", new pki.CryptoEngine({ name: "node", crypto: webcrypto }));
 const key = () => webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
@@ -106,6 +106,19 @@ test("the real gov.br layout: name from the CN, CPF from SAN 2.16.76.1.3.1", asy
   const result = await checkSignedPdf(await signedPdf(undefined, govbrSigner), [root.cert], NOW);
   assert.equal(result.ok, true);
   assert.deepEqual(personOf(result.cert), { name: "FULANA DE TAL", cpf: CPF });
+});
+
+test("a file signed for an earlier open challenge of the same device still matches (bipe#1007)", () => {
+  const signed = Buffer.from(`(C\\363digo: ${CODE})`, "latin1");
+  const later = new Date(NOW.getTime() + 30 * 60_000);
+  const row = (id, code, extra = {}) => ({ id, device_key: "dev-a", code, expires_at: later, used_at: null, ...extra });
+  const url = row("b", "ZZZ-999");
+  assert.equal(matchingChallenge(url, [row("a", CODE), url], signed, NOW)?.id, "a");
+  assert.equal(matchingChallenge(row("a", CODE), [], signed, NOW)?.id, "a");
+  assert.equal(matchingChallenge(url, [row("a", CODE, { device_key: "dev-b" })], signed, NOW), null);
+  assert.equal(matchingChallenge(url, [row("a", CODE, { used_at: NOW })], signed, NOW), null);
+  assert.equal(matchingChallenge(url, [row("a", CODE, { expires_at: NOW })], signed, NOW), null);
+  assert.equal(matchingChallenge(url, [url], signed, NOW), null);
 });
 
 test("bytes added after signing are changed_after_signing", async () => {
