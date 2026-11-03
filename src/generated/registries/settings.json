@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "$comment": "Settings structure (ADR 0112 in bipe/docs/adr). One source for the order of groups, sections and rows on iOS and Android. `root` is the order of the group rows under Configurações in the Você tab; `profile` opens from the Você header. `icon` is the Phosphor icon (bipe-app tools/phosphor.json) of a root group row: a glyph in ink.onAccent on an accent.fill tile, as in the iPhone Settings app. A group with `screen: \"element\"` keeps the Element screen and lists no rows here. Row kinds: link (opens a screen), choice (opens a picker), switch, info (a value, no action), url (opens a page from `urls`), action (runs something), destructive. `gate`: absent = always shown; `ios` or `android` = that platform only; `flag:<name>` = behind that app feature flag; `planned:<issue>` = hidden until bipe-chat/bipe#<issue> ships. Titles are bipe_* string keys; a row without its own string has no place here. A new top-level group needs a new ADR.",
+  "$comment": "Settings structure (ADR 0112 in bipe/docs/adr). One source for the order of groups, sections and rows on iOS and Android. `root` is the order of the group rows under Configurações in the Você tab; `profile` opens from the Você header; since 3 Nov 2026 it is one screen (product/screens/profile-edit) and lists no rows here. `icon` is the Phosphor icon (bipe-app tools/phosphor.json) of a root group row: a glyph in ink.onAccent on an accent.fill tile, as in the iPhone Settings app. A group with `screen: \"element\"` keeps the Element screen and lists no rows here. Row kinds: link (opens a screen), choice (opens a picker), switch, info (a value, no action), url (opens a page from `urls`), action (runs something), destructive. `gate`: absent = always shown; `ios` or `android` = that platform only; `flag:<name>` = behind that app feature flag; `planned:<issue>` = hidden until bipe-chat/bipe#<issue> ships. Titles are bipe_* string keys; a row without its own string has no place here. A new top-level group needs a new ADR.",
   "root": ["privacy", "account", "notifications", "chats", "help"],
   "urls": {
     "docs": { "pt": "https://bipe.chat/docs/", "en": "https://bipe.chat/en/docs/" },
@@ -15,16 +15,7 @@
     {
       "key": "profile",
       "title": "bipe_settings_profile",
-      "sections": [
-        {
-          "key": "main",
-          "rows": [
-            { "key": "namePhoto", "title": "bipe_settings_profile_name_photo", "kind": "link" },
-            { "key": "handle", "title": "bipe_settings_handle", "kind": "link", "adr": "0016" },
-            { "key": "publicProfile", "title": "bipe_settings_public_profile", "kind": "link", "adr": "0041" }
-          ]
-        }
-      ]
+      "sections": []
     },
     {
       "key": "privacy",
