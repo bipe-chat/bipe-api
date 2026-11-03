@@ -59,9 +59,20 @@ export async function createGovbrChallenge(db: Db, userId: string, deviceKey: st
   return { verificationId: id, pdf: challengePdf(who, code, now).toString("base64"), fileName: FILE_NAME, expiresAt: expiresAt.toISOString() };
 }
 
-type ChallengeRow = { id: string; device_key: string; code: string; expires_at: Date; used_at: Date | null };
+export type ChallengeRow = { id: string; device_key: string; code: string; expires_at: Date; used_at: Date | null };
 
-/** PUT /v1/verifications/govbr/{id}/document. A rejected file leaves the challenge open until it expires. */
+/**
+ * The open challenge whose code the signed bytes hold: the one in the URL first, then any other open challenge of the
+ * same device key. Each "Tentar de novo" makes a new challenge, so a file signed for an earlier one is still good
+ * (bipe#1007). Null when none matches.
+ */
+export function matchingChallenge(urlRow: ChallengeRow, open: ChallengeRow[], signed: Buffer, now: Date): ChallengeRow | null {
+  const usable = (r: ChallengeRow) => !r.used_at && r.expires_at.getTime() > now.getTime() && r.device_key === urlRow.device_key;
+  if (usable(urlRow) && containsCode(signed, urlRow.code)) return urlRow;
+  return open.find((r) => r.id !== urlRow.id && usable(r) && containsCode(signed, r.code)) ?? null;
+}
+
+/** PUT /v1/verifications/govbr/{id}/document. A rejected file leaves the challenges open until they expire. */
 export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: string, id: string, pdf: Buffer, now = new Date()): Promise<GovbrStatus> {
   if (!UUID.test(id)) throw new ApiError("not_found");
   const { rows } = await db.query<ChallengeRow>(
@@ -73,11 +84,15 @@ export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: strin
   if (deps.roots.length === 0) throw new ApiError("internal", "govbr_roots_missing");
   if (!deps.cpfSecret) throw new ApiError("internal", "cpf_secret_missing");
   const reject = (reason: GovbrReason): GovbrStatus => ({ verificationId: id, state: "rejected", reason });
-  if (row.expires_at.getTime() <= now.getTime()) return reject("expired");
 
   const checked = await checkSignedPdf(pdf, deps.roots, now);
   if (!checked.ok) return reject(checked.reason);
-  if (!containsCode(checked.signed, row.code)) return reject("wrong_document");
+  const others = await db.query<ChallengeRow>(
+    "SELECT id, device_key, code, expires_at, used_at FROM govbr_challenges WHERE user_id = $1 AND used_at IS NULL AND expires_at > $2",
+    [userId, now],
+  );
+  const match = matchingChallenge(row, others.rows, checked.signed, now);
+  if (!match) return reject(row.expires_at.getTime() <= now.getTime() ? "expired" : "wrong_document");
   const person = personOf(checked.cert);
   if (!person.name) return reject("not_govbr");
   // Fail closed and loud: a gov.br certificate without a CPF we can read means personOf needs the #542 answer.
@@ -87,13 +102,15 @@ export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: strin
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    const used = await client.query("UPDATE govbr_challenges SET used_at = $2 WHERE id = $1 AND used_at IS NULL", [id, now]);
+    const used = await client.query("UPDATE govbr_challenges SET used_at = $2 WHERE id = $1 AND used_at IS NULL", [match.id, now]);
     if (used.rowCount !== 1) throw new ApiError("not_found");
+    // The challenge in the URL ends with the one that matched: the app asked for it, and it must not verify again.
+    if (match.id !== id) await client.query("UPDATE govbr_challenges SET used_at = $2 WHERE id = $1 AND used_at IS NULL", [id, now]);
     await client.query(
       `INSERT INTO person_verifications (user_id, level, verified_name, cpf_hash, device_key, verified_at)
        VALUES ($1, 'govbr', $2, $3, $4, $5)
        ON CONFLICT (user_id) DO UPDATE SET level = 'govbr', verified_name = $2, cpf_hash = $3, device_key = $4, verified_at = $5`,
-      [userId, person.name, cpfHash, row.device_key, now],
+      [userId, person.name, cpfHash, match.device_key, now],
     );
     await client.query("COMMIT");
   } catch (e) {
