@@ -169,6 +169,7 @@
     "$comment": "The one ask system of the app (spec chat-list-prompt, bipe-chat/bipe#894, MZ 2 Nov 2026): one queue, one place (the first row of the chat list), one slot per account. In queue order, the first entry whose source condition holds and that the slot allows shows. tier critical and access preempt the slot; every other entry waits promptSlot.hours after the last card left. Keys equal to a prompts key keep that prompt's dismiss memory. The bring-people sheet (prompts.bringPeople) is the only ask that is not an entry; it claims the slot when it opens. Full-screen alerts (recovery-alert, deletion-alert, device-verification incoming, incoming calls) are not asks: they interrupt at once and never use the slot.",
     "entries": [
       { "key": "remoteBanner", "tier": "critical" },
+      { "key": "appUpdate", "tier": "critical" },
       { "key": "approvePhone", "tier": "access" },
       { "key": "notifications", "tier": "safety" },
       { "key": "notificationCheckup", "tier": "safety" },
