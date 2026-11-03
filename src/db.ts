@@ -6,8 +6,8 @@ export function openDb(url: string): Db {
   return new pg.Pool({ connectionString: url, max: 10 });
 }
 
-// Forward-only migrations, applied in order at startup.
-const MIGRATIONS = [
+// Forward-only migrations, applied in order at startup. Exported for tests only.
+export const MIGRATIONS: readonly string[] = [
   `CREATE TABLE invites (
      id bigserial PRIMARY KEY,
      code_hash text NOT NULL UNIQUE,
@@ -846,9 +846,37 @@ const MIGRATIONS = [
    );`,
   // Social handles on the public profile (ADR 0228): { <registries/profiles.json socials id>: handle }.
   `ALTER TABLE public_profiles ADD COLUMN socials jsonb NOT NULL DEFAULT '{}'::jsonb;`,
+  // User numbers (MZ, 3 Nov 2026): 1, 2, 3 in sign-up order, never reused, never changed. One counter row gives
+  // them in the transaction of the signups row: a concurrent sign-up waits on the row lock, and a failed one rolls
+  // the counter back, so there is no gap (a sequence leaves one). Deleted accounts keep their number unused, so
+  // last minus the signups rows is the count of numbered accounts deleted. Earlier accounts: sign-up order.
+  // The trigger fires before the conflict check: never INSERT INTO signups ... ON CONFLICT, it uses a number.
+  `ALTER TABLE signups ADD COLUMN user_number bigint;
+   UPDATE signups s SET user_number = o.n
+     FROM (SELECT user_id, row_number() OVER (ORDER BY created_at, user_id) AS n FROM signups) o
+    WHERE s.user_id = o.user_id;
+   ALTER TABLE signups ALTER COLUMN user_number SET NOT NULL;
+   ALTER TABLE signups ADD CONSTRAINT signups_user_number_key UNIQUE (user_number);
+   CREATE TABLE user_number_counter (
+     id boolean PRIMARY KEY DEFAULT true CHECK (id),
+     last bigint NOT NULL CHECK (last >= 0)
+   );
+   INSERT INTO user_number_counter (last) SELECT count(*) FROM signups;
+   CREATE FUNCTION signups_user_number() RETURNS trigger LANGUAGE plpgsql AS $$
+   BEGIN
+     IF TG_OP = 'INSERT' THEN
+       UPDATE user_number_counter SET last = last + 1 RETURNING last INTO NEW.user_number;
+     ELSIF NEW.user_number IS DISTINCT FROM OLD.user_number THEN
+       RAISE EXCEPTION 'signups.user_number never changes';
+     END IF;
+     RETURN NEW;
+   END $$;
+   CREATE TRIGGER signups_user_number BEFORE INSERT OR UPDATE OF user_number ON signups
+     FOR EACH ROW EXECUTE FUNCTION signups_user_number();`,
 ];
 
-export async function migrate(db: Db): Promise<void> {
+/** Applies the migrations up to `until` (tests stop before one to check its backfill). */
+export async function migrate(db: Db, until = MIGRATIONS.length): Promise<void> {
   const client = await db.connect();
   try {
     await client.query("SELECT pg_advisory_lock(7140101)");
@@ -856,7 +884,7 @@ export async function migrate(db: Db): Promise<void> {
     const { rows } = await client.query<{ version: number }>("SELECT version FROM schema_version");
     let version = rows[0]?.version ?? 0;
     if (rows.length === 0) await client.query("INSERT INTO schema_version VALUES (0)");
-    for (; version < MIGRATIONS.length; version++) {
+    for (; version < until; version++) {
       await client.query("BEGIN");
       await client.query(MIGRATIONS[version]!);
       await client.query("UPDATE schema_version SET version = $1", [version + 1]);

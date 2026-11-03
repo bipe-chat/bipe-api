@@ -17,7 +17,7 @@ export function isLoopbackPeer(address) {
   return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
 }
 
-export async function isolatedDatabase(t) {
+export async function isolatedDatabase(t, until) {
   const url = testDatabaseUrl(process.env.BIPE_TEST_DATABASE_URL);
   const admin = new pg.Pool({ connectionString: url.href, max: 1, connectionTimeoutMillis: 3000 });
   let db;
@@ -41,6 +41,6 @@ export async function isolatedDatabase(t) {
   await admin.query(`CREATE SCHEMA "${schema}"`);
   created = true;
   db = new pg.Pool({ connectionString: url.href, max: 10, connectionTimeoutMillis: 3000, statement_timeout: 10000, options: `-c search_path=${schema}` });
-  await migrate(db);
+  await migrate(db, until);
   return db;
 }

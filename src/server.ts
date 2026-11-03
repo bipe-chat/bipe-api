@@ -42,7 +42,7 @@ import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
 import { deleteLocalMedia, SynapseAdmin } from "./synapse-admin.js";
-import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
+import { accountCount, businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
 import { BrandMarks } from "./brand-marks.js";
@@ -1530,6 +1530,7 @@ staffGet("/v1/admin/experiments", () => experimentsReport(db));
 staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));
 staffGet("/v1/admin/retention", () => staffReports.retention());
+staffGet("/v1/admin/accounts", () => accountCount(db));
 // bipe#531: share of active iOS accounts with a way back that survives the App Store transfer.
 staffGet("/v1/admin/transfer-readiness", (c) => {
   const days = z.coerce.number().int().min(1).max(90).default(30).safeParse(c.req.query("days"));
