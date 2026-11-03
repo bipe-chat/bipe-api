@@ -827,6 +827,14 @@ const MIGRATIONS = [
      group_link_joined boolean NOT NULL DEFAULT true,
      updated_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Age signals (ADR 0229, bipe-chat/bipe#994): one band per account from the OS age range. No range, no date of birth.
+  `CREATE TABLE age_signals (
+     user_id text PRIMARY KEY,
+     band text NOT NULL CHECK (band IN ('unknown', 'under_13', '13_15', '16_17', '18_plus')),
+     source text NOT NULL CHECK (source IN ('apple', 'play', 'none')),
+     method text,
+     checked_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 export async function migrate(db: Db): Promise<void> {

@@ -19,6 +19,7 @@ import { refreshKeyAttestationStatus } from "./key-attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
+import { recordAgeSignal } from "./age.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
@@ -119,6 +120,7 @@ const limits = {
   signup: new SignupLimits(config.SIGNUP_MAX_PER_HOUR),
   signupResume: new RateLimiter(30, 3_600_000),
   terms: new RateLimiter(10, 3_600_000),
+  age: new RateLimiter(10, 3_600_000),
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
@@ -389,6 +391,13 @@ const SignupBody = z.object({
   account_type: z.enum(["personal", "company"]).optional(),
 });
 const TermsBody = z.object({ terms_version: z.string().regex(TERMS_VERSION_PATTERN) });
+const AgeYears = z.number().int().min(0).max(150);
+const AgeBody = z.object({
+  source: z.enum(["apple", "play", "none"]),
+  lower: AgeYears.optional(),
+  upper: AgeYears.optional(),
+  method: z.string().max(64).optional(),
+});
 const SignupResumeBody = z.object({ signup_key: z.string().regex(SECRET_PATTERN) });
 const HandleBody = z.object({ handle: z.string().max(64) });
 const PinBody = z.object({ pin: PinField });
@@ -562,6 +571,15 @@ app.post("/v1/me/terms", async (c) => {
   const version = checkTermsVersion((await parse(c, TermsBody)).terms_version, true)!;
   await recordTerms(db, userId, version, "app");
   return c.body(null, 204);
+});
+
+// ADR 0229: the OS age range. The server keeps only the band.
+app.put("/v1/me/age", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.age.check(userId);
+  const body = await parse(c, AgeBody);
+  if (body.lower !== undefined && body.upper !== undefined && body.lower > body.upper) throw new ApiError("bad_request", "range");
+  return c.json({ age_band: await recordAgeSignal(db, userId, body) });
 });
 
 app.put("/v1/me/pin", async (c) => {

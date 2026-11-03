@@ -123,6 +123,8 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       "SELECT domain, verified_at, last_checked_at FROM business_domains WHERE user_id = $1 ORDER BY domain",
       userId,
     ),
+    // ADR 0229: the age band from the OS signal, its source and time. Bipe keeps no range and no date of birth.
+    age_signal: await one(db, "SELECT band, source, method, checked_at FROM age_signals WHERE user_id = $1", userId),
     terms_accepted: await all(
       db,
       "SELECT version, source, accepted_at FROM terms_acceptances WHERE user_id = $1 ORDER BY accepted_at",
