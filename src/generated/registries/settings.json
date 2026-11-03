@@ -9,7 +9,8 @@
     "whoCanRead": { "pt": "https://bipe.chat/quem-pode-ler/", "en": "https://bipe.chat/en/who-can-read/" },
     "lgpd": { "pt": "https://bipe.chat/lgpd/", "en": "https://bipe.chat/en/lgpd/" },
     "accessibility": { "pt": "https://bipe.chat/acessibilidade/", "en": "https://bipe.chat/en/accessibility/" },
-    "versions": { "pt": "https://bipe.chat/versoes/", "en": "https://bipe.chat/en/versions/" }
+    "versions": { "pt": "https://bipe.chat/versoes/", "en": "https://bipe.chat/en/versions/" },
+    "versionsData": { "pt": "https://bipe.chat/versoes/changelog.json", "en": "https://bipe.chat/en/versions/changelog.json" }
   },
   "groups": [
     {
@@ -171,7 +172,7 @@
             { "key": "terms", "title": "bipe_help_terms", "kind": "url", "url": "terms" },
             { "key": "privacy", "title": "bipe_help_privacy", "kind": "url", "url": "privacy" },
             { "key": "licenses", "title": "bipe_help_licenses", "kind": "link" },
-            { "key": "versions", "title": "bipe_help_versions", "kind": "url", "url": "versions" }
+            { "key": "versions", "title": "bipe_help_versions", "kind": "link" }
           ]
         }
       ]
