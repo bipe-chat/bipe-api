@@ -3,7 +3,8 @@ import http from "node:http";
 
 export async function masStub(t) {
   // sessions: MAS browser sessions { id, user, created_at, finished }. ignoreCreatedAfter: act like a MAS that drops the filter.
-  const state = { mode: "ok", passwords: new Map(), passwordCalls: 0, deactivated: 0, sessions: [], options: { ignoreCreatedAfter: false } };
+  // oauthSessions: MAS OAuth 2.0 sessions { id, user_session_id, device, finished }. ignoreUserSession: act like a MAS that drops that filter.
+  const state = { mode: "ok", passwords: new Map(), passwordCalls: 0, deactivated: 0, sessions: [], oauthSessions: [], options: { ignoreCreatedAfter: false, ignoreUserSession: false } };
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://127.0.0.1");
@@ -43,6 +44,14 @@ export async function masStub(t) {
           .filter((s) => q.get("filter[status]") !== "active" || !s.finished)
           .filter((s) => state.options.ignoreCreatedAfter || !after || Date.parse(s.created_at) > Date.parse(after))
           .map((s) => ({ type: "user-session", id: s.id, attributes: { created_at: s.created_at, finished_at: s.finished ? s.created_at : null, user_id: s.user } }));
+        return json({ data });
+      }
+      if (url.pathname === "/api/admin/v1/oauth2-sessions" && req.method === "GET") {
+        const q = url.searchParams;
+        const data = state.oauthSessions
+          .filter((s) => state.options.ignoreUserSession || s.user_session_id === q.get("filter[user-session]"))
+          .filter((s) => q.get("filter[status]") !== "active" || !s.finished)
+          .map((s) => ({ type: "oauth2-session", id: s.id, attributes: { user_session_id: s.user_session_id, scope: `openid urn:matrix:org.matrix.msc2967.client:api:* urn:matrix:org.matrix.msc2967.client:device:${s.device}`, finished_at: null } }));
         return json({ data });
       }
       const finish = /^\/api\/admin\/v1\/user-sessions\/([^/]+)\/finish$/.exec(url.pathname);
