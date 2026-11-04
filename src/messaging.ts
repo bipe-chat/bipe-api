@@ -4,6 +4,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import type { Reach } from "./reach.js";
+import type { ReachTiers } from "./reach-tiers.js";
 
 export const POLICIES = ["everyone", "verified", "contacts"] as const;
 export type Policy = (typeof POLICIES)[number];
@@ -32,15 +33,27 @@ async function invitePair(db: Db, a: string, b: string): Promise<boolean> {
 }
 
 /**
- * Contacts (a shared joined room or an invite pair) may always invite.
+ * Contacts (a shared joined room or an invite pair) may always invite, and never use the reach budget.
  * "verified" also admits verified accounts; no account is verified yet, so it acts like "contacts".
- * Any other allowed invite is a first contact (security.md rule 11, bipe#845): Reach records it.
+ * Any other allowed invite is a first contact (security.md rule 11): with `tiers` it takes one unit of the inviter's
+ * budget (bipe#851) and is refused with reason reach_limit when none is left; else Reach only records it (bipe#845).
  */
-export async function mayInvite(db: Db, inviter: string, invitee: string, sharesRoom: boolean, opts: { reach?: Reach; roomId?: string | null } = {}) {
+export async function mayInvite(
+  db: Db,
+  inviter: string,
+  invitee: string,
+  sharesRoom: boolean,
+  opts: { reach?: Reach; tiers?: ReachTiers; roomId?: string | null } = {},
+): Promise<{ allow: boolean; policy: Policy; reason?: "reach_limit" }> {
   const policy = await policyOf(db, invitee);
   if (sharesRoom || (await invitePair(db, inviter, invitee))) return { allow: true, policy };
   if (policy !== "everyone") return { allow: false, policy };
-  if (opts.reach?.enabled) await opts.reach.record(inviter, invitee, opts.roomId ?? null);
+  const roomId = opts.roomId ?? null;
+  if (opts.tiers) {
+    if (!(await opts.tiers.take(inviter, invitee, roomId))) return { allow: false, policy, reason: "reach_limit" };
+  } else if (opts.reach?.enabled) {
+    await opts.reach.record(inviter, invitee, roomId);
+  }
   return { allow: true, policy };
 }
 

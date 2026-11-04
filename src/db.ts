@@ -933,6 +933,8 @@ export const MIGRATIONS: readonly string[] = [
      id integer PRIMARY KEY CHECK (id = 1),
      reports_cursor bigint NOT NULL
    );`,
+  // Reach tiers (bipe#851): whether the sign-up's device was attested (ADR 0043). NULL for sign-ups before this column.
+  `ALTER TABLE signups ADD COLUMN attested boolean;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
