@@ -199,8 +199,9 @@ export async function moveToDeviceFirst(deps: AccountDeps, userId: string, pin: 
     "SELECT device_first FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL",
     [userId],
   );
-  if (rows.length === 0) throw new ApiError("pin_not_set");
-  if (rows[0].device_first) throw new ApiError("already_device_first");
+  const row = rows[0];
+  if (!row) throw new ApiError("pin_not_set");
+  if (row.device_first) throw new ApiError("already_device_first");
   await verifyPin(deps, userId, pin);
   return inTransaction(deps.db, (client) => issueCredentials(deps, client, userId));
 }
