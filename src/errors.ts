@@ -23,6 +23,7 @@ export type ErrorId =
   | "pin_wrong"
   | "pin_blocked"
   | "pin_not_set"
+  | "already_device_first"
   | "recovery_invalid"
   | "email_unavailable"
   | "terms_required"
@@ -80,6 +81,7 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   pin_wrong: 403,
   pin_blocked: 403,
   pin_not_set: 409,
+  already_device_first: 409,
   recovery_invalid: 403,
   email_unavailable: 503,
   terms_required: 403,
