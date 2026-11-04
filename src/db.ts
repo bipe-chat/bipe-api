@@ -958,6 +958,9 @@ export const MIGRATIONS: readonly string[] = [
      key text PRIMARY KEY,
      sent_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // bipe-chat/bipe#915: a signed-in session has its own count of wrong PINs, so it cannot block the PIN for recovery.
+  `ALTER TABLE account_secrets ADD COLUMN pin_session_wrong_tries integer NOT NULL DEFAULT 0 CHECK (pin_session_wrong_tries >= 0),
+     ADD COLUMN pin_session_blocked_at timestamptz;`,
   // A quote shared as a link (ADR 0185, bipe#754): a typed name and no request. The link is stored hashed.
   `ALTER TABLE quotes ALTER COLUMN request_id DROP NOT NULL, ALTER COLUMN customer_id DROP NOT NULL,
      ADD COLUMN customer_name text, ADD COLUMN link_hash text;

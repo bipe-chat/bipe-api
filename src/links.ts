@@ -376,7 +376,7 @@ export async function recoverWithLink(deps: LinkDeps, provider: Provider, proof:
   const { rows } = await deps.db.query<{ user_id: string }>("SELECT user_id FROM account_links WHERE provider = $1 AND subject_hash = $2", [provider, subject]);
   const userId = rows[0]?.user_id;
   if (!userId) throw new ApiError("recovery_invalid");
-  await verifyPin(deps, userId, pin);
+  await verifyPin(deps, userId, pin, "recovery");
   const id = newRecoveryId();
   const claim = newSecret();
   const res = await deps.db.query<{ ready_at: Date }>(
