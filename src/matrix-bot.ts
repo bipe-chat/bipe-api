@@ -36,6 +36,8 @@ export type BotAccount = {
   synapseUrl: string;
   /** Table with one row (id 1) that keeps the sync position. */
   syncTable: "support_sync" | "news_sync";
+  /** The account's display name, set at start (bipe#809, bipe#978). */
+  displayName: string;
 };
 
 export abstract class EncryptedBot {
@@ -63,6 +65,7 @@ export abstract class EncryptedBot {
       .then(() => {
         console.log(`${this.account.label}: ready`);
         void this.syncLoop();
+        void this.ensureDisplayName().catch((e) => console.error(`${this.account.label}: display name failed: ${(e as Error).message}`));
         this.onReady();
       })
       .catch((e) => console.error(`${this.account.label}: start failed: ${(e as Error).message}`));
@@ -70,6 +73,21 @@ export abstract class EncryptedBot {
 
   /** Runs once after the device is ready and the sync loop started. */
   protected onReady(): void {}
+
+  /**
+   * Chat rows and requests show the account's display name, and Synapse starts it as the localpart, which the apps
+   * never show (People names). So the bot sets account.displayName at start. It writes only when the name differs:
+   * a change sends a member event into every room of the account. Returns true when it wrote the name.
+   */
+  async ensureDisplayName(): Promise<boolean> {
+    const wanted = this.account.displayName;
+    const path = `/profile/${enc(this.userId)}/displayname`;
+    const current = await this.matrix<{ displayname?: string }>("GET", path).catch(() => null);
+    if (current?.displayname === wanted) return false;
+    await this.matrix("PUT", path, { displayname: wanted });
+    console.log(`${this.account.label}: display name set`);
+    return true;
+  }
 
   /** Invites in one sync. */
   protected abstract onInvite(roomId: string, events: MatrixEvent[]): Promise<void>;

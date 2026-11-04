@@ -1,8 +1,9 @@
 import { readFileSync, statSync } from "node:fs";
 import { isIP } from "node:net";
 import { Reader, type CityResponse } from "mmdb-lib";
+import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import type { Mas } from "./mas.js";
+import type { Mas, MasSession } from "./mas.js";
 
 // Web sign-in approval on the phone (ADR 0118 in bipe/docs/adr, bipe#389).
 
@@ -10,20 +11,84 @@ const SINCE_MAX_AGE_MS = 15 * 60_000;
 const SINCE_MAX_AHEAD_MS = 2 * 60_000;
 const SINCE_SLACK_MS = 60_000;
 
+export type WebLinkKind = "computer" | "phone";
+
+/** The caller's device and the kind of approval, for the web session record (bipe#398). */
+export type WebLinkCaller = { db: Db; deviceId: string | null; kind?: WebLinkKind };
+
 /**
  * Finishes the MAS browser sessions of the caller that started at or after `since` minus 60 s: the
  * session that the phone's private web view made with the form fill. Older sessions stay, so a staff
- * browser session is not touched. Returns the number finished.
+ * browser session is not touched. With kind computer, first records the OAuth 2.0 sessions that those
+ * browser sessions approved as web sessions of the caller's device. Returns the number finished.
  */
-export async function finishWebLink(mas: Mas, userId: string, since: string): Promise<number> {
+export async function finishWebLink(mas: Mas, userId: string, since: string, caller?: WebLinkCaller): Promise<number> {
   const start = Date.parse(since);
   const now = Date.now();
   if (Number.isNaN(start) || start < now - SINCE_MAX_AGE_MS || start > now + SINCE_MAX_AHEAD_MS) throw new ApiError("bad_request", "since");
   const user = await mas.userByUsername(userId.slice(1).split(":")[0]!);
   if (!user) throw new ApiError("unauthorized");
   const ids = await mas.activeBrowserSessionsSince(user.id, new Date(start - SINCE_SLACK_MS));
+  // A failed record must not keep the phone's browser session open: log it and finish the sessions.
+  if (caller?.kind === "computer" && caller.deviceId) {
+    await recordWebLinks(mas, caller.db, userId, caller.deviceId, ids).catch(() => console.error("web-link: the web session record failed"));
+  }
   for (const id of ids) await mas.finishBrowserSession(id);
   return ids.length;
+}
+
+/** Records each Matrix device that one of the browser sessions approved, other than the approver's own device. */
+async function recordWebLinks(mas: Mas, db: Db, userId: string, approverDeviceId: string, browserSessions: string[]): Promise<void> {
+  for (const id of browserSessions) {
+    for (const session of await mas.oauthSessionsApprovedBy(id)) {
+      if (!session.deviceId || session.deviceId === approverDeviceId) continue;
+      await db.query(
+        `INSERT INTO web_links (user_id, web_device_id, approver_device_id) VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, web_device_id) DO UPDATE SET approver_device_id = EXCLUDED.approver_device_id, linked_at = now()`,
+        [userId, session.deviceId, approverDeviceId],
+      );
+    }
+  }
+}
+
+/** The MAS admin calls that end web sessions. Mas implements it; theft tests pass a fake. */
+export interface WebLinkMas {
+  activeSessions(masId: string): Promise<MasSession[]>;
+  finishSession(session: MasSession): Promise<void>;
+}
+
+/** The web devices that a phone device of the account approved. */
+export async function webDevicesApprovedBy(db: Db, userId: string, approverDeviceId: string): Promise<Set<string>> {
+  const { rows } = await db.query<{ web_device_id: string }>(
+    "SELECT web_device_id FROM web_links WHERE user_id = $1 AND approver_device_id = $2",
+    [userId, approverDeviceId],
+  );
+  return new Set(rows.map((r) => r.web_device_id));
+}
+
+/**
+ * Ends every active MAS session of the account whose device is a web session that the approver device approved, then
+ * forgets those records. Web sessions that other devices of the account approved stay. Returns the number of devices.
+ */
+export async function endWebLinks(mas: WebLinkMas, db: Db, masId: string, userId: string, approverDeviceId: string): Promise<number> {
+  const web = await webDevicesApprovedBy(db, userId, approverDeviceId);
+  if (web.size === 0) return 0;
+  const ended = new Set<string>();
+  for (const session of await mas.activeSessions(masId)) {
+    if (!session.deviceId || !web.has(session.deviceId)) continue;
+    await mas.finishSession(session);
+    ended.add(session.deviceId);
+  }
+  await db.query("DELETE FROM web_links WHERE user_id = $1 AND approver_device_id = $2", [userId, approverDeviceId]);
+  return ended.size;
+}
+
+/** POST /v1/web-link/sign-out: the phone signs out the web sessions it approved before it leaves the account (bipe#398). */
+export async function signOutWebLinks(mas: Mas, db: Db, userId: string, deviceId: string | null): Promise<number> {
+  if (!deviceId) throw new ApiError("bad_request", "device");
+  const user = await mas.userByUsername(userId.slice(1).split(":")[0]!);
+  if (!user) throw new ApiError("unauthorized");
+  return endWebLinks(mas, db, user.id, userId, deviceId);
 }
 
 export type Place = { city?: string; region?: string; country?: string };

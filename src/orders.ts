@@ -34,9 +34,9 @@ export const RefusalBody = z.object({ reason: z.enum(["unavailable", "closed", "
 type OrderRow = {
   id: string; business_id: string; customer_id: string | null; customer_name: string | null; source: "customer" | "owner";
   lines: OrderLine[]; total_amount_cents: string; fulfilment: Order["fulfilment"]; payment: Order["payment"]; status: Order["status"];
-  refuse_reason: Order["refuse_reason"] | null; quote_id: string | null; created_at: Date;
+  refuse_reason: Order["refuse_reason"] | null; quote_id: string | null; created_at: Date; web: boolean;
 };
-const COLUMNS = "id, business_id, customer_id, customer_name, source, lines, total_amount_cents, fulfilment, payment, status, refuse_reason, quote_id, created_at";
+const COLUMNS = "id, business_id, customer_id, customer_name, source, lines, total_amount_cents, fulfilment, payment, status, refuse_reason, quote_id, created_at, web";
 
 export function orderJson(o: OrderRow): Order {
   return {
@@ -44,6 +44,7 @@ export function orderJson(o: OrderRow): Order {
     business_id: o.business_id,
     customer: customerOf(o) as Order["customer"],
     source: o.source,
+    ...(o.web ? { web: true } : {}),
     created_at: o.created_at.toISOString(),
     lines: o.lines,
     total_amount_cents: Number(o.total_amount_cents),
@@ -204,6 +205,56 @@ export async function customerCancel(db: Db, businessId: string, customerId: str
     const { rows } = await client.query<OrderRow>(`UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = $1 RETURNING ${COLUMNS}`, [order.id]);
     return orderJson(rows[0]!);
   });
+}
+
+// ---- Web orders (ADR 0195): a first name and a shop token, pickup and pay on pickup only. ----
+
+export const WebOrderBody = z.object({ name: z.string().trim().min(1).max(40), lines: Lines }).strict();
+
+export async function webOrder(client: pg.PoolClient, businessId: string, tokenHash: string, body: z.infer<typeof WebOrderBody>): Promise<Order> {
+  await checkOpen(client, businessId);
+  const { rowCount } = await client.query(
+    "SELECT 1 FROM orders WHERE business_id = $1 AND shop_token_hash = $2 AND status = ANY($3)",
+    [businessId, tokenHash, ["sent", "accepted", "ready"]],
+  );
+  if (rowCount) throw new ApiError("order_already_open");
+  const { lines, total } = await snapshot(client, businessId, body.lines);
+  const order = await insertOrder(client, { businessId, customer: { name: body.name }, source: "customer", lines, total, fulfilment: "pickup", payment: "in_person" });
+  await client.query("UPDATE orders SET web = true, shop_token_hash = $2 WHERE id = $1", [order.id, tokenHash]);
+  return { ...order, web: true };
+}
+
+export async function webOrders(db: Queryable, businessId: string, tokenHash: string): Promise<Order[]> {
+  const { rows } = await db.query<OrderRow>(
+    `SELECT ${COLUMNS} FROM orders WHERE business_id = $1 AND shop_token_hash = $2
+       AND (status = ANY($3) OR created_at > now() - interval '30 days') ORDER BY created_at DESC LIMIT 100`,
+    [businessId, tokenHash, ["sent", "accepted", "ready"]],
+  );
+  return rows.map(orderJson);
+}
+
+export async function webCancel(db: Db, businessId: string, tokenHash: string, orderId: string): Promise<Order> {
+  return inTransaction(db, async (client) => {
+    const order = await row(client, "id = $1 AND business_id = $2 AND shop_token_hash = $3", [orderId, businessId, tokenHash]);
+    if (order.status === "cancelled") return orderJson(order);
+    if (!TRANSITIONS.cancel.from.includes(order.status)) throw new ApiError("order_not_open", order.status);
+    const { rows } = await client.query<OrderRow>(`UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = $1 RETURNING ${COLUMNS}`, [orderId]);
+    return orderJson(rows[0]!);
+  });
+}
+
+/**
+ * The claim. One open order per customer per business still holds (orders_one_open): when the account already has an
+ * open order here, the token's open order stays name-only.
+ */
+export async function claimWebOrders(client: pg.PoolClient, businessId: string, tokenHash: string, userId: string): Promise<void> {
+  await client.query(
+    `UPDATE orders o SET customer_id = $3, customer_name = NULL, shop_token_hash = NULL, updated_at = now()
+      WHERE o.business_id = $1 AND o.shop_token_hash = $2
+        AND (o.status NOT IN ('sent', 'accepted', 'ready')
+             OR NOT EXISTS (SELECT 1 FROM orders x WHERE x.business_id = $1 AND x.customer_id = $3 AND x.status IN ('sent', 'accepted', 'ready')))`,
+    [businessId, tokenHash, userId],
+  );
 }
 
 /** A person's orders, or a company's: open ones and the last 30 days, newest first. */

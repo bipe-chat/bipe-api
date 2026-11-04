@@ -49,6 +49,8 @@ const Env = z.object({
   // Shared with the Synapse module bipe_messaging only. Guards /internal/*.
   BIPE_INTERNAL_SECRET: z.string().min(32),
   PUBLIC_SITE_URL: z.url().default("https://bipe.chat"),
+  // The own web client (ADR 0216, ADR 0225): a browser on this origin calls the app routes with the account's token.
+  WEB_CLIENT_ORIGIN: z.url().default("https://web.bipe.chat"),
   // CNPJ verification (ADR 0042): where Receita releases live on disk, and the public share they come from.
   RECEITA_DIR: z.string().default("/data/receita"),
   RECEITA_WEBDAV_URL: z.url().default("https://arquivos.receitafederal.gov.br/public.php/webdav"),
@@ -115,6 +117,10 @@ const Env = z.object({
   NEWS_STORE_DIR: z.string().default("/data/news-crypto"),
   NEWS_STORE_PASSPHRASE: emptyAsUnset(z.string().min(32)),
   NEWS_SEND_PER_MINUTE: z.coerce.number().int().min(1).max(600).default(60),
+  // Group links (ADR 0184, bipe#744): the groups service account (registries/official-accounts.json role groups). A MAS
+  // compatibility token with no E2EE device: the account invites and reads room state only. Off without the token.
+  GROUPS_USER_ID: z.string().regex(/^@[a-z0-9._=\/-]+:[a-z0-9.-]+$/).optional(),
+  GROUPS_ACCESS_TOKEN: emptyAsUnset(z.string().min(16)),
   // Account deletion (ADR 0140): a Synapse admin access token for the room handover, the redaction and the
   // deactivation. A MAS compatibility token of a dedicated admin account (mas-cli manage issue-compatibility-token
   // <user> --yes-i-want-to-grant-synapse-admin-privileges); MAS gives no Synapse admin scope to client_credentials.
@@ -125,10 +131,27 @@ const Env = z.object({
   SYGNAL_URL: emptyAsUnset(z.url()),
   // CVM register check (ADR 0077): the daily download from dados.cvm.gov.br. "false" turns it off (no CVM lines).
   CVM_REFRESH: z.string().default("true").transform((v) => v !== "false"),
+  // Reach tiers and first-contact budget (security.md rule 11, bipe#851, src/reach-tiers.ts). Production values belong in
+  // Secret bipe-api, not in a public file: a public number is a target. Unset values use the strategy's starting values
+  // (REACH_DEFAULTS), meant for local runs; the start log says when they apply. Limits are off unless REACH_LIMITS=on:
+  // off records first contacts and answers GET /v1/me/reach, but refuses no invite, so a deploy changes no one's reach
+  // until the budgets are set in the Secret and the limits are turned on on purpose.
+  REACH_LIMITS: z.string().default("off").transform((v) => v === "on"),
+  // tier=budget pairs, for example "unattested=5,new=10". A missing tier keeps its default.
+  REACH_BUDGETS: emptyAsUnset(z.string().regex(/^(?:(?:unattested|new|normal|verified|company|slowed)=\d{1,6})(?:,(?:unattested|new|normal|verified|company|slowed)=\d{1,6})*$/, "tier=number pairs")),
+  REACH_NEW_DAYS: emptyAsUnset(z.coerce.number().int().min(0).max(365)),
+  REACH_FEEDBACK_DAYS: emptyAsUnset(z.coerce.number().int().min(1).max(90)),
+  REACH_SLOWED_MIN_CONTACTS: emptyAsUnset(z.coerce.number().int().min(1).max(10_000)),
+  REACH_SLOWED_FACTOR: emptyAsUnset(z.coerce.number().positive().max(100)),
+  REACH_SLOWED_MIN_RATE: emptyAsUnset(z.coerce.number().min(0).max(1)),
   BIPE_MAIL_FROM: z.string().regex(/^[^\r\n<>]*<[^\s<>@]+@[^\s<>@]+>$|^[^\s<>@]+@[^\s<>@]+$/, "an address, or a name and <address>").default("Bipe <nao-responda@bipe.chat>"),
 });
 
-export type Config = Omit<z.infer<typeof Env>, "SUPPORT_USER_ID" | "NEWS_USER_ID"> & { SUPPORT_USER_ID: string; NEWS_USER_ID: string };
+export type Config = Omit<z.infer<typeof Env>, "SUPPORT_USER_ID" | "NEWS_USER_ID" | "GROUPS_USER_ID"> & {
+  SUPPORT_USER_ID: string;
+  NEWS_USER_ID: string;
+  GROUPS_USER_ID: string;
+};
 
 const MailEnv = Env.pick({ PUBLIC_SITE_URL: true, BIPE_SMTP_HOST: true, BIPE_SMTP_PORT: true, BIPE_SMTP_USER: true, BIPE_SMTP_PASSWORD: true, BIPE_MAIL_FROM: true });
 export type MailConfig = z.infer<typeof MailEnv>;
@@ -147,6 +170,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...parsed.data,
     SUPPORT_USER_ID: parsed.data.SUPPORT_USER_ID ?? `@suporte:${parsed.data.SERVER_NAME}`,
     NEWS_USER_ID: parsed.data.NEWS_USER_ID ?? `@bipe:${parsed.data.SERVER_NAME}`,
+    GROUPS_USER_ID: parsed.data.GROUPS_USER_ID ?? `@grupos:${parsed.data.SERVER_NAME}`,
   };
 }
 

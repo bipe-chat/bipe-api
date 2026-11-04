@@ -5,13 +5,13 @@ import { deflateSync } from "node:zlib";
 import { webcrypto } from "node:crypto";
 import * as asn1 from "asn1js";
 import * as pki from "pkijs";
-import { challengePdf, checkSignedPdf, containsCode, personOf, validCpf } from "../dist/govbr.js";
+import { challengePdf, checkSignedPdf, containsCode, matchingChallenge, personOf, validCpf } from "../dist/govbr.js";
 
 pki.setEngine("node", new pki.CryptoEngine({ name: "node", crypto: webcrypto }));
 const key = () => webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
 let serial = 1;
 
-async function certificate(name, keys, issuer, ca) {
+async function certificate(name, keys, issuer, ca, extensions = []) {
   const cert = new pki.Certificate();
   cert.version = 2;
   cert.serialNumber = new asn1.Integer({ value: serial++ });
@@ -23,7 +23,7 @@ async function certificate(name, keys, issuer, ca) {
   cert.extensions = [new pki.Extension({
     extnID: "2.5.29.19", critical: true,
     extnValue: new pki.BasicConstraints({ cA: ca }).toSchema().toBER(false),
-  })];
+  }), ...extensions];
   await cert.sign(issuer?.keys.privateKey ?? keys.privateKey, "SHA-256");
   return { cert, keys };
 }
@@ -34,11 +34,27 @@ const CODE = "7KQ-4MZ";
 const root = await certificate("Synthetic gov.br root", await key(), null, true);
 const intermediate = await certificate("Synthetic AC Final", await key(), root, true);
 const signer = await certificate(`FULANA DE TAL:${CPF}`, await key(), intermediate, false);
+// The real gov.br layout (bipe#542): CN is the name only; SAN otherName 2.16.76.1.3.1 holds 45 digits in an
+// OCTET STRING, birth date (ddmmaaaa) then CPF; 2.16.76.1.3.6 and 2.16.76.1.3.5 are zeros; then an email.
+const otherName = (oid, text) => new asn1.Constructed({
+  idBlock: { tagClass: 3, tagNumber: 0 },
+  value: [new asn1.ObjectIdentifier({ value: oid }), new asn1.Constructed({ idBlock: { tagClass: 3, tagNumber: 0 }, value: [new asn1.OctetString({ valueHex: Buffer.from(text, "latin1") })] })],
+});
+const govbrSan = new pki.Extension({
+  extnID: "2.5.29.17",
+  extnValue: new asn1.Sequence({ value: [
+    otherName("2.16.76.1.3.1", `01011980${CPF}${"0".repeat(26)}`),
+    otherName("2.16.76.1.3.6", "0".repeat(12)),
+    otherName("2.16.76.1.3.5", "0".repeat(19)),
+    new asn1.Primitive({ idBlock: { tagClass: 3, tagNumber: 1 }, valueHex: Buffer.from("fulana@example.com") }),
+  ] }).toBER(false),
+});
+const govbrSigner = await certificate("FULANA DE TAL", await key(), intermediate, false, [govbrSan]);
 const otherRoot = await certificate("Other root", await key(), null, true);
 const NOW = new Date("2026-10-21T12:00:00Z");
 
 /** The challenge PDF plus a signature dictionary over the whole file, like an incremental update. */
-async function signedPdf(base = challengePdf("@fulana", CODE, NOW)) {
+async function signedPdf(base = challengePdf("@fulana", CODE, NOW), by = signer) {
   const hexLen = 16384;
   const ph = "0000000000";
   let text = base.toString("latin1") + `8 0 obj\n<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 ${ph} ${ph} ${ph}] /Contents <${"0".repeat(hexLen)}> >>\nendobj\n%%EOF\n`;
@@ -54,11 +70,11 @@ async function signedPdf(base = challengePdf("@fulana", CODE, NOW)) {
     encapContentInfo: new pki.EncapsulatedContentInfo({ eContentType: "1.2.840.113549.1.7.1" }),
     signerInfos: [new pki.SignerInfo({
       version: 1,
-      sid: new pki.IssuerAndSerialNumber({ issuer: signer.cert.issuer, serialNumber: signer.cert.serialNumber }),
+      sid: new pki.IssuerAndSerialNumber({ issuer: by.cert.issuer, serialNumber: by.cert.serialNumber }),
     })],
-    certificates: [signer.cert, intermediate.cert],
+    certificates: [by.cert, intermediate.cert],
   });
-  await sd.sign(signer.keys.privateKey, 0, "SHA-256", data);
+  await sd.sign(by.keys.privateKey, 0, "SHA-256", data);
   const der = Buffer.from(new pki.ContentInfo({ contentType: "1.2.840.113549.1.7.2", content: sd.toSchema(true) }).toSchema().toBER(false));
   const hex = der.toString("hex").padEnd(hexLen, "0");
   return Buffer.from(text.slice(0, b + 1) + hex + text.slice(c - 1), "latin1");
@@ -84,6 +100,25 @@ test("a signed challenge passes, holds the code and gives name and CPF", async (
   assert.ok(containsCode(result.signed, CODE));
   assert.ok(!containsCode(result.signed, "ABC-DEF"));
   assert.deepEqual(personOf(result.cert), { name: "FULANA DE TAL", cpf: CPF });
+});
+
+test("the real gov.br layout: name from the CN, CPF from SAN 2.16.76.1.3.1", async () => {
+  const result = await checkSignedPdf(await signedPdf(undefined, govbrSigner), [root.cert], NOW);
+  assert.equal(result.ok, true);
+  assert.deepEqual(personOf(result.cert), { name: "FULANA DE TAL", cpf: CPF });
+});
+
+test("a file signed for an earlier open challenge of the same device still matches (bipe#1007)", () => {
+  const signed = Buffer.from(`(C\\363digo: ${CODE})`, "latin1");
+  const later = new Date(NOW.getTime() + 30 * 60_000);
+  const row = (id, code, extra = {}) => ({ id, device_key: "dev-a", code, expires_at: later, used_at: null, ...extra });
+  const url = row("b", "ZZZ-999");
+  assert.equal(matchingChallenge(url, [row("a", CODE), url], signed, NOW)?.id, "a");
+  assert.equal(matchingChallenge(row("a", CODE), [], signed, NOW)?.id, "a");
+  assert.equal(matchingChallenge(url, [row("a", CODE, { device_key: "dev-b" })], signed, NOW), null);
+  assert.equal(matchingChallenge(url, [row("a", CODE, { used_at: NOW })], signed, NOW), null);
+  assert.equal(matchingChallenge(url, [row("a", CODE, { expires_at: NOW })], signed, NOW), null);
+  assert.equal(matchingChallenge(url, [url], signed, NOW), null);
 });
 
 test("bytes added after signing are changed_after_signing", async () => {

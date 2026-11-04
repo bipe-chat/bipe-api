@@ -4,7 +4,7 @@ import { ApiError } from "./errors.js";
 import { experimentReport } from "./experiments.js";
 import { HANDLE_CHANGE_KEEP_DAYS } from "./handles.js";
 import { RETENTION_DAYS as BUG_REPORT_KEEP_DAYS } from "./bug-reports.js";
-import { growthRules } from "./registry.js";
+import { growthRules, reachRules } from "./registry.js";
 import { cell, MIN_CELL } from "./staff-report.js";
 import { transferReadiness } from "./transfer.js";
 import type { Visits } from "./visits.js";
@@ -55,6 +55,17 @@ export async function waitlistReport(db: Db) {
     platforms: platforms.rows.map((p) => ({ ...p, oldest: ms(p.oldest) })),
     batches: batches.rows.map((b) => ({ ...b, joined: cell(b.joined) })),
   };
+}
+
+/** User numbers (signups.user_number): the last number given, the accounts that exist, the numbered accounts deleted. */
+export async function accountCount(db: Db) {
+  // One statement, one snapshot: the counter and the rows agree.
+  const { rows } = await db.query<{ last: string; accounts: number }>(
+    "SELECT (SELECT last FROM user_number_counter) AS last, (SELECT count(*)::int FROM signups) AS accounts",
+  );
+  const last = Number(rows[0]!.last);
+  const accounts = rows[0]!.accounts;
+  return { min_cell: MIN_CELL, last_number: cell(last), accounts: cell(accounts), deleted: cell(last - accounts) };
 }
 
 /** CNPJ claims (bipe#375, ADR 0042): business records, the same rows as `business list`. */
@@ -137,6 +148,10 @@ export class StaffReports {
       one("problem-reports", BUG_REPORT_KEEP_DAYS,
         "SELECT count(*)::int AS rows, min(created_at) AS oldest, count(*) FILTER (WHERE created_at <= now() - make_interval(days => $1))::int AS over FROM bug_reports",
         [BUG_REPORT_KEEP_DAYS + 1]),
+      // bipe#845: the prune runs every hour, so a first contact may be at most one hour past recipientDays.
+      one("first-contacts", reachRules.recipientDays,
+        "SELECT count(*)::int AS rows, min(sent_at) AS oldest, count(*) FILTER (WHERE sent_at <= now() - make_interval(days => $1, hours => 2))::int AS over FROM first_contacts",
+        [reachRules.recipientDays]),
       one("signup-replays", 7,
         "SELECT count(*)::int AS rows, min(created_at) AS oldest, count(*) FILTER (WHERE created_at <= now() - interval '8 days')::int AS over FROM signup_replays"),
     ]);

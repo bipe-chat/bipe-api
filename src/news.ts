@@ -72,6 +72,8 @@ export class NewsBot extends EncryptedBot {
       passphrase: config.NEWS_STORE_PASSPHRASE,
       synapseUrl: config.SYNAPSE_URL,
       syncTable: "news_sync",
+      // Invites and the bot's messages show this name (bipe#978).
+      displayName: appString("pt", "bipe_news_room_name"),
     });
   }
 
