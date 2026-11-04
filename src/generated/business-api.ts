@@ -130,7 +130,7 @@ export type QuoteVersionInput = { "lines": Array<QuoteLineInput>; /** UTC, with 
 export type QuoteVersion = { "version": number; /** UTC, with a trailing Z. */ "created_at": string; /** UTC, with a trailing Z. */ "valid_until": string; "lines": Array<QuoteLine>; "total_amount_cents": number; "currency": "BRL"; "visit_service_id"?: string };
 
 /** A business may issue a quote only after this customer requested one. No customer free text or photos. Never infer paid from a quote or a linked Pix charge. */
-export type Quote = { "id": string; "request_id": string; "business_id": string; "customer_id": string; "status": ("offered" | "accepted" | "refused" | "expired"); "current_version": number; "versions": Array<QuoteVersion>; "booking_id"?: string; "order_id"?: string; "pix_charge_id"?: string };
+export type Quote = { "id": string; /** The request. Empty for a quote shared as a link. */ "request_id": string; "business_id": string; /** The customer's Matrix ID. Empty for a quote shared as a link (ADR 0185). */ "customer_id": string; "status": ("offered" | "accepted" | "refused" | "expired"); "current_version": number; "versions": Array<QuoteVersion>; "booking_id"?: string; "order_id"?: string; "pix_charge_id"?: string; /** The name the owner typed, for a quote shared as a link. */ "customer_name"?: string; /** A link to this quote works now. */ "has_link"?: boolean };
 
 /** Only the current, unexpired version can be accepted. A conversion failure leaves the quote unaccepted. Concurrent acceptances produce at most one resulting booking or order. */
 export type QuoteAccept = ({ "version": number; "target": "booking"; "booking": BookingHold } | { "version": number; "target": "order"; "fulfilment": ("pickup" | "delivery"); "payment": ("in_person" | "pix") });
@@ -219,3 +219,12 @@ export type WebQueueJoin = { "name": string };
 
 /** token: only on the first web action of this browser at this shop. */
 export type WebQueueResult = { "token"?: string; "position": QueuePosition };
+
+/** Owner-only. A quote with no Bipe customer, shared as a link (ADR 0185). No request comes first. */
+export type QuoteLinkInput = { "lines": Array<QuoteLineInput>; /** UTC, with a trailing Z. */ "valid_until": string; "visit_service_id"?: string; "customer_name": string };
+
+/** link: the only copy. The server keeps a hash of its ID. */
+export type QuoteLinkResult = { "quote": Quote; "link": string; /** The name for the share text. */ "business_name": string };
+
+/** What the link shows, with no session. The current version only. */
+export type WebQuote = { "business_name": string; "customer_name": string; "status": ("offered" | "accepted" | "refused" | "expired"); "version": QuoteVersion };

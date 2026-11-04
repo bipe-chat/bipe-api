@@ -119,7 +119,6 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   app.get("/v1/me/business/today", async (c) => c.json(await tools.today(db, await owner(c, false))));
   app.get("/v1/businesses/:handle/tools", async (c) => c.json(await tools.liveTools(db, await publicBusiness(c))));
 
-  // ---- The shop on the web, no session (ADR 0195) ----
   // The limit counts per address on each shop; the key stays in memory only.
   const webWrite = async (c: Context) => {
     const businessId = await businessOf(db, c.req.param("handle")!);
@@ -127,6 +126,45 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     c.header("cache-control", "no-store");
     return businessId;
   };
+
+  // ---- A quote shared as a link (ADR 0185) ----
+  /** The link the owner shares. A shop with no handle has no page, so it cannot share one. */
+  const quoteLink = async (businessId: string, linkId: string) => {
+    const { rows } = await db.query<{ handle: string }>("SELECT handle FROM handles WHERE user_id = $1", [businessId]);
+    if (!rows[0]) throw new ApiError("bad_request", "no_handle");
+    return `${siteUrl.replace(/\/$/, "")}/@${rows[0].handle}?orcamento=${linkId}`;
+  };
+  app.post("/v1/me/business/quotes/links", async (c) => {
+    const businessId = await owner(c);
+    const body = await parse(c, quotes.LinkBody);
+    await quoteLink(businessId, "");
+    const { quote, linkId } = await quotes.createLinkQuote(db, businessId, body);
+    return c.json({ quote, link: await quoteLink(businessId, linkId), business_name: (await quotes.readLink(db, businessId, linkId)).business_name }, 201);
+  });
+  app.post("/v1/me/business/quotes/:quoteId/link", async (c) => {
+    const businessId = await owner(c);
+    await quoteLink(businessId, "");
+    const { quote, linkId } = await quotes.renewLink(db, businessId, c.req.param("quoteId"));
+    return c.json({ quote, link: await quoteLink(businessId, linkId), business_name: (await quotes.readLink(db, businessId, linkId)).business_name });
+  });
+  app.delete("/v1/me/business/quotes/:quoteId/link", async (c) =>
+    c.json(await quotes.revokeLink(db, await owner(c), c.req.param("quoteId"))));
+  app.get("/v1/businesses/:handle/quote-links/:linkId", async (c) =>
+    c.json(await quotes.readLink(db, await publicBusiness(c), c.req.param("linkId"))));
+  app.post("/v1/businesses/:handle/quote-links/:linkId/accept", async (c) => {
+    const businessId = await webWrite(c);
+    const { version } = await parse(c, quotes.DeclineBody);
+    const quote = await quotes.acceptLink(db, businessId, c.req.param("linkId"), version);
+    pushes?.owner(businessId, "work_new_order");
+    return c.json(quote);
+  });
+  app.post("/v1/businesses/:handle/quote-links/:linkId/refuse", async (c) => {
+    const businessId = await webWrite(c);
+    const { version } = await parse(c, quotes.DeclineBody);
+    return c.json(await quotes.refuseLink(db, businessId, c.req.param("linkId"), version));
+  });
+
+  // ---- The shop on the web, no session (ADR 0195) ----
   const shopToken = (c: Context) => c.req.header(shopWeb.TOKEN_HEADER);
   app.post("/v1/businesses/:handle/web/bookings", async (c) => {
     const businessId = await webWrite(c);
