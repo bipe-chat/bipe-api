@@ -145,7 +145,7 @@
         {
           "key": "more",
           "rows": [
-            { "key": "mural", "title": "bipe_chats_mural", "footer": "bipe_chats_mural_footer", "kind": "switch", "gate": "planned:1044", "adr": "0246" },
+            { "key": "mural", "title": "bipe_chats_mural", "footer": "bipe_chats_mural_footer", "kind": "switch", "adr": "0246" },
             { "key": "stickerSuggestions", "title": "bipe_chats_sticker_suggestions", "footer": "bipe_chats_sticker_suggestions_footer", "kind": "switch", "gate": "planned:841" },
             { "key": "liveLocation", "title": "bipe_chats_live_location", "footer": "bipe_chats_live_location_footer", "kind": "link" },
             { "key": "yearRecap", "title": "bipe_year_recap_title", "kind": "link", "adr": "0223" }
