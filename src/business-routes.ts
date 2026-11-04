@@ -139,13 +139,13 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     const body = await parse(c, quotes.LinkBody);
     await quoteLink(businessId, "");
     const { quote, linkId } = await quotes.createLinkQuote(db, businessId, body);
-    return c.json({ quote, link: await quoteLink(businessId, linkId) }, 201);
+    return c.json({ quote, link: await quoteLink(businessId, linkId), business_name: (await quotes.readLink(db, businessId, linkId)).business_name }, 201);
   });
   app.post("/v1/me/business/quotes/:quoteId/link", async (c) => {
     const businessId = await owner(c);
     await quoteLink(businessId, "");
     const { quote, linkId } = await quotes.renewLink(db, businessId, c.req.param("quoteId"));
-    return c.json({ quote, link: await quoteLink(businessId, linkId) });
+    return c.json({ quote, link: await quoteLink(businessId, linkId), business_name: (await quotes.readLink(db, businessId, linkId)).business_name });
   });
   app.delete("/v1/me/business/quotes/:quoteId/link", async (c) =>
     c.json(await quotes.revokeLink(db, await owner(c), c.req.param("quoteId"))));
