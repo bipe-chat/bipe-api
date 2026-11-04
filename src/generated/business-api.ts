@@ -83,7 +83,7 @@ export type AgendaFeed = { /** Returned once. Contains a 32-byte random token; o
 export type BusyImportInput = { /** Secret ICS URL. Server resolves and checks every address and redirect; refuses private and link-local addresses; caps redirects, bytes and time. Never log this URL. */ "url": string };
 
 /** Fetch every 15 minutes; retain start and end only, never titles or descriptions. Do not return the secret URL. */
-export type BusyImport = { "id": string; "agenda_id": string; /** UTC, with a trailing Z. */ "last_checked_at"?: string };
+export type BusyImport = { "id": string; "agenda_id": string; /** UTC, with a trailing Z. */ "last_checked_at"?: string; /** The last three reads failed. The agenda keeps working. */ "failing"?: boolean };
 
 export type AgendaError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed"); "reason"?: string };
 
