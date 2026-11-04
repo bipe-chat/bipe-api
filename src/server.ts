@@ -19,6 +19,7 @@ import { refreshKeyAttestationStatus } from "./key-attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
+import { recordAgeSignal } from "./age.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
@@ -36,12 +37,12 @@ import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
 import { researchRoutes } from "./research/routes.js";
-import { finishWebLink, Geo } from "./weblink.js";
+import { finishWebLink, Geo, signOutWebLinks } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
 import { deleteLocalMedia, SynapseAdmin } from "./synapse-admin.js";
-import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
+import { accountCount, businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
 import { BrandMarks } from "./brand-marks.js";
@@ -56,6 +57,7 @@ import { GroupLinks, MatrixGroupRooms, pruneGroupLinks } from "./group-links.js"
 import { MEDIA_ID, VoiceMedia } from "./voice-media.js";
 import { type DevicePushDeps, pushToDevices } from "./device-push.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
+import { getNotificationPrefs, pushJoin, setNotificationPrefs } from "./notification-prefs.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
 import { orderHousekeeping } from "./orders.js";
@@ -79,7 +81,7 @@ const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseU
 const news = new NewsBot(db, config);
 // Synapse admin API (account deletion, voice audio expiry, device pushes). Null without SYNAPSE_ADMIN_TOKEN.
 const synapseAdmin = config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null;
-// Content-free pushes to an account's devices (approval nudge bipe#628, recovery alerts bipe#171).
+// Content-free pushes to an account's devices (approval nudge bipe#628, recovery alerts bipe#171, join pushes bipe#967).
 const devicePush: DevicePushDeps = { pushers: synapseAdmin ? (userId: string) => synapseAdmin.pushers(userId) : null, sygnalUrl: config.SYGNAL_URL ?? null };
 console.log(`device push: ${devicePush.pushers && devicePush.sygnalUrl ? "on" : "off (no SYNAPSE_ADMIN_TOKEN or SYGNAL_URL)"}`);
 const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
@@ -89,6 +91,7 @@ const groupLinks = new GroupLinks({
   rooms: config.GROUPS_ACCESS_TOKEN ? new MatrixGroupRooms(config.SYNAPSE_URL, config.GROUPS_ACCESS_TOKEN, config.GROUPS_USER_ID) : null,
   verified: async (userId) => (await badges.forUser(userId)).status === 200,
   siteUrl: config.PUBLIC_SITE_URL,
+  joined: (creatorId, roomId) => void pushJoin(db, devicePush, creatorId, "group_link_joined", { bipe_room_id: roomId }),
 });
 const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news, push: devicePush, groupLinks };
 const linkDeps: LinkDeps = { ...accounts, links: new Links(config) };
@@ -117,6 +120,7 @@ const limits = {
   signup: new SignupLimits(config.SIGNUP_MAX_PER_HOUR),
   signupResume: new RateLimiter(30, 3_600_000),
   terms: new RateLimiter(10, 3_600_000),
+  age: new RateLimiter(10, 3_600_000),
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
@@ -191,6 +195,7 @@ const limits = {
   assistantResolve: new RateLimiter(60, 60_000),
   mcp: new RateLimiter(60, 60_000),
   workHours: new RateLimiter(30, 3_600_000),
+  notificationPrefs: new RateLimiter(30, 3_600_000),
   // gov.br signed challenge (bipe#543).
   govbrChallenge: new RateLimiter(10, 3_600_000),
   govbrDocument: new RateLimiter(20, 3_600_000),
@@ -386,6 +391,13 @@ const SignupBody = z.object({
   account_type: z.enum(["personal", "company"]).optional(),
 });
 const TermsBody = z.object({ terms_version: z.string().regex(TERMS_VERSION_PATTERN) });
+const AgeYears = z.number().int().min(0).max(150);
+const AgeBody = z.object({
+  source: z.enum(["apple", "play", "none"]),
+  lower: AgeYears.optional(),
+  upper: AgeYears.optional(),
+  method: z.string().max(64).optional(),
+});
 const SignupResumeBody = z.object({ signup_key: z.string().regex(SECRET_PATTERN) });
 const HandleBody = z.object({ handle: z.string().max(64) });
 const PinBody = z.object({ pin: PinField });
@@ -420,7 +432,12 @@ const TheftMarksBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).
 const ProfileFactsBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
 const HandleChangesBody = z.object({ user_ids: z.array(z.string().max(255)).max(100), since: z.iso.datetime({ offset: true }).optional() });
 // Lengths are checked by problemWithProfile(); these caps only bound the request.
-const ProfileBody = z.object({ enabled: z.boolean(), name: z.string().max(400), bio: z.string().max(2000) });
+const ProfileBody = z.object({
+  enabled: z.boolean(),
+  name: z.string().max(400),
+  bio: z.string().max(2000),
+  socials: z.record(z.string().max(40), z.string().max(400)).optional(),
+});
 const PHOTO_PATH = "/v1/me/profile/photo";
 const BUG_REPORT_PATH = "/v1/bug-reports/submit";
 const GOVBR_DOCUMENT_PATH = /^\/v1\/verifications\/govbr\/[^/]+\/document$/;
@@ -451,6 +468,23 @@ app.use("*", (c, next) => {
   if (GOVBR_DOCUMENT_PATH.test(c.req.path)) return govbrBody(c, next);
   return smallBody(c, next);
 });
+
+// The own web client (ADR 0216, ADR 0225) calls the same routes as the apps, from WEB_CLIENT_ORIGIN, with the
+// account's Matrix token in authorization. Only that origin gets CORS here; staff and internal routes never do.
+const webOrigin = config.WEB_CLIENT_ORIGIN.replace(/\/$/, "");
+const siteOrigin = config.PUBLIC_SITE_URL.replace(/\/$/, "");
+/** Public routes the site and the web client both read. */
+const siteAndWeb = [siteOrigin, webOrigin];
+const webCors = cors({
+  origin: (origin) => (origin === webOrigin ? origin : null),
+  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowHeaders: ["authorization", "content-type", "x-matrix-server-name"],
+  maxAge: 600,
+});
+// Only a request from the web origin reaches webCors, so the site's own preflights keep their route's CORS.
+app.use("/v1/*", (c, next) =>
+  c.req.header("origin") === webOrigin && !c.req.path.startsWith("/v1/admin/") ? webCors(c, next) : next(),
+);
 
 /** Core routes (ADR 0168, bipe-chat/bipe#646): a token of this homeserver, or an OpenID token with X-Matrix-Server-Name. */
 function coreSession(c: Context): Promise<{ userId: string; deviceId: string | null }> {
@@ -546,6 +580,15 @@ app.post("/v1/me/terms", async (c) => {
   return c.body(null, 204);
 });
 
+// ADR 0229: the OS age range. The server keeps only the band.
+app.put("/v1/me/age", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.age.check(userId);
+  const body = await parse(c, AgeBody);
+  if (body.lower !== undefined && body.upper !== undefined && body.lower > body.upper) throw new ApiError("bad_request", "range");
+  return c.json({ age_band: await recordAgeSignal(db, userId, body) });
+});
+
 app.put("/v1/me/pin", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.pinSet.check(userId);
@@ -562,12 +605,20 @@ app.post("/v1/me/pin/check", async (c) => {
 });
 
 // Web sign-in approval on the phone (ADR 0118). Never log the IP.
-const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }) });
+const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }), kind: z.enum(["computer", "phone"]).optional() });
 app.post("/v1/web-link/finish", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   limits.webLinkFinish.check(userId);
-  const finished = await finishWebLink(mas, userId, (await parse(c, WebLinkFinishBody)).since);
+  const body = await parse(c, WebLinkFinishBody);
+  const finished = await finishWebLink(mas, userId, body.since, { db, deviceId, kind: body.kind });
   return c.json({ finished });
+});
+
+// The phone signs out the web sessions it approved before it leaves a company account (bipe#398).
+app.post("/v1/web-link/sign-out", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  limits.webLinkFinish.check(userId);
+  return c.json({ signed_out: await signOutWebLinks(mas, db, userId, deviceId) });
 });
 
 app.get("/v1/web-link/place", async (c) => {
@@ -779,7 +830,7 @@ app.post("/v1/links/callback/apple", async (c) => {
 
 
 // The invite page on the public site reads the preview from the browser.
-app.use("/v1/invites/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/invites/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 // The waitlist form on the public site posts from the browser.
 app.use("/v1/waitlist", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
@@ -814,7 +865,7 @@ app.get("/v1/web/convite/:code", async (c) => {
 });
 
 // Group links (ADR 0184, bipe#744). The group link page on the public site reads the preview from the browser.
-app.use("/v1/group-links/:code", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/group-links/:code", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 app.get("/v1/group-links/:code", async (c) => {
   limits.groupLinkPreview.check(clientIp(c));
@@ -945,6 +996,20 @@ app.put("/v1/me/work-hours", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.workHours.check(userId);
   return c.json(await setWorkHours(db, userId, await parse(c, WorkHoursBody)));
+});
+
+// Join pushes (bipe-chat/bipe#967): whether the account gets invite_joined and group_link_joined.
+const NotificationPrefsBody = z.object({ invite_joined: z.boolean().optional(), group_link_joined: z.boolean().optional() });
+
+app.get("/v1/me/notification-prefs", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await getNotificationPrefs(db, userId));
+});
+
+app.put("/v1/me/notification-prefs", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.notificationPrefs.check(userId);
+  return c.json(await setNotificationPrefs(db, userId, await parse(c, NotificationPrefsBody)));
 });
 
 // Voice audio expiry (ADR 0164, bipe#622). Path: the server name and media ID of the mxc URI.
@@ -1154,7 +1219,7 @@ app.get("/v1/handles/:handle", async (c) => {
 });
 
 // Public profiles (ADR 0041). The profile page on the public site reads them from the browser.
-app.use("/v1/profiles/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/profiles/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 app.get("/v1/profiles/:handle", async (c) => {
   limits.profile.check(clientIp(c));
@@ -1176,7 +1241,7 @@ app.get("/v1/profiles/:handle/photo", async (c) => {
 
 // Badges (bipe#399, ADR 0123). Public: anyone who sees a message may check the sender's seal. Apps verify the
 // envelope locally and never trust the status alone.
-app.use("/v1/badges/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/badges/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 app.get("/v1/badges/:userId", async (c) => {
   limits.badge.check(clientIp(c));
@@ -1191,7 +1256,7 @@ app.get("/v1/badges/:userId", async (c) => {
 });
 
 // Assistants as chat members (ADR 0210, bipe#867). Public like the badge: anyone who sees the account may check it.
-app.use("/v1/assistants/:userId", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/assistants/:userId", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 app.post("/v1/assistants/resolve", smallBody, async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.assistantResolve.check(userId);
@@ -1207,7 +1272,7 @@ app.get("/v1/assistants/:userId", async (c) => {
 
 // Brand marks (ADR 0162, bipe#483). Public like the badge: customers check a reseller's marks. The apps verify each
 // envelope locally and keep the answer for at most recheckMinutes.
-app.use("/v1/brand-marks/:userId", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/brand-marks/:userId", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 app.get("/v1/brand-marks/:userId", async (c) => {
   limits.brandMarks.check(clientIp(c));
   const userId = c.req.param("userId");
@@ -1286,7 +1351,7 @@ app.put(PHOTO_PATH, async (c) => {
   limits.setProfilePhoto.check(userId);
   if (c.req.header("content-type")?.split(";")[0]?.trim() !== "image/jpeg") throw new ApiError("photo_invalid", "not_jpeg");
   const body = new Uint8Array(await c.req.arrayBuffer());
-  return c.json(await setPhoto(db, config.PUBLIC_API_URL, userId, body));
+  return c.json(await setPhoto(db, config.PUBLIC_API_URL, userId, body, c.req.query("source")));
 });
 
 app.delete(PHOTO_PATH, async (c) => {
@@ -1473,6 +1538,7 @@ staffGet("/v1/admin/experiments", () => experimentsReport(db));
 staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));
 staffGet("/v1/admin/retention", () => staffReports.retention());
+staffGet("/v1/admin/accounts", () => accountCount(db));
 // bipe#531: share of active iOS accounts with a way back that survives the App Store transfer.
 staffGet("/v1/admin/transfer-readiness", (c) => {
   const days = z.coerce.number().int().min(1).max(90).default(30).safeParse(c.req.query("days"));
@@ -1505,7 +1571,7 @@ staffGet("/v1/admin/reports", (c) => {
 });
 
 // Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
-app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, clientIp }));
+app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp }));
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 app.onError((err, c) => {

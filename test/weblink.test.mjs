@@ -36,6 +36,37 @@ test("finish keeps older sessions when MAS ignores the created-after filter", as
   assert.deepEqual(finished(), ["already-finished", "slack", "web-view"]);
 });
 
+// bipe#398: with kind computer, the OAuth 2.0 sessions that the flow's browser sessions approved become web links.
+function recordingDb() {
+  const rows = [];
+  return { rows, async query(sql, params) { if (sql.includes("INSERT INTO web_links")) rows.push(params); return { rows: [] }; } };
+}
+
+test("finish with kind computer records the web devices the flow approved, never the phone's own", async (t) => {
+  const { stub, mas, finished, since } = await fixture(t);
+  stub.oauthSessions.push(
+    { id: "web", user_session_id: "web-view", device: "WEBDEV" },
+    { id: "phone-self", user_session_id: "web-view", device: "PHONE" },
+    { id: "staff", user_session_id: "staff-browser", device: "STAFFDEV" },
+  );
+  const db = recordingDb();
+  assert.equal(await finishWebLink(mas, "@ana:example.test", since, { db, deviceId: "PHONE", kind: "computer" }), 2);
+  assert.deepEqual(db.rows, [["@ana:example.test", "WEBDEV", "PHONE"]]);
+  assert.deepEqual(finished(), ["already-finished", "slack", "web-view"]);
+});
+
+test("finish records nothing for kind phone, no kind, or a MAS that ignores the user-session filter", async (t) => {
+  const { stub, mas, since } = await fixture(t);
+  stub.oauthSessions.push({ id: "staff", user_session_id: "staff-browser", device: "STAFFDEV" });
+  const db = recordingDb();
+  await finishWebLink(mas, "@ana:example.test", since, { db, deviceId: "PHONE", kind: "phone" });
+  await finishWebLink(mas, "@ana:example.test", since, { db, deviceId: "PHONE" });
+  stub.options.ignoreUserSession = true;
+  stub.sessions.push({ id: "again", user: "ana", created_at: new Date().toISOString(), finished: false });
+  await finishWebLink(mas, "@ana:example.test", since, { db, deviceId: "PHONE", kind: "computer" });
+  assert.deepEqual(db.rows, []);
+});
+
 test("finish rejects a since that is too old, in the future or not a time", async (t) => {
   const { mas, finished } = await fixture(t);
   for (const since of [new Date(Date.now() - 16 * 60_000).toISOString(), new Date(Date.now() + 3 * 60_000).toISOString(), "yesterday"]) {

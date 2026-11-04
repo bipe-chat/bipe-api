@@ -1,6 +1,6 @@
 // Loads and validates registries. Reference normalisation lives here: every
 // platform implementation must match it via test-vectors/.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { evaluateTrustFacts, validateTrustRegistry } from "./trust.mjs";
 import { validateAgendaTemplates } from "./agenda-templates.mjs";
@@ -32,6 +32,7 @@ export function loadRegistries(root) {
     haptics: read("registries/haptics.json"),
     badgeKeys: read("registries/badge-keys.json"),
     clearedChats: read("registries/cleared-chats.json"),
+    chatFavourites: read("registries/chat-favourites.json"),
     imageDescriptions: read("registries/image-descriptions.json"),
     pixMarks: read("registries/pix-marks.json"),
     dataUse: read("registries/data-use.json"),
@@ -43,6 +44,7 @@ export function loadRegistries(root) {
     chatArchive: read("registries/chat-archive.json"),
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
+    groupPowerLevels: read("registries/group-power-levels.json"),
     relationshipNames: read("registries/relationship-names.json"),
     messageFormatting: read("registries/message-formatting.json"),
     photoMatch: read("registries/photo-match.json"),
@@ -53,16 +55,55 @@ export function loadRegistries(root) {
     mcpTools: read("registries/mcp-tools.json"),
     drafts: read("registries/drafts.json"),
     assistants: read("registries/assistants.json"),
+    ageSignals: read("registries/age-signals.json"),
     reportCategories: read("registries/report-categories.json"),
     strings: read("strings/pt-BR.json"),
     stringsEn: read("strings/en.json"),
   };
-  validate(reg);
+  // The settings icons must exist in bipe-app's Phosphor set; checked when that checkout is next to this repo.
+  const phosphorPath = join(root, "../bipe-app/tools/phosphor.json");
+  validate(reg, existsSync(phosphorPath) ? JSON.parse(readFileSync(phosphorPath, "utf8")).icons : undefined);
   return reg;
 }
 
 function fail(msg) {
   throw new Error(`registry validation failed: ${msg}`);
+}
+
+// Age signals (bipe ADR 0229, registries/age-signals.json).
+export function validateAgeSignals(a) {
+  const gates = a.appleGates;
+  if (!(Array.isArray(gates) && gates.length >= 1 && gates.length <= 3 && gates.every((g, i) => Number.isInteger(g) && g > 0 && (i === 0 || g > gates[i - 1])))) {
+    fail("age-signals: appleGates must be 1 to 3 rising positive integers (Apple allows 3)");
+  }
+  const bands = a.bands;
+  if (!(Array.isArray(bands) && bands.length >= 2)) fail("age-signals: bands");
+  if (bands[0].min !== undefined || bands.at(-1).max !== undefined) fail("age-signals: the first band has no min, the last no max");
+  bands.forEach((b, i) => {
+    if (!(typeof b.id === "string" && /^[a-z0-9_]+$/.test(b.id))) fail(`age-signals: band id ${b.id}`);
+    if (i > 0 && b.min !== bands[i - 1].max + 1) fail(`age-signals: band ${b.id} must start one year after ${bands[i - 1].id}`);
+    if (b.max !== undefined && !(Number.isInteger(b.max) && b.max >= (b.min ?? 0))) fail(`age-signals: band ${b.id} max`);
+  });
+  const ids = bands.map((b) => b.id);
+  if (new Set(ids).size !== ids.length || ids.includes(a.unknownBand)) fail("age-signals: band ids must be unique and differ from unknownBand");
+  if (!ids.includes(a.adultBand)) fail("age-signals: adultBand must be a band");
+  if (!(Number.isInteger(a.recheckDays) && a.recheckDays > 0)) fail("age-signals: recheckDays");
+  if (!(Array.isArray(a.sources) && a.sources.includes("none"))) fail("age-signals: sources must include none");
+}
+
+// The band of the lowest age the OS range allows; unknownBand when there is no range. lower and upper are
+// whole years, inclusive, and either may be absent (null or undefined).
+export function ageBand(lower, upper, reg) {
+  const a = reg.ageSignals;
+  const has = (v) => Number.isInteger(v) && v >= 0;
+  if (!has(lower) && !has(upper)) return a.unknownBand;
+  const age = has(lower) ? lower : 0;
+  return a.bands.find((b) => b.max === undefined || age <= b.max).id;
+}
+
+// True for every band except adultBand: unknown gets the under-18 defaults (ADR 0229 point 4).
+export function ageTreatedAsMinor(band, reg) {
+  return band !== reg.ageSignals.adultBand;
 }
 
 // MCP tools (bipe ADR 0130, ADR 0210; bipe-chat/bipe#436): one data class per tool, content off by default.
@@ -211,6 +252,30 @@ export function validateDmPowerLevels(pl) {
   for (const type of ["m.room.message", "m.reaction", "m.room.redaction", "org.matrix.msc3401.call.member"]) {
     if (pl.events?.[type] !== undefined && pl.events[type] > pl.usersDefault) fail(`dm-power-levels: ${type} must stay open`);
   }
+  // bipe-chat/bipe#879: room state is locked, so the assistant notice (ADR 0130) must be listed open.
+  if (!(pl.events?.["chat.bipe.assistant"] <= pl.usersDefault)) fail("dm-power-levels: chat.bipe.assistant must stay open");
+}
+
+// bipe-chat/bipe#733: each permission of a new group sits at exactly one of the three roles.
+export function validateGroupPowerLevels(pl) {
+  const level = (v) => Number.isInteger(v) && v >= 0 && v <= 100;
+  const { admin, moderator, member } = pl.roles ?? {};
+  if (![admin, moderator, member, pl.usersDefault, pl.eventsDefault, pl.stateDefault, pl.invite, pl.kick, pl.ban, pl.redact, pl.notifications?.room].every(level)) fail("group-power-levels: levels must be integers from 0 to 100");
+  if (Object.keys(pl.roles).join() !== "admin,moderator,member" || !(admin > moderator && moderator > member)) fail("group-power-levels: roles must be admin > moderator > member");
+  if (pl.usersDefault !== member) fail("group-power-levels: usersDefault must be member");
+  if (pl.eventsDefault > member) fail("group-power-levels: messages must stay open to members");
+  for (const key of ["kick", "ban", "redact"]) if (pl[key] !== moderator) fail(`group-power-levels: ${key} must be moderator`);
+  if (pl.stateDefault !== admin || pl.notifications.room !== admin) fail("group-power-levels: room state and @room must be admin");
+  const roles = new Set([admin, moderator, member]);
+  for (const [type, v] of Object.entries(pl.events ?? {})) {
+    if (!roles.has(v) || !/^[a-z0-9._]+$/.test(type)) fail(`group-power-levels: event ${type} must sit at a role`);
+  }
+  for (const type of ["m.room.name", "m.room.avatar", "m.room.topic", "m.room.power_levels", "m.room.join_rules", "m.room.history_visibility", "m.room.encryption"]) {
+    if (pl.events?.[type] !== admin) fail(`group-power-levels: ${type} must be admin`);
+  }
+  for (const type of ["m.room.message", "m.reaction", "m.room.redaction", "org.matrix.msc3401.call.member", "chat.bipe.assistant"]) {
+    if (!(pl.events?.[type] <= member)) fail(`group-power-levels: ${type} must stay open`);
+  }
 }
 
 /** Throws unless `hours` is a valid WorkHours value (api/openapi.yaml, registries/work-hours.json). */
@@ -297,12 +362,12 @@ export function validateMessageFormatting(formatting) {
   if (formatting.safeSchemes.some(scheme => !["https", "http", "mailto", "tel", "matrix"].includes(scheme))) fail("message-formatting: unsafe scheme");
 }
 
-function validate(reg) {
+function validate(reg, phosphor) {
   validateReportCategories(reg);
   validateMessageFormatting(reg.messageFormatting);
   validateTrustRegistry(reg.trust);
   validateAgendaTemplates(reg);
-  validateSettings(reg);
+  validateSettings(reg, phosphor);
   validateOnboarding(reg);
   validateHaptics(reg.haptics);
   const archive = reg.chatArchive;
@@ -310,6 +375,8 @@ function validate(reg) {
   const rn = reg.relationshipNames;
   if (rn.comparison !== "normalised-exact" || rn.fullNameMinimumWords !== 2 || rn.familyTerms !== "whole-words" || rn.confirmation !== "saved-label-and-verified-name") fail("relationship-names: unsupported ADR 0018 policy");
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
+  if (reg.chatFavourites.version !== 1 || reg.chatFavourites.orderEventType !== "chat.bipe.favourites_order") fail("chat-favourites: orderEventType must be chat.bipe.favourites_order");
+  if (!Number.isSafeInteger(reg.chatFavourites.orderMax) || reg.chatFavourites.orderMax < 1) fail("chat-favourites: orderMax must be a positive integer");
   const du = reg.dataUse;
   if (!Number.isInteger(du.budgetMegabytesPerDay) || du.budgetMegabytesPerDay < 1 || typeof du.dataSaverDefault !== "boolean") fail("data-use: budgetMegabytesPerDay must be a positive integer and dataSaverDefault a boolean");
   const bm = reg.brandMarks;
@@ -351,6 +418,7 @@ function validate(reg) {
   const vm = reg.voiceMedia;
   if (![vm.transcriptDays, vm.noTranscriptDays, vm.maxKeptPerAccount].every((n) => Number.isInteger(n) && n >= 1) || vm.noTranscriptDays < vm.transcriptDays) fail("voice-media: transcriptDays, noTranscriptDays and maxKeptPerAccount must be positive integers, noTranscriptDays at least transcriptDays");
   if (!/^chat\.bipe\.[a-z_]+$/.test(vm.forwardKey) || !Number.isInteger(vm.forwardedManyTimes) || vm.forwardedManyTimes < 2) fail("voice-media: forwardKey must be chat.bipe.<name> and forwardedManyTimes an integer of 2 or more");
+  if (!Number.isInteger(vm.forwardChats) || !Number.isInteger(vm.forwardChatsManyTimes) || !(1 <= vm.forwardChatsManyTimes && vm.forwardChatsManyTimes <= vm.forwardChats)) fail("voice-media: forwardChats and forwardChatsManyTimes must be integers, 1 <= forwardChatsManyTimes <= forwardChats");
   validateStickers(reg.stickers);
   const as = reg.assistants;
   if (JSON.stringify(as.modelLocations) !== '["brasil","fora","desconhecido"]' || !Number.isInteger(as.maxResolve) || as.maxResolve < 1 || as.maxResolve > 500) fail("assistants: modelLocations must be brasil, fora, desconhecido and maxResolve an integer from 1 to 500");
@@ -366,6 +434,7 @@ function validate(reg) {
   if (dm.order !== "latest-event-descending" || dm.missingActivity !== "last" || dm.tieBreak !== "room-id-ascending"
       || dm.eligibility !== "joined-dm-with-peer" || dm.clearedRooms !== "hide-before-selection" || dm.allClearedStartChat !== "reuse-newest-existing" || dm.filterOrder !== "select-before-unread-or-name") fail("dm-selection: unsupported ADR 0141 policy");
   validateDmPowerLevels(reg.dmPowerLevels);
+  validateGroupPowerLevels(reg.groupPowerLevels);
   for (const [name, r] of Object.entries(reg)) {
     if (r.version !== 1) fail(`${name}: version must be 1`);
   }
@@ -423,6 +492,7 @@ function validate(reg) {
     if (!(Number.isInteger(tp[k]) && tp[k] > 0)) fail(`theft-protection: ${k} must be a positive integer`);
   }
   if (tp.maxGuardians > 3) fail("theft-protection: ADR 0044 allows 1 to 3 guardians");
+  validateAgeSignals(reg.ageSignals);
   const h = reg.handles;
   if (!(Number.isInteger(h.minLength) && Number.isInteger(h.maxLength) && h.minLength >= 1 && h.maxLength >= h.minLength)) fail("handles: lengths");
   if (!(Number.isInteger(h.ownerMinLength) && h.ownerMinLength >= 1 && h.ownerMinLength <= h.minLength)) fail("handles: ownerMinLength");
@@ -440,6 +510,14 @@ function validate(reg) {
   if (!Array.isArray(pr.sealLookalikeEmoji) || pr.sealLookalikeEmoji.length === 0
     || pr.sealLookalikeEmoji.some((e) => typeof e !== "string" || e.replace(/[\uFE0E\uFE0F]/g, "").length === 0)
     || new Set(pr.sealLookalikeEmoji).size !== pr.sealLookalikeEmoji.length) fail("profiles: sealLookalikeEmoji must be distinct, non-empty strings");
+  if (!Array.isArray(pr.socials) || pr.socials.length === 0) fail("profiles: socials");
+  for (const s of pr.socials ?? []) {
+    if (!/^[a-z]+$/.test(s.id) || typeof s.name !== "string" || s.name.length === 0) fail(`profiles: social ${s.id} id or name`);
+    try { new RegExp(s.pattern); } catch (e) { fail(`profiles: social ${s.id} pattern: ${e.message}`); }
+    if (!s.pattern.startsWith("^") || !s.pattern.endsWith("$")) fail(`profiles: social ${s.id} pattern must be anchored`);
+    if (!/^https:\/\/[a-z0-9.-]+\/[^{}]*\{handle\}$/.test(s.url)) fail(`profiles: social ${s.id} url must be https with {handle} once, at the end`);
+  }
+  if (new Set((pr.socials ?? []).map((s) => s.id)).size !== (pr.socials ?? []).length) fail("profiles: duplicate social id");
   const ic = reg.inviteCodes;
   try { new RegExp(ic.pattern); } catch (e) { fail(`invite code pattern: ${e.message}`); }
   if (!(Number.isInteger(ic.maxInputLength) && ic.maxInputLength > 0)) fail("invite codes: maxInputLength");
@@ -803,6 +881,32 @@ export function profileProblem({ name, bio }, reg) {
   return null;
 }
 
+// Social handles on a public profile (ADR 0228). The input without surrounding spaces and one leading "@".
+export function socialHandleClean(input) {
+  return input.trim().replace(/^@/, "");
+}
+
+// Returns null when the cleaned input is empty (no handle) or valid, else "social_invalid" or "social_reserved".
+// ownHandle: the account's own Bipe @, or null. A handle with the skeleton of a reserved name is refused unless it
+// is the skeleton of ownHandle: an account that holds that Bipe @ already passed the reserved-name check.
+export function socialHandleProblem(platform, input, ownHandle, reg) {
+  const social = reg.profiles.socials.find((s) => s.id === platform);
+  if (!social) throw new Error(`socialHandleProblem: unknown platform ${platform}`);
+  const handle = socialHandleClean(input);
+  if (handle.length === 0) return null;
+  if (!new RegExp(social.pattern).test(handle)) return "social_invalid";
+  const skeleton = handleSkeleton(handle, reg);
+  if (reservedHandleSkeletons(reg).includes(skeleton) && !(ownHandle && handleSkeleton(ownHandle, reg) === skeleton)) return "social_reserved";
+  return null;
+}
+
+// The link to a valid social handle: the registry template with the cleaned handle.
+export function socialUrl(platform, input, reg) {
+  const social = reg.profiles.socials.find((s) => s.id === platform);
+  if (!social) throw new Error(`socialUrl: unknown platform ${platform}`);
+  return social.url.replace("{handle}", socialHandleClean(input));
+}
+
 // ADR 0049 photo match. gray: height rows of width values 0..255 (registries/photo-match.json). Returns the dHash
 // as 16 lowercase hex digits, bit 0 (the first comparison) first.
 export function photoHash(gray, reg) {
@@ -1125,6 +1229,21 @@ export function forwardedContent(original, newContent, reg) {
   delete base["m.mentions"];
   base[reg.voiceMedia.forwardKey] = { count: Math.min(forwardCount(original, reg) + 1, FORWARD_COUNT_MAX) };
   return base;
+}
+
+/** The forward line of any message (bipe-chat/bipe#933): forwardedManyTimes, forwarded, or null for a count under 1. */
+export function forwardLine(count, reg) {
+  if (count >= reg.voiceMedia.forwardedManyTimes) return "forwardedManyTimes";
+  return count >= 1 ? "forwarded" : null;
+}
+
+/**
+ * The most chats one forward goes to (bipe-chat/bipe#933). sentCounts are the counts of the contents the forward sends
+ * (each the original count plus 1): forwardChatsManyTimes when one reaches forwardedManyTimes, else forwardChats.
+ */
+export function forwardChatLimit(sentCounts, reg) {
+  const vm = reg.voiceMedia;
+  return sentCounts.some((c) => c >= vm.forwardedManyTimes) ? vm.forwardChatsManyTimes : vm.forwardChats;
 }
 
 /** The source line of a voice message or audio file: forwarded, forwardedManyTimes, recorded (voice marker) or file. */
