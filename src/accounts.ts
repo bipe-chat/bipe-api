@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { GroupLinks } from "./group-links.js";
 import type { Growth } from "./growth.js";
 import type { KeyAttestationVerifier } from "./key-attest.js";
 import type pg from "pg";
@@ -9,10 +10,12 @@ import { type Mailer, mailBody } from "./mailer.js";
 import type { Mas } from "./mas.js";
 import { accountRules, appString, type Lang, problemWithPin } from "./registry.js";
 import { newSecret, PinHasher, sameSecret, SECRET_PATTERN, secretHash } from "./secrets.js";
+import { ageSignalOf } from "./age.js";
 import { acceptedTermsVersion } from "./terms.js";
 import { linkState } from "./links.js";
 import { hasIndependentRecovery } from "./transfer.js";
 import { pendingDeletion } from "./deletion.js";
+import { type DevicePushDeps, pushToDevices } from "./device-push.js";
 
 // Device-first accounts: ADR 0057 and ADR 0059 (bipe/docs/adr), security.md rules 5 and 6.
 // - The hidden MAS password is made here, set through the MAS admin API and returned once. Never stored, never logged.
@@ -21,6 +24,8 @@ import { pendingDeletion } from "./deletion.js";
 //   A correct PIN sets the count to 0. Every recovery path checks the PIN only after its other factor passed.
 // - Recovery by email: link, then PIN (access) or a new PIN (reset), then the delay, then the claim.
 //   Old devices see waiting recoveries in GET /v1/me/account and can cancel them.
+// - Old devices also get a content-free push when a recovery starts and when it completes (bipe#171, device-push.ts).
+//   The new device has no pusher yet, so every Bipe Next pusher of the account gets it.
 
 export interface AccountDeps {
   db: Db;
@@ -34,6 +39,10 @@ export interface AccountDeps {
   news?: { welcome(userId: string): void };
   /** Android Key Attestation (bipe#92). Absent: Google's pinned roots. Only synthetic tests set it. */
   verifyKeyAttestation?: KeyAttestationVerifier;
+  /** Content-free pushes to the account's devices (bipe#171). Absent in the admin CLI: nothing is pushed. */
+  push?: DevicePushDeps;
+  /** Group links (ADR 0184): invites an account made with a group code into its group. Absent in the admin CLI. */
+  groupLinks?: Pick<GroupLinks, "inviteNewAccount">;
 }
 
 type Queryable = Db | pg.PoolClient;
@@ -120,9 +129,17 @@ export async function verifyPin({ db, pins }: AccountDeps, userId: string, pin: 
   if (outcome.kind === "wrong") throw new ApiError("pin_wrong", undefined, { tries_left: outcome.left });
 }
 
-/** Signed-in device: set or change the PIN (biometric check on the device first, ADR 0057). */
-export async function setPin(deps: AccountDeps, userId: string, pin: string): Promise<void> {
+/**
+ * Signed-in device: set or change the PIN (biometric check on the device first, ADR 0057). A change needs the current
+ * PIN (bipe-chat/bipe#908), checked and counted like verifyPin, so a session alone cannot take the PIN.
+ */
+export async function setPin(deps: AccountDeps, userId: string, pin: string, oldPin?: string): Promise<void> {
   checkPinRule(pin);
+  const { rows: current } = await deps.db.query("SELECT 1 FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL", [userId]);
+  if (current.length > 0) {
+    if (oldPin === undefined) throw new ApiError("bad_request", "old_pin");
+    await verifyPin(deps, userId, oldPin);
+  }
   const hash = await deps.pins.hash(pin);
   const hadPin = await inTransaction(deps.db, async (client) => {
     const { rows } = await client.query<{ pin_hash: string | null }>("SELECT pin_hash FROM account_secrets WHERE user_id = $1 FOR UPDATE", [userId]);
@@ -172,10 +189,20 @@ export async function issueCredentials(
   return { user_id: userId, password, recovery_token: token };
 }
 
-/** Beta account (own password) moves to a hidden password; also for an app that lost its stored password. */
-export async function moveToDeviceFirst(deps: AccountDeps, userId: string): Promise<Credentials> {
-  const { rows } = await deps.db.query("SELECT 1 FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL", [userId]);
-  if (rows.length === 0) throw new ApiError("pin_not_set");
+/**
+ * Beta account (own password) moves to a hidden password, once. It needs the current PIN (bipe-chat/bipe#908): with a
+ * session alone, a thief or a phished web session would get a permanent password and lock the owner out. A
+ * device-first account that lost its password recovers with the token or email instead.
+ */
+export async function moveToDeviceFirst(deps: AccountDeps, userId: string, pin: string): Promise<Credentials> {
+  const { rows } = await deps.db.query<{ device_first: boolean }>(
+    "SELECT device_first FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL",
+    [userId],
+  );
+  const row = rows[0];
+  if (!row) throw new ApiError("pin_not_set");
+  if (row.device_first) throw new ApiError("already_device_first");
+  await verifyPin(deps, userId, pin);
   return inTransaction(deps.db, (client) => issueCredentials(deps, client, userId));
 }
 
@@ -207,6 +234,7 @@ export async function redeemToken(deps: AccountDeps, token: string, pin: string)
     return issued;
   });
   await notify(deps, userId, "bipe_mail_notice_new_device");
+  await pushToDevices(deps.push, userId, "recovery_completed", null);
   return creds;
 }
 
@@ -232,7 +260,7 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
  * `deviceId`: the caller's device, so a waiting deletion says whether this device asked (ADR 0140).
  */
 export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts, deviceId: string | null = null) {
-  const [secrets, emails, recoveries, termsVersion, signupRow, links, independent, deletion] = await Promise.all([
+  const [secrets, emails, recoveries, termsVersion, signupRow, links, independent, deletion, age] = await Promise.all([
     db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
       "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
       [userId],
@@ -252,6 +280,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     linkState(db, userId),
     hasIndependentRecovery(db, userId),
     pendingDeletion(db, userId, deviceId),
+    ageSignalOf(db, userId),
   ]);
   const s = secrets.rows[0];
   const e = emails.rows[0];
@@ -285,6 +314,9 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     ...links,
     // ADR 0140: the waiting deletion. The device that asked shows a banner; every other device shows the alert.
     ...(deletion ? { deletion } : {}),
+    // ADR 0229: the band from the last OS age signal; without age_checked_at the app reads the OS and sends it.
+    age_band: age.band,
+    ...(age.checkedAt ? { age_checked_at: age.checkedAt.toISOString() } : {}),
   };
 }
 
@@ -453,13 +485,16 @@ export async function confirmRecoveryEmail(deps: AccountDeps, token: string, pin
   // A second request with the same link got here first.
   if (!readyAt) throw new ApiError("recovery_invalid");
   await notify(deps, found.user_id, purpose === "access" ? "bipe_mail_notice_recovery_started" : "bipe_mail_notice_pin_reset_started", readyAt);
+  await pushToDevices(deps.push, found.user_id, "recovery_started", null);
   return { recovery_id: found.id, claim_secret: claim, purpose, ready_at: readyAt.toISOString() };
 }
 
 /** Poll, and collect when the delay has ended. The claim secret proves the new device. */
 export async function claimRecovery(deps: AccountDeps, recoveryId: string, claimSecret: string) {
   requireSecret(claimSecret);
-  return inTransaction(deps.db, async (client) => {
+  // The claim that completes the recovery pushes recovery_completed after the commit; a poll or a reclaim does not.
+  let completedFor = null as string | null;
+  const result = await inTransaction(deps.db, async (client) => {
     const { rows } = await client.query<{
       user_id: string;
       purpose: Purpose;
@@ -485,6 +520,7 @@ export async function claimRecovery(deps: AccountDeps, recoveryId: string, claim
     if (now > row.ready_at.getTime() + accountRules.recoveryClaimDays * DAY_MS) return { state: "expired", ...base };
 
     await client.query("UPDATE recoveries SET state = 'completed', ended_at = now(), ended_by = 'claim' WHERE id = $1", [recoveryId]);
+    completedFor = row.user_id;
     if (row.purpose === "pin_reset") {
       await client.query(
         `INSERT INTO account_secrets (user_id, pin_hash, pin_set_at) VALUES ($1, $2, now())
@@ -495,6 +531,8 @@ export async function claimRecovery(deps: AccountDeps, recoveryId: string, claim
     }
     return { state: "completed", ...base, ...(await issueCredentials(deps, client, row.user_id)) };
   });
+  if (completedFor) await pushToDevices(deps.push, completedFor, "recovery_completed", null);
+  return result;
 }
 
 // --- Notices -----------------------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { createHash, createHmac, createPublicKey, randomBytes, verify as verifySignature, type JsonWebKey } from "node:crypto";
 import type pg from "pg";
 import { type AccountDeps, inTransaction, newRecoveryId, notify, verifyPin } from "./accounts.js";
+import { pushToDevices } from "./device-push.js";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
@@ -385,6 +386,7 @@ export async function recoverWithLink(deps: LinkDeps, provider: Provider, proof:
   );
   const readyAt = res.rows[0]!.ready_at;
   await notify(deps, userId, "bipe_mail_notice_recovery_started", readyAt);
+  await pushToDevices(deps.push, userId, "recovery_started", null);
   return { recovery_id: id, claim_secret: claim, purpose: "access" as const, ready_at: readyAt.toISOString() };
 }
 

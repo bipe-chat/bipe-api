@@ -33,7 +33,10 @@
 //   node dist/cli.js banner set <file.json>          (ADR 0117: the remote critical banner; text through the humanizer first)
 //   node dist/cli.js banner show
 //   node dist/cli.js banner clear
-//   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week)
+//   node dist/cli.js growth report [--since YYYY-MM-DD]   (ADR 0098: syncs first, then funnel and D1/D7/D30 by sign-up week,
+//                                                         and days to the fifth contact by sign-up week, bipe#752)
+//   node dist/cli.js account count                   (user numbers: the last given, accounts that exist, numbered accounts deleted)
+//   node dist/cli.js account number <user_id|handle> (the account's user number)
 //   node dist/cli.js transfer report [--days 30]     (bipe#531: active iOS accounts with a way back that survives the App Store transfer)
 //   node dist/cli.js proposta password [--password-stdin]   (ADR 0158: the one shared password; prints a new one once, or reads yours; ends every session)
 //   node dist/cli.js proposta visits [--days 30]       (per visitor email, then the visits, newest first)
@@ -44,6 +47,7 @@
 //   node dist/cli.js assistant add <user_id> <operator_user_id> <brasil|fora|desconhecido>   (ADR 0210: the operator needs a verified CNPJ seal)
 //   node dist/cli.js assistant end <user_id>         (the account stays; it is no longer labelled as an assistant)
 //   node dist/cli.js assistant list
+//   node dist/cli.js reach show <user_id|@handle> [--days 30]   (bipe#845: first contacts sent, accepted, declined, ignored, blocked, reported per day)
 //   node dist/cli.js deletion status                 (ADR 0140: requests per state, and the ids, steps and errors of failing ones; no user IDs)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
@@ -55,6 +59,7 @@ import { experimentReport } from "./experiments.js";
 import { Growth, growthReport } from "./growth.js";
 import { ApiError } from "./errors.js";
 import { existingAccount, setHandle } from "./handles.js";
+import { accountCount } from "./staff-reports.js";
 import { createClaim, revokeByStaff, runScan, verifyByStaff } from "./business.js";
 import { downloadRelease, newestMonth } from "./cnpj-registry.js";
 import { type Config, loadMailConfig } from "./config.js";
@@ -64,7 +69,7 @@ import { newsList, queueNewsItem, requestNewsBackfill } from "./news.js";
 import { addAssistant, endAssistant, listAssistants } from "./assistants.js";
 import { Badges } from "./badges.js";
 import { cvmField, refreshCvm } from "./cvm.js";
-import { validCnpj } from "./registry.js";
+import { reachRules, validCnpj } from "./registry.js";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { transferReadiness } from "./transfer.js";
@@ -74,6 +79,7 @@ import { loadConfig } from "./config.js";
 import { Mas } from "./mas.js";
 import { Theft } from "./theft.js";
 import { deletionStatus } from "./deletion.js";
+import { Reach } from "./reach.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -282,6 +288,17 @@ try {
     console.table(report.retention);
     console.log("All events: users and count");
     console.table(report.totals);
+    console.log("Days from sign-up to the fifth contact (a person who shares a DM), by sign-up week; invites accepted per member");
+    console.table(report.contacts);
+  } else if (group === "reach" && command === "show" && arg?.startsWith("@")) {
+    // --days defaults to 14 for invites; this report's window is 30 days unless --days is given.
+    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    if (!(Number.isInteger(days) && days >= 1 && days <= 90)) throw new Error("--days must be 1 to 90");
+    const config = loadConfig();
+    const userId = await existingAccount(db, new Mas(config), config.SERVER_NAME, arg);
+    const reach = new Reach(db, { serverName: config.SERVER_NAME });
+    console.log(`First contacts by ${userId}, per day in Brazil. Ignored settles when a first contact is ${reachRules.recipientDays} days old.`);
+    console.table(await reach.daily(userId, days));
   } else if (group === "deletion" && command === "status") {
     const status = await deletionStatus(db);
     console.table(status.counts);
@@ -311,13 +328,21 @@ try {
     console.log(`assistant ${arg} registered for ${arg2} (${positionals[4]})`);
   } else if (group === "assistant" && command === "end" && arg?.startsWith("@")) {
     console.log((await endAssistant(db, arg)) ? `assistant ${arg} ended` : "no active registration");
+  } else if (group === "account" && command === "count") {
+    console.log("null: a count of 1 or 2 (minimum cell).");
+    console.table([await accountCount(db)]);
+  } else if (group === "account" && command === "number" && arg) {
+    const config = loadConfig();
+    const userId = await existingAccount(db, new Mas(config), config.SERVER_NAME, arg);
+    const { rows } = await db.query<{ user_number: string }>("SELECT user_number FROM signups WHERE user_id = $1", [userId]);
+    console.log(rows[0] ? `${userId} #${rows[0].user_number}` : `${userId} has no signups row (an account made before the API kept one)`);
   } else if (group === "assistant" && command === "list") {
     console.table(await listAssistants(db));
   } else if (group === "phone" && command === "unlink" && arg?.startsWith("@")) {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | transfer report [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | experiment report ID | growth report [--since YYYY-MM-DD] | account count | account number @user | transfer report [--days N] | reach show @user [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
     process.exitCode = 2;
   }
 } finally {

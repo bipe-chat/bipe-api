@@ -235,6 +235,8 @@ test("routes: owner routes need the company account; the public catalogue and sl
     app.request(path, { method, headers: { ...(user ? { authorization: `Bearer ${user}` } : {}), ...(body ? { "content-type": "application/json" } : {}) }, body: body && JSON.stringify(body) });
   assert.equal((await call("GET", "/v1/me/business/catalog", ana)).status, 404);
   assert.equal((await call("POST", "/v1/me/business/agenda/activate", shop, { template_id: "barbershop", time_zone: "UTC" })).status, 201);
+  assert.deepEqual((await (await call("GET", "/v1/businesses/loja/catalog")).json()).items, [], "catálogo off");
+  assert.equal((await call("PUT", "/v1/me/business/tools/catalog", shop, { state: "live" })).status, 200);
   const catalogue = await (await call("GET", "/v1/businesses/loja/catalog")).json();
   assert.equal(catalogue.items.length, 2);
   assert.equal((await call("GET", `/v1/businesses/${encodeURIComponent(shop)}/catalog`)).status, 200);

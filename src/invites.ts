@@ -36,7 +36,7 @@ export async function takeInviteUse(db: Db, text: string): Promise<number | null
   const code = extractInviteCode(text);
   if (!code) return null;
   const { rows } = await db.query<{ id: string }>(
-    `UPDATE invites SET uses_left = uses_left - 1
+    `UPDATE invites SET uses_left = uses_left - 1, used_at = now()
      WHERE code_hash = $1 AND uses_left > 0 AND expires_at > now() AND revoked_at IS NULL
      RETURNING id`,
     [inviteHash(code)],
@@ -45,11 +45,15 @@ export async function takeInviteUse(db: Db, text: string): Promise<number | null
 }
 
 export async function returnInviteUse(db: Db, inviteId: number): Promise<void> {
-  await db.query("UPDATE invites SET uses_left = uses_left + 1 WHERE id = $1", [inviteId]);
+  await db.query("UPDATE invites SET uses_left = uses_left + 1, used_at = NULL WHERE id = $1", [inviteId]);
 }
 
-// Personal invites: single use, 30 days, revocable while pending (docs/growth.md "Throttle").
-const PERSONAL_INVITE_DAYS = 30;
+// Personal invites: single use, 7 days, revocable while pending (docs/growth.md "Throttle").
+const PERSONAL_INVITE_DAYS = 7;
+
+/** An expiry date as the invite page and the link preview show it: day and month in words, Brasília time. */
+export const inviteExpiryLabel = (d: Date) =>
+  new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", timeZone: "America/Sao_Paulo" }).format(d);
 
 type InviteStatus = "pending" | "used" | "expired" | "revoked";
 
@@ -59,6 +63,7 @@ interface InviteRow {
   created_at: Date;
   expires_at: Date;
   revoked_at: Date | null;
+  used_at: Date | null;
   joined_user_id: string | null;
   joined_at: Date | null;
 }
@@ -74,15 +79,17 @@ const DAY_MS = 86_400_000;
 function slotReleaseAt(row: InviteRow, now: Date, respawnDays: number): Date | null {
   const status = statusOf(row, now);
   if (status === "pending") return row.expires_at;
-  if (status === "used" && row.joined_at) {
-    const release = new Date(row.joined_at.getTime() + respawnDays * DAY_MS);
+  const usedAt = row.joined_at ?? row.used_at;
+  if (status === "used" && usedAt) {
+    const release = new Date(usedAt.getTime() + respawnDays * DAY_MS);
     return release > now ? release : null;
   }
   return null;
 }
 
 function statusOf(row: InviteRow, now: Date): InviteStatus {
-  if (row.joined_user_id) return "used";
+  // A company sign-up uses the invite without a joined account (bipe#513); so does an invitee who deleted the account.
+  if (row.joined_user_id || row.used_at) return "used";
   if (row.revoked_at) return "revoked";
   return row.expires_at > now ? "pending" : "expired";
 }
@@ -92,13 +99,14 @@ async function quotaOf(db: Db | pg.PoolClient, userId: string, base: number): Pr
   return base + (rows[0]?.extra ?? 0);
 }
 
-// Pending invites hold a slot until they expire or are revoked. Used invites hold it for respawnDays after the join.
+// Pending invites hold a slot until they expire or are revoked. Used invites hold it for respawnDays after the use.
 async function slotsTaken(db: Db | pg.PoolClient, userId: string, respawnDays: number): Promise<number> {
   const { rows } = await db.query<{ n: string }>(
     `SELECT count(*) AS n FROM invites i
      WHERE i.created_by = $1
        AND (EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id AND s.created_at > now() - make_interval(days => $2))
-            OR (i.revoked_at IS NULL AND i.expires_at > now()
+            OR i.used_at > now() - make_interval(days => $2)
+            OR (i.revoked_at IS NULL AND i.expires_at > now() AND i.used_at IS NULL
                 AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)))`,
     [userId, respawnDays],
   );
@@ -107,7 +115,7 @@ async function slotsTaken(db: Db | pg.PoolClient, userId: string, respawnDays: n
 
 export async function myInvites(db: Db, userId: string, policy: InvitePolicy) {
   const { rows } = await db.query<InviteRow>(
-    `SELECT i.id, i.name, i.created_at, i.expires_at, i.revoked_at, s.user_id AS joined_user_id, s.created_at AS joined_at
+    `SELECT i.id, i.name, i.created_at, i.expires_at, i.revoked_at, i.used_at, s.user_id AS joined_user_id, s.created_at AS joined_at
      FROM invites i LEFT JOIN signups s ON s.invite_id = i.id
      WHERE i.created_by = $1 ORDER BY i.created_at DESC LIMIT 200`,
     [userId],
@@ -168,7 +176,7 @@ export async function revokePersonalInvite(db: Db, userId: string, inviteId: str
   if (!/^[0-9]{1,18}$/.test(inviteId)) throw new ApiError("not_found");
   const { rowCount } = await db.query(
     `UPDATE invites i SET revoked_at = now()
-     WHERE i.id = $1 AND i.created_by = $2 AND i.revoked_at IS NULL AND i.expires_at > now()
+     WHERE i.id = $1 AND i.created_by = $2 AND i.revoked_at IS NULL AND i.expires_at > now() AND i.used_at IS NULL
        AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)`,
     [inviteId, userId],
   );
@@ -187,17 +195,18 @@ export async function nameInvite(db: Db, userId: string, inviteId: string, name:
   if (rowCount !== 1) throw new ApiError("not_found");
 }
 
-/** Validity and, for a personal invite, the inviter's handle. Never says why a code is invalid. */
+/** Validity, the expiry and, for a personal invite, the inviter's handle. Never says why a code is invalid. */
 export async function previewInvite(db: Db, text: string) {
   const code = extractInviteCode(text);
   if (!code) return { valid: false };
-  const { rows } = await db.query<{ handle: string | null }>(
-    `SELECT h.handle FROM invites i LEFT JOIN handles h ON h.user_id = i.created_by
+  const { rows } = await db.query<{ handle: string | null; expires_at: Date }>(
+    `SELECT h.handle, i.expires_at FROM invites i LEFT JOIN handles h ON h.user_id = i.created_by
      WHERE i.code_hash = $1 AND i.uses_left > 0 AND i.expires_at > now() AND i.revoked_at IS NULL`,
     [inviteHash(code)],
   );
-  if (!rows[0]) return { valid: false };
-  return rows[0].handle ? { valid: true, inviter_handle: rows[0].handle } : { valid: true };
+  const row = rows[0];
+  if (!row) return { valid: false };
+  return { valid: true, ...(row.handle ? { inviter_handle: row.handle } : {}), expires_at: row.expires_at.toISOString() };
 }
 
 /** The user who created an invite, or null for admin invites. */
@@ -218,7 +227,7 @@ export async function grantInvites(db: Db, userId: string, extra: number): Promi
 export async function revokeAllOf(db: Db, userId: string): Promise<number> {
   const { rowCount } = await db.query(
     `UPDATE invites i SET revoked_at = now()
-     WHERE i.created_by = $1 AND i.revoked_at IS NULL AND i.expires_at > now()
+     WHERE i.created_by = $1 AND i.revoked_at IS NULL AND i.expires_at > now() AND i.used_at IS NULL
        AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)`,
     [userId],
   );

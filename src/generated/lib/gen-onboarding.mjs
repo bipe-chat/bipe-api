@@ -1,9 +1,12 @@
 // First run (registries/onboarding.json, bipe-chat/bipe#415): validation and Swift/Kotlin output.
 
-const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss", "shareInvite", "shareProfile", "profileQr", "notes", "photoPicker", "pinCheck"];
+const TARGETS = ["inviteCode", "name", "pin", "fallback", "create", "recovery", "waitlist", "systemPermission", "handleScreen", "recoveryEmailAdd", "dismiss", "shareInvite", "shareProfile", "profileQr", "notes", "photoPicker", "pinCheck", "bringPeopleSheet", "bringPeopleResend", "osTheftSettings"];
 const STATES = ["syncedToken"];
-const CARD_STATES = ["hasHandle"];
-const TRIGGERS = ["firstMessageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "voceWithoutPhoto", "pinReminderDue"];
+const CARD_STATES = ["hasHandle", "bringPeopleNotShown"];
+const TRIGGERS = ["messageSent", "chatListWithoutHandle", "chatListWithoutRecovery", "withoutPhoto", "pinReminderDue", "firstChatListAfterSignup", "bringPeopleDue", "afterDaysOnPhone"];
+const CIRCLES = ["family", "building"];
+const TIERS = ["critical", "access", "safety", "identity", "growth", "discovery"];
+const PREEMPTS = ["critical", "access"];
 const KEY = /^[a-z][A-Za-z]*$/;
 
 function fail(msg) {
@@ -63,6 +66,12 @@ export function validateOnboarding(reg) {
   const pr = o.pinReminder;
   if (!Array.isArray(pr?.days) || pr.days.length === 0 || !pr.days.every((d) => Number.isInteger(d) && d > 0)) fail("pinReminder.days must be whole days");
   if (!Number.isInteger(pr.thenEveryDays) || pr.thenEveryDays < 1) fail("pinReminder.thenEveryDays must be whole days");
+  if (!Number.isInteger(o.osTheftProtection?.afterDays) || o.osTheftProtection.afterDays < 0) fail("osTheftProtection.afterDays must be whole days");
+  const bp = o.bringPeople;
+  for (const k of ["slots", "followUpEveryDays", "pendingAfterDays", "stopAfterDeclines"]) {
+    if (!Number.isInteger(bp?.[k]) || bp[k] < 1) fail(`bringPeople.${k} must be a whole number above 0`);
+  }
+  if (!CIRCLES.includes(bp.firstCircle)) fail(`bringPeople.firstCircle "${bp.firstCircle}"`);
   const first = o.firstList;
   if (!first || !Number.isInteger(first.maxChats) || first.maxChats < 0) fail("firstList.maxChats must be a whole number");
   for (const c of first.cards) {
@@ -72,6 +81,13 @@ export function validateOnboarding(reg) {
     needButtons(c, c.key);
     if (c.when !== undefined && !CARD_STATES.includes(c.when)) fail(`${c.key}: when "${c.when}"`);
   }
+  const clp = o.chatListPrompt?.entries;
+  if (!Array.isArray(clp) || clp.length === 0) fail("chatListPrompt.entries required");
+  clp.forEach((e, i) => {
+    if (!KEY.test(e.key) || clp.filter((d) => d.key === e.key).length > 1) fail(`chatListPrompt: key "${e.key}"`);
+    if (!TIERS.includes(e.tier)) fail(`chatListPrompt ${e.key}: tier "${e.tier}"`);
+    if (i > 0 && TIERS.indexOf(e.tier) < TIERS.indexOf(clp[i - 1].tier)) fail(`chatListPrompt ${e.key}: entries must be in tier order`);
+  });
   for (const p of o.prompts) {
     needKey(p.key, "prompts");
     if (!TRIGGERS.includes(p.trigger)) fail(`${p.key}: trigger "${p.trigger}"`);
@@ -218,6 +234,25 @@ ${screenMembers(o.firstList.cards)}
 ${o.firstList.cards.map((c) => `        case .${c.key}: ${c.when === "hasHandle"}`).join("\n")}
         }
     }
+
+    /// True when the card shows only while the bring-people sheet never showed on this account.
+    public var needsNoBringPeople: Bool {
+        switch self {
+${o.firstList.cards.map((c) => `        case .${c.key}: ${c.when === "bringPeopleNotShown"}`).join("\n")}
+        }
+    }
+}
+
+/// The one prompt card of the chat list (spec chat-list-prompt, bipe-chat/bipe#894). \`allCases\` is the queue order.
+public enum BipeChatListPrompt: String, CaseIterable, Sendable {
+${o.chatListPrompt.entries.map((e) => `    case ${e.key}`).join("\n")}
+
+    /// True for tiers critical and access: the entry ignores the prompt slot and takes the card at once.
+    public var preempts: Bool {
+        switch self {
+${o.chatListPrompt.entries.map((e) => `        case .${e.key}: ${PREEMPTS.includes(e.tier)}`).join("\n")}
+        }
+    }
 }
 
 public enum BipeOnboarding {
@@ -227,6 +262,14 @@ public enum BipeOnboarding {
     /// Trigger pinReminderDue (bipe-chat/bipe#202): the gap in days after each step, then pinReminderThenEveryDays.
     public static let pinReminderDays = [${o.pinReminder.days.join(", ")}]
     public static let pinReminderThenEveryDays = ${o.pinReminder.thenEveryDays}
+    /// Trigger afterDaysOnPhone (bipe-chat/bipe#125): days after this phone first saw the account.
+    public static let osTheftProtectionAfterDays = ${o.osTheftProtection.afterDays}
+    /// Specs bring-people and bring-people-reminder (bipe-chat/bipe#752).
+    public static let bringPeopleSlots = ${o.bringPeople.slots}
+    public static let bringPeopleFirstCircle = ${quote(o.bringPeople.firstCircle)}
+    public static let bringPeopleFollowUpEveryDays = ${o.bringPeople.followUpEveryDays}
+    public static let bringPeoplePendingAfterDays = ${o.bringPeople.pendingAfterDays}
+    public static let bringPeopleStopAfterDeclines = ${o.bringPeople.stopAfterDeclines}
     public static let waitlistBodyKey = ${quote(o.waitlist.body)}
     public static let waitlistPrimary = ${button(o.waitlist.primary)}
     public static let waitlistDoneKey = ${quote(o.waitlist.done)}
@@ -306,9 +349,26 @@ enum class BipeOnboardingCard(
     val text: List<BipeOnboardingButton>,
     /** True when the card shows only while the account has an @. */
     val needsHandle: Boolean,
+    /** True when the card shows only while the bring-people sheet never showed on this account. */
+    val needsNoBringPeople: Boolean,
 ) {
-${o.firstList.cards.map((c) => `    ${snake(c.key)}(${res(c.title)}, ${res(c.body)}, ${button(c.primary)}, listOf(${c.text.map(button).join(", ")}), ${c.when === "hasHandle"}),`).join("\n")}
+${o.firstList.cards.map((c) => `    ${snake(c.key)}(${res(c.title)}, ${res(c.body)}, ${button(c.primary)}, listOf(${c.text.map(button).join(", ")}), ${c.when === "hasHandle"}, ${c.when === "bringPeopleNotShown"}),`).join("\n")}
     ;
+}
+
+/** The one prompt card of the chat list (spec chat-list-prompt, bipe-chat/bipe#894). [entries] order is the queue order. */
+enum class BipeChatListPrompt(
+    /** True for tiers critical and access: the entry ignores the prompt slot and takes the card at once. */
+    val preempts: Boolean,
+) {
+${o.chatListPrompt.entries.map((e) => `    ${snake(e.key)}(${PREEMPTS.includes(e.tier)}),`).join("\n")}
+    ;
+
+    /** The raw key, as in registries/onboarding.json and the prompt slot memory. */
+    val key: String
+        get() = when (this) {
+${o.chatListPrompt.entries.map((e) => `            ${snake(e.key)} -> ${quote(e.key)}`).join("\n")}
+        }
 }
 
 object BipeOnboarding {
@@ -318,6 +378,14 @@ object BipeOnboarding {
     /** Trigger pinReminderDue (bipe-chat/bipe#202): the gap in days after each step, then [PIN_REMINDER_THEN_EVERY_DAYS]. */
     val PIN_REMINDER_DAYS: List<Int> = listOf(${o.pinReminder.days.join(", ")})
     const val PIN_REMINDER_THEN_EVERY_DAYS: Int = ${o.pinReminder.thenEveryDays}
+    /** Trigger afterDaysOnPhone (bipe-chat/bipe#125): days after this phone first saw the account. */
+    const val OS_THEFT_PROTECTION_AFTER_DAYS: Int = ${o.osTheftProtection.afterDays}
+    /** Specs bring-people and bring-people-reminder (bipe-chat/bipe#752). */
+    const val BRING_PEOPLE_SLOTS: Int = ${o.bringPeople.slots}
+    const val BRING_PEOPLE_FIRST_CIRCLE: String = ${quote(o.bringPeople.firstCircle)}
+    const val BRING_PEOPLE_FOLLOW_UP_EVERY_DAYS: Int = ${o.bringPeople.followUpEveryDays}
+    const val BRING_PEOPLE_PENDING_AFTER_DAYS: Int = ${o.bringPeople.pendingAfterDays}
+    const val BRING_PEOPLE_STOP_AFTER_DECLINES: Int = ${o.bringPeople.stopAfterDeclines}
     @StringRes val waitlistBody: Int = ${res(o.waitlist.body)}
     val waitlistPrimary: BipeOnboardingButton = ${button(o.waitlist.primary)}
     @StringRes val waitlistDone: Int = ${res(o.waitlist.done)}

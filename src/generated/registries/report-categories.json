@@ -1,0 +1,56 @@
+{
+  "$comment": "Report categories (bipe-chat/bipe#697, ADR 0170; design: Moderation in layers and trusted flaggers, sections 2, 5 and 6). A report carries one id. firstActionMinutes is the operator charter target from the report's arrival to the operator's first action (hide, suspend, or a decision to keep). flaggerEligible: an accredited trusted flagger may file this category. No political or disinformation category (ADR 0174). Strings: bipe_report_category_<id> (the name) and bipe_report_category_<id>_hint (one line under it). The sealed report format is docs/report-envelope.md. The order is the order of the report sheet. Values are defaults until the charter (#629) fixes them.",
+  "version": 1,
+  "categories": [
+    {
+      "id": "csam",
+      "firstActionMinutes": 60,
+      "flaggerEligible": true
+    },
+    {
+      "id": "child_safety",
+      "firstActionMinutes": 60,
+      "flaggerEligible": true
+    },
+    {
+      "id": "ncii",
+      "firstActionMinutes": 120,
+      "flaggerEligible": true
+    },
+    {
+      "id": "threat",
+      "firstActionMinutes": 120,
+      "flaggerEligible": true
+    },
+    {
+      "id": "takeover",
+      "firstActionMinutes": 240,
+      "flaggerEligible": true
+    },
+    {
+      "id": "scam",
+      "firstActionMinutes": 240,
+      "flaggerEligible": true
+    },
+    {
+      "id": "impersonation",
+      "firstActionMinutes": 1440,
+      "flaggerEligible": true
+    },
+    {
+      "id": "illegal_hate",
+      "firstActionMinutes": 1440,
+      "flaggerEligible": true
+    },
+    {
+      "id": "spam",
+      "firstActionMinutes": 4320,
+      "flaggerEligible": false
+    },
+    {
+      "id": "other",
+      "firstActionMinutes": 4320,
+      "flaggerEligible": false
+    }
+  ]
+}

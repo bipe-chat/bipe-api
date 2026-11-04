@@ -17,5 +17,16 @@ export function staffGrowth(g: GrowthNumbers, since: string) {
       ? { week: w.week, signups: null, days: [] }
       : { week: w.week, signups: w.signups, days: w.days.map((d) => ({ day: d.day, kept: cell(d.kept), due: d.due })) }),
     totals: g.totals.map((t) => ({ event: t.event, users: cell(t.users), count: t.users < MIN_CELL ? null : t.count })),
+    // bipe-chat/bipe#752. A quantile over fewer than MIN_CELL people who reached it can point to a person.
+    contacts: g.contacts.map((w) => w.signups < MIN_CELL
+      ? { week: w.week, signups: null, reached: null, median_days: null, p75_days: null, invites_accepted_per_member: null }
+      : {
+          week: w.week,
+          signups: w.signups,
+          reached: cell(w.reached),
+          median_days: w.reached < MIN_CELL ? null : w.medianDays,
+          p75_days: w.reached < MIN_CELL ? null : w.p75Days,
+          invites_accepted_per_member: w.invitesAcceptedPerMember,
+        }),
   };
 }

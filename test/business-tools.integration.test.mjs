@@ -158,3 +158,91 @@ test("quotes: accepting makes one order, or one booking, atomically; an expired 
   assert.equal((await quotes.customerQuote(db, shop, bia, q3.id)).status, "expired");
   await rejects(quotes.accept(db, shop, bia, q3.id, { version: 1, target: "order", fulfilment: "pickup", payment: "in_person" }), "quote_expired");
 });
+
+test("tool state: starts off; a dependency blocks; live tools only reach customers; steps and suggestions", async (t) => {
+  const db = await setup(t);
+  const tools = await import("../dist/business-tools.js");
+  const states = async () => Object.fromEntries((await tools.tools(db, shop)).tools.map((x) => [x.id, x.state]));
+  assert.deepEqual(await states(), { catalog: "off", agenda: "off", orders: "off", quotes: "off", queue: "off" });
+  await rejects(tools.setToolState(db, API, shop, "orders", "setup"), "tool_needs_catalog");
+  await rejects(tools.requireLive(db, shop, "queue"), "tool_not_live");
+  await catalog.createItem(db, API, shop, product("Bolo", { mode: "fixed", text: "R$ 10", amount_cents: 1000 }));
+  await catalog.createItem(db, API, shop, product("Festa", { mode: "on_request" }));
+  assert.deepEqual((await tools.suggestions(db, shop)).suggestions.map((s) => s.id), ["quotes_for_on_request", "orders_for_products"]);
+  assert.deepEqual((await tools.dismissSuggestion(db, shop, "orders_for_products")).suggestions.map((s) => s.id), ["quotes_for_on_request"]);
+  await tools.setToolState(db, API, shop, "orders", "live");
+  assert.deepEqual((await tools.liveTools(db, shop)).tools, ["orders"]);
+  assert.equal(await tools.catalogIsPublic(db, shop), true);
+  await tools.setToolState(db, API, shop, "orders", "off");
+  assert.equal(await tools.catalogIsPublic(db, shop), false);
+  let plan = await tools.setup(db, shop);
+  assert.equal(plan.first_tool, "catalog");
+  assert.equal(plan.done_count, 0);
+  assert.ok(!plan.steps.some((s) => s.id === "second_seat"), "no seats yet");
+  await tools.setSector(db, shop, { sector: "food" });
+  plan = await tools.setup(db, shop);
+  assert.equal(plan.first_tool, "orders");
+  await rejects(tools.setSector(db, shop, { sector: "nope" }), "bad_request");
+  const today = await tools.today(db, shop);
+  assert.deepEqual(today, { bookings: [], orders: [], queue_open: false, queue_waiting: 0, quote_requests: [] });
+});
+
+test("tool state: the Agenda maps activation to setup and publication to live; off hides it and keeps it", async (t) => {
+  const db = await setup(t);
+  const tools = await import("../dist/business-tools.js");
+  const state = async () => (await tools.tools(db, shop)).tools.find((x) => x.id === "agenda").state;
+  await rejects(tools.setToolState(db, API, shop, "agenda", "live"), "tool_needs_catalog");
+  await agenda.activate(db, API, shop, { template_id: "barbershop", time_zone: "UTC" });
+  assert.equal(await state(), "setup");
+  await tools.setToolState(db, API, shop, "agenda", "live");
+  assert.equal(await state(), "live");
+  await tools.setToolState(db, API, shop, "agenda", "off");
+  assert.equal(await state(), "off");
+  assert.equal((await agenda.agendaState(db, API, shop)).published, false);
+  await tools.setToolState(db, API, shop, "agenda", "live");
+  assert.equal(await state(), "live");
+});
+
+test("shop on the web: token, one open order, cancel, switches, claim", async (t) => {
+  const db = await setup(t);
+  const tools = await import("../dist/business-tools.js");
+  const shopWeb = await import("../dist/shop-web.js");
+  const item = await catalog.createItem(db, API, shop, product("Pão", { mode: "fixed", text: "R$ 2", amount_cents: 200 }));
+  const body = { name: "Zé", lines: [{ item_id: item.id, quantity: 2 }] };
+  await rejects(shopWeb.order(db, shop, undefined, body), "tool_not_live");
+  await tools.setToolState(db, API, shop, "orders", "live");
+  const first = await shopWeb.order(db, shop, undefined, body);
+  assert.ok(first.token);
+  assert.equal(first.order.web, true);
+  assert.deepEqual(first.order.customer, { name: "Zé" });
+  assert.equal(first.order.fulfilment, "pickup");
+  await rejects(shopWeb.order(db, shop, first.token, body), "order_already_open");
+  await rejects(shopWeb.order(db, shop, "wrong", body), "shop_token_invalid");
+  assert.equal((await shopWeb.records(db, shop, first.token)).orders.length, 1);
+  assert.equal((await shopWeb.cancelOrder(db, shop, first.token, first.order.id)).status, "cancelled");
+  const second = await shopWeb.order(db, shop, first.token, body);
+  assert.equal(second.token, undefined, "the token comes back once");
+  await tools.setWebSettings(db, shop, { web_booking: true, web_orders: false });
+  await rejects(shopWeb.order(db, shop, undefined, body), "web_off");
+  assert.equal((await tools.liveTools(db, shop)).web_orders, false);
+  const claimed = await shopWeb.claim(db, shop, first.token, ana);
+  assert.equal(claimed.orders.length, 2);
+  assert.ok(claimed.orders.every((o) => o.customer.user_id === ana));
+  await rejects(shopWeb.records(db, shop, first.token), "shop_token_invalid");
+});
+
+test("shop on the web: a booking starts requested, one open per token; the owner sees web", async (t) => {
+  const db = await setup(t);
+  const tools = await import("../dist/business-tools.js");
+  const shopWeb = await import("../dist/shop-web.js");
+  await agenda.activate(db, API, shop, { template_id: "barbershop", time_zone: "UTC" });
+  await tools.setToolState(db, API, shop, "agenda", "live");
+  const service = (await agenda.publicServices(db, API, shop)).services[0];
+  const date = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+  const days = await agenda.slots(db, shop, { service_id: service.id, agenda_id: "any", date_from: date, date_to: new Date(Date.now() + 9 * 86_400_000).toISOString().slice(0, 10) });
+  const free = days.days.flatMap((d) => d.slots);
+  const made = await shopWeb.book(db, shop, undefined, { name: "Zé", service_id: service.id, agenda_id: "any", start: free[0].start });
+  assert.equal(made.booking.status, "requested");
+  assert.equal(made.booking.web, true);
+  await rejects(shopWeb.book(db, shop, made.token, { name: "Zé", service_id: service.id, agenda_id: "any", start: free[1].start }), "too_many_open_bookings");
+});

@@ -8,6 +8,8 @@ import { z } from "zod";
 import * as agenda from "./agenda.js";
 import type { MatrixAuth } from "./auth.js";
 import { businessOf, requireCompany } from "./business-common.js";
+import * as tools from "./business-tools.js";
+import * as shopWeb from "./shop-web.js";
 import * as catalog from "./catalog.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
@@ -21,7 +23,11 @@ export type BusinessDeps = {
   auth: MatrixAuth;
   apiUrl: string;
   siteUrl: string;
+  /** The own web client origin (ADR 0225); the site only when absent. */
+  webOrigin?: string;
   clientIp: (c: Context) => string;
+  /** Growth events of the setup steps; absent in tests. */
+  stepEvents?: tools.StepEvents;
 };
 
 export const CATALOG_PHOTO_PATH = /^\/v1\/me\/business\/catalog\/items\/[^/]+\/photo$/;
@@ -39,7 +45,7 @@ function query<T>(c: Context, schema: z.ZodType<T>): T {
   return parsed.data;
 }
 
-export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: BusinessDeps): Hono {
+export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp, stepEvents }: BusinessDeps): Hono {
   const app = new Hono();
   const limits = {
     ownerWrite: new RateLimiter(600, 3_600_000),
@@ -52,6 +58,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
     join: new RateLimiter(20, 3_600_000),
     order: new RateLimiter(20, 3_600_000),
     quoteRequest: new RateLimiter(10, 3_600_000),
+    webWrite: new RateLimiter(20, 3_600_000),
   };
   const mine = async (c: Context) => {
     const userId = await auth.userId(c.req.header("authorization"));
@@ -76,8 +83,84 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
     c.header("cache-control", "no-store");
     return businessOf(db, c.req.param("handle")!);
   };
-  const origin = siteUrl.replace(/\/$/, "");
-  app.use("/v1/businesses/*", cors({ origin, allowMethods: ["GET", "POST"], allowHeaders: ["authorization", "content-type"] }));
+  // The site and the own web client (ADR 0225) both read the public business routes.
+  const origin = [siteUrl, ...(webOrigin ? [webOrigin] : [])].map((o) => o.replace(/\/$/, ""));
+  app.use("/v1/businesses/*", cors({ origin, allowMethods: ["GET", "POST"], allowHeaders: ["authorization", "content-type", shopWeb.TOKEN_HEADER] }));
+
+  // ---- Tool state, sector, steps, suggestions, Hoje (ADR 0194) ----
+  app.get("/v1/me/business/tools", async (c) => c.json(await tools.tools(db, await owner(c, false))));
+  app.put("/v1/me/business/tools/:toolId", async (c) => {
+    const businessId = await owner(c);
+    const tool = tools.ToolId.safeParse(c.req.param("toolId"));
+    if (!tool.success) throw new ApiError("not_found");
+    const { state } = await parse(c, tools.ToolChangeBody);
+    return c.json(await tools.setToolState(db, apiUrl, businessId, tool.data, state));
+  });
+  app.put("/v1/me/business/sector", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await tools.setSector(db, businessId, await parse(c, tools.SectorBody), stepEvents));
+  });
+  app.get("/v1/me/business/setup", async (c) => c.json(await tools.setup(db, await owner(c, false), stepEvents)));
+  app.post("/v1/me/business/setup/link-opened", async (c) => {
+    const businessId = await owner(c);
+    await tools.markLinkOpened(db, businessId);
+    return c.json(await tools.setup(db, businessId, stepEvents));
+  });
+  app.get("/v1/me/business/suggestions", async (c) => c.json(await tools.suggestions(db, await owner(c, false))));
+  app.post("/v1/me/business/suggestions/:suggestionId/dismiss", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await tools.dismissSuggestion(db, businessId, c.req.param("suggestionId")));
+  });
+  app.get("/v1/me/business/today", async (c) => c.json(await tools.today(db, await owner(c, false))));
+  app.get("/v1/businesses/:handle/tools", async (c) => c.json(await tools.liveTools(db, await publicBusiness(c))));
+
+  // ---- The shop on the web, no session (ADR 0195) ----
+  // The limit counts per address on each shop; the key stays in memory only.
+  const webWrite = async (c: Context) => {
+    const businessId = await businessOf(db, c.req.param("handle")!);
+    limits.webWrite.check(`${clientIp(c)}|${businessId}`);
+    c.header("cache-control", "no-store");
+    return businessId;
+  };
+  const shopToken = (c: Context) => c.req.header(shopWeb.TOKEN_HEADER);
+  app.post("/v1/businesses/:handle/web/bookings", async (c) => {
+    const businessId = await webWrite(c);
+    const body = await parse(c, agenda.WebBookingBody);
+    const result = await shopWeb.book(db, businessId, shopToken(c), body);
+    stepEvents?.record(businessId, "web_booking");
+    return c.json(result, 201);
+  });
+  app.post("/v1/businesses/:handle/web/orders", async (c) => {
+    const businessId = await webWrite(c);
+    const body = await parse(c, orders.WebOrderBody);
+    const result = await shopWeb.order(db, businessId, shopToken(c), body);
+    stepEvents?.record(businessId, "web_order");
+    return c.json(result, 201);
+  });
+  app.get("/v1/businesses/:handle/web/records", async (c) => {
+    const businessId = await publicBusiness(c);
+    return c.json(await shopWeb.records(db, businessId, shopToken(c)));
+  });
+  app.post("/v1/businesses/:handle/web/bookings/:bookingId/cancel", async (c) => {
+    const businessId = await webWrite(c);
+    return c.json(await shopWeb.cancelBooking(db, businessId, shopToken(c), c.req.param("bookingId")));
+  });
+  app.post("/v1/businesses/:handle/web/orders/:orderId/cancel", async (c) => {
+    const businessId = await webWrite(c);
+    return c.json(await shopWeb.cancelOrder(db, businessId, shopToken(c), c.req.param("orderId")));
+  });
+  app.post("/v1/businesses/:handle/web/claim", async (c) => {
+    const { userId, businessId } = await customer(c);
+    const { token } = await parse(c, shopWeb.ClaimBody);
+    const result = await shopWeb.claim(db, businessId, token, userId);
+    stepEvents?.record(businessId, "web_claim");
+    return c.json(result);
+  });
+  app.get("/v1/me/business/web-settings", async (c) => c.json(await tools.webSettings(db, await owner(c, false))));
+  app.put("/v1/me/business/web-settings", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await tools.setWebSettings(db, businessId, await parse(c, tools.WebSettingsBody)));
+  });
 
   // ---- Catálogo, owner ----
   app.get("/v1/me/business/catalog", async (c) => c.json(await catalog.ownerCatalog(db, apiUrl, await owner(c, false))));
@@ -97,6 +180,10 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
     const businessId = await owner(c);
     return c.json(await catalog.reorder(db, apiUrl, businessId, (await parse(c, catalog.CatalogOrderBody)).item_ids));
   });
+  app.get("/v1/me/business/catalog/items/:itemId/photo", async (c) => {
+    const photo = await catalog.ownerItemPhoto(db, await owner(c, false), c.req.param("itemId"));
+    return c.body(new Uint8Array(photo), 200, { "content-type": "image/jpeg", "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
+  });
   app.put("/v1/me/business/catalog/items/:itemId/photo", async (c) => {
     const businessId = await owner(c);
     limits.photo.check(businessId);
@@ -109,7 +196,10 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
   });
 
   // ---- Catálogo, public ----
-  app.get("/v1/businesses/:handle/catalog", async (c) => c.json(await catalog.publicCatalog(db, apiUrl, await publicBusiness(c))));
+  app.get("/v1/businesses/:handle/catalog", async (c) => {
+    const businessId = await publicBusiness(c);
+    return c.json((await tools.catalogIsPublic(db, businessId)) ? await catalog.publicCatalog(db, apiUrl, businessId) : { items: [] });
+  });
   app.get("/v1/businesses/:handle/catalog/items/:itemId/photo", async (c) => {
     limits.publicPhoto.check(clientIp(c));
     const photo = await catalog.publicItemPhoto(db, await businessOf(db, c.req.param("handle")), c.req.param("itemId"));
@@ -254,10 +344,15 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
     app.post(`/v1/me/business/queue/places/:placeId/${action}`, async (c) =>
       c.json(await queue.placeAction(db, await owner(c), c.req.param("placeId"), action)));
   }
-  app.get("/v1/businesses/:handle/queue", async (c) => c.json(await queue.publicQueue(db, await publicBusiness(c))));
+  app.get("/v1/businesses/:handle/queue", async (c) => {
+    const businessId = await publicBusiness(c);
+    const today = await queue.publicQueue(db, businessId);
+    return c.json((await tools.liveTools(db, businessId)).tools.includes("queue") ? today : { ...today, open: false });
+  });
   app.post("/v1/businesses/:handle/queue/join", async (c) => {
     const { userId, businessId } = await customer(c);
     limits.join.check(userId);
+    await tools.requireLive(db, businessId, "queue");
     return c.json(await queue.join(db, businessId, userId, await parse(c, queue.JoinBody)), 201);
   });
   app.get("/v1/businesses/:handle/queue/me", async (c) => {
@@ -290,6 +385,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
   app.post("/v1/businesses/:handle/quotes/requests", async (c) => {
     const { userId, businessId } = await customer(c);
     limits.quoteRequest.check(userId);
+    await tools.requireLive(db, businessId, "quotes");
     return c.json(await quotes.request(db, businessId, userId), 201);
   });
   app.get("/v1/businesses/:handle/quotes/:quoteId", async (c) => {
@@ -334,6 +430,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, clientIp }: Business
   app.post("/v1/businesses/:handle/orders", async (c) => {
     const { userId, businessId } = await customer(c);
     limits.order.check(userId);
+    await tools.requireLive(db, businessId, "orders");
     return c.json(await orders.placeOrder(db, businessId, userId, await parse(c, orders.OrderBody)), 201);
   });
   app.get("/v1/businesses/:handle/orders/:orderId", async (c) => {
