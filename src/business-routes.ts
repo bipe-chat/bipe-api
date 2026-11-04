@@ -8,6 +8,7 @@ import { z } from "zod";
 import * as agenda from "./agenda.js";
 import type { MatrixAuth } from "./auth.js";
 import { businessOf, requireCompany } from "./business-common.js";
+import * as tools from "./business-tools.js";
 import * as catalog from "./catalog.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
@@ -24,6 +25,8 @@ export type BusinessDeps = {
   /** The own web client origin (ADR 0225); the site only when absent. */
   webOrigin?: string;
   clientIp: (c: Context) => string;
+  /** Growth events of the setup steps; absent in tests. */
+  stepEvents?: tools.StepEvents;
 };
 
 export const CATALOG_PHOTO_PATH = /^\/v1\/me\/business\/catalog\/items\/[^/]+\/photo$/;
@@ -41,7 +44,7 @@ function query<T>(c: Context, schema: z.ZodType<T>): T {
   return parsed.data;
 }
 
-export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp }: BusinessDeps): Hono {
+export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp, stepEvents }: BusinessDeps): Hono {
   const app = new Hono();
   const limits = {
     ownerWrite: new RateLimiter(600, 3_600_000),
@@ -82,6 +85,33 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp 
   const origin = [siteUrl, ...(webOrigin ? [webOrigin] : [])].map((o) => o.replace(/\/$/, ""));
   app.use("/v1/businesses/*", cors({ origin, allowMethods: ["GET", "POST"], allowHeaders: ["authorization", "content-type"] }));
 
+  // ---- Tool state, sector, steps, suggestions, Hoje (ADR 0194) ----
+  app.get("/v1/me/business/tools", async (c) => c.json(await tools.tools(db, await owner(c, false))));
+  app.put("/v1/me/business/tools/:toolId", async (c) => {
+    const businessId = await owner(c);
+    const tool = tools.ToolId.safeParse(c.req.param("toolId"));
+    if (!tool.success) throw new ApiError("not_found");
+    const { state } = await parse(c, tools.ToolChangeBody);
+    return c.json(await tools.setToolState(db, apiUrl, businessId, tool.data, state));
+  });
+  app.put("/v1/me/business/sector", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await tools.setSector(db, businessId, await parse(c, tools.SectorBody), stepEvents));
+  });
+  app.get("/v1/me/business/setup", async (c) => c.json(await tools.setup(db, await owner(c, false), stepEvents)));
+  app.post("/v1/me/business/setup/link-opened", async (c) => {
+    const businessId = await owner(c);
+    await tools.markLinkOpened(db, businessId);
+    return c.json(await tools.setup(db, businessId, stepEvents));
+  });
+  app.get("/v1/me/business/suggestions", async (c) => c.json(await tools.suggestions(db, await owner(c, false))));
+  app.post("/v1/me/business/suggestions/:suggestionId/dismiss", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await tools.dismissSuggestion(db, businessId, c.req.param("suggestionId")));
+  });
+  app.get("/v1/me/business/today", async (c) => c.json(await tools.today(db, await owner(c, false))));
+  app.get("/v1/businesses/:handle/tools", async (c) => c.json(await tools.liveTools(db, await publicBusiness(c))));
+
   // ---- Catálogo, owner ----
   app.get("/v1/me/business/catalog", async (c) => c.json(await catalog.ownerCatalog(db, apiUrl, await owner(c, false))));
   app.post("/v1/me/business/catalog/items", async (c) => {
@@ -116,7 +146,10 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp 
   });
 
   // ---- Catálogo, public ----
-  app.get("/v1/businesses/:handle/catalog", async (c) => c.json(await catalog.publicCatalog(db, apiUrl, await publicBusiness(c))));
+  app.get("/v1/businesses/:handle/catalog", async (c) => {
+    const businessId = await publicBusiness(c);
+    return c.json((await tools.catalogIsPublic(db, businessId)) ? await catalog.publicCatalog(db, apiUrl, businessId) : { items: [] });
+  });
   app.get("/v1/businesses/:handle/catalog/items/:itemId/photo", async (c) => {
     limits.publicPhoto.check(clientIp(c));
     const photo = await catalog.publicItemPhoto(db, await businessOf(db, c.req.param("handle")), c.req.param("itemId"));
@@ -261,10 +294,15 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp 
     app.post(`/v1/me/business/queue/places/:placeId/${action}`, async (c) =>
       c.json(await queue.placeAction(db, await owner(c), c.req.param("placeId"), action)));
   }
-  app.get("/v1/businesses/:handle/queue", async (c) => c.json(await queue.publicQueue(db, await publicBusiness(c))));
+  app.get("/v1/businesses/:handle/queue", async (c) => {
+    const businessId = await publicBusiness(c);
+    const today = await queue.publicQueue(db, businessId);
+    return c.json((await tools.liveTools(db, businessId)).tools.includes("queue") ? today : { ...today, open: false });
+  });
   app.post("/v1/businesses/:handle/queue/join", async (c) => {
     const { userId, businessId } = await customer(c);
     limits.join.check(userId);
+    await tools.requireLive(db, businessId, "queue");
     return c.json(await queue.join(db, businessId, userId, await parse(c, queue.JoinBody)), 201);
   });
   app.get("/v1/businesses/:handle/queue/me", async (c) => {
@@ -297,6 +335,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp 
   app.post("/v1/businesses/:handle/quotes/requests", async (c) => {
     const { userId, businessId } = await customer(c);
     limits.quoteRequest.check(userId);
+    await tools.requireLive(db, businessId, "quotes");
     return c.json(await quotes.request(db, businessId, userId), 201);
   });
   app.get("/v1/businesses/:handle/quotes/:quoteId", async (c) => {
@@ -341,6 +380,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp 
   app.post("/v1/businesses/:handle/orders", async (c) => {
     const { userId, businessId } = await customer(c);
     limits.order.check(userId);
+    await tools.requireLive(db, businessId, "orders");
     return c.json(await orders.placeOrder(db, businessId, userId, await parse(c, orders.OrderBody)), 201);
   });
   app.get("/v1/businesses/:handle/orders/:orderId", async (c) => {

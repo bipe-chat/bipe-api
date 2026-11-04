@@ -1563,7 +1563,7 @@ staffGet("/v1/admin/reports", (c) => {
 });
 
 // Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
-app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp }));
+app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp, stepEvents: growth }));
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 app.onError((err, c) => {

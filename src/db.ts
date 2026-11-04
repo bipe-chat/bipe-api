@@ -873,6 +873,33 @@ export const MIGRATIONS: readonly string[] = [
    END $$;
    CREATE TRIGGER signups_user_number BEFORE INSERT OR UPDATE OF user_number ON signups
      FOR EACH ROW EXECUTE FUNCTION signups_user_number();`,
+  // Tool state, sector and steps of a work account (ADR 0194, bipe#799). The Agenda keeps agenda_settings as its
+  // one record; tool_off marks a turned-off Agenda. Backfill: a tool with at least one record is live.
+  `ALTER TABLE agenda_settings ADD COLUMN tool_off boolean NOT NULL DEFAULT false;
+   CREATE TABLE business_tool_states (
+     business_id text NOT NULL,
+     tool text NOT NULL CHECK (tool IN ('catalog', 'orders', 'quotes', 'queue')),
+     state text NOT NULL CHECK (state IN ('off', 'setup', 'live')),
+     updated_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (business_id, tool)
+   );
+   CREATE TABLE business_work_settings (
+     business_id text PRIMARY KEY,
+     sector text,
+     link_opened_at timestamptz,
+     steps_done text[]
+   );
+   CREATE TABLE business_suggestion_dismissals (
+     business_id text NOT NULL,
+     suggestion text NOT NULL,
+     dismissed_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (business_id, suggestion)
+   );
+   INSERT INTO business_tool_states (business_id, tool, state)
+     SELECT DISTINCT business_id, 'catalog', 'live' FROM catalog_items WHERE archived_at IS NULL
+     UNION SELECT DISTINCT business_id, 'orders', 'live' FROM orders
+     UNION SELECT DISTINCT business_id, 'quotes', 'live' FROM quote_requests
+     UNION SELECT DISTINCT business_id, 'queue', 'live' FROM queue_places;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
