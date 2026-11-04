@@ -137,6 +137,14 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     stepEvents?.record(businessId, "web_order");
     return c.json(result, 201);
   });
+  app.post("/v1/businesses/:handle/web/queue", async (c) => {
+    const businessId = await webWrite(c);
+    return c.json(await shopWeb.joinQueue(db, businessId, shopToken(c), await parse(c, queue.WebJoinBody)), 201);
+  });
+  app.post("/v1/businesses/:handle/web/queue/places/:placeId/leave", async (c) => {
+    const businessId = await webWrite(c);
+    return c.json(await shopWeb.leaveQueue(db, businessId, shopToken(c), c.req.param("placeId")));
+  });
   app.get("/v1/businesses/:handle/web/records", async (c) => {
     const businessId = await publicBusiness(c);
     return c.json(await shopWeb.records(db, businessId, shopToken(c)));
