@@ -294,3 +294,16 @@ test("quote link: a typed name, read and accept with the link, one order, revoke
   await quotes.revokeLink(db, shop, second.quote.id);
   await rejects(quotes.readLink(db, shop, renewed.linkId), "not_found");
 });
+
+test("parar de receber: a stopped work account cannot invite, even in a shared room; undo works", async (t) => {
+  const db = await setup(t);
+  const stops = await import("../dist/business-stops.js");
+  const { mayInvite } = await import("../dist/messaging.js");
+  await db.query("INSERT INTO messaging_settings (user_id, policy) VALUES ($1, 'everyone') ON CONFLICT DO NOTHING", [ana]).catch(() => {});
+  assert.deepEqual(await stops.setStopped(db, ana, shop, true), { stopped: true });
+  assert.equal(await stops.isStopped(db, ana, shop), true);
+  assert.equal((await mayInvite(db, shop, ana, true)).allow, false);
+  await stops.setStopped(db, ana, shop, false);
+  assert.equal((await mayInvite(db, shop, ana, true)).allow, true);
+  await rejects(stops.setStopped(db, ana, bia, true), "not_found");
+});

@@ -966,6 +966,13 @@ export const MIGRATIONS: readonly string[] = [
      ADD COLUMN customer_name text, ADD COLUMN link_hash text;
    ALTER TABLE quotes ADD CONSTRAINT quotes_one_customer CHECK ((customer_id IS NULL) <> (customer_name IS NULL));
    CREATE UNIQUE INDEX quotes_link ON quotes (link_hash) WHERE link_hash IS NOT NULL;`,
+  // Parar de receber (ADR 0237, bipe#1013).
+  `CREATE TABLE business_stops (
+     customer_id text NOT NULL,
+     business_id text NOT NULL,
+     stopped_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (customer_id, business_id)
+   );`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

@@ -9,6 +9,7 @@ import * as agenda from "./agenda.js";
 import type { MatrixAuth } from "./auth.js";
 import { businessOf, requireCompany } from "./business-common.js";
 import type { BusinessPushes } from "./business-pushes.js";
+import { isStopped, setStopped } from "./business-stops.js";
 import * as tools from "./business-tools.js";
 import * as shopWeb from "./shop-web.js";
 import * as catalog from "./catalog.js";
@@ -119,6 +120,20 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   app.get("/v1/me/business/today", async (c) => c.json(await tools.today(db, await owner(c, false))));
   app.get("/v1/businesses/:handle/tools", async (c) => c.json(await tools.liveTools(db, await publicBusiness(c))));
 
+  // ---- Parar de receber (ADR 0237) ----
+  const stopTarget = (c: Context) => {
+    const parsed = z.string().regex(/^@[^:\s]{1,255}:[^\s]{1,255}$/).safeParse(c.req.param("workAccount"));
+    if (!parsed.success) throw new ApiError("not_found");
+    return parsed.data;
+  };
+  app.get("/v1/business-stops/:workAccount", async (c) => {
+    const userId = await mine(c);
+    return c.json({ stopped: await isStopped(db, userId, stopTarget(c)) });
+  });
+  app.put("/v1/business-stops/:workAccount", async (c) => c.json(await setStopped(db, await mine(c), stopTarget(c), true)));
+  app.delete("/v1/business-stops/:workAccount", async (c) => c.json(await setStopped(db, await mine(c), stopTarget(c), false)));
+
+  // ---- The shop on the web, no session (ADR 0195) ----
   // The limit counts per address on each shop; the key stays in memory only.
   const webWrite = async (c: Context) => {
     const businessId = await businessOf(db, c.req.param("handle")!);
