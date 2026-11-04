@@ -1,0 +1,33 @@
+{
+  "$comment": "Mural home score (ADR 0246, bipe-chat/bipe#1044; spec chat-list). One pure function of explicit inputs. The phone computes it and sends nothing. Weights are first values, not measured. U(x) = floor(x * 10000 + 0.5): a score part in integer units of 1/10000. Every log and exp term goes through U before the sum, so a last-bit difference between libm versions does not reach the result. Sum these parts as integers. mentioned: U(weights.mention). Direct chat (kind person or company) with unreadCount > 0: U(weights.unreadDirect), or U(weights.unreadCompanyNoSeal) when kind is company and hasSeal is false. Group with unreadCount > 0: min(U(unreadGroup.max), U(unreadGroup.min + unreadGroup.logScale * log10(1 + unreadCount))). Direct chat with unreadCount = 0, lastFromOther true and minutesSinceActivity known and below unansweredMaxMinutes: U(weights.unansweredDirect). favourite: U(weights.favourite). Every chat: min(U(tie.max), U(tie.logScale * log2(1 + messagesPerWeek))). Known minutesSinceActivity: U(recency.max * exp(-minutes / recency.decayMinutes)); half-life about 5.5 hours. Model part: 0 when kind is company without a seal, official is true or trustWarning is true. Else U(model.attention[modelAttention]) when the value is known, and for none only when unreadCount > 0, plus U(model.due) when modelDue is true, at most U(model.maxWeight). An unknown attention value adds 0. Then, in this order: muted and not mentioned: S = floor(S * mutedFactor + 0.5). official: S = min(S, U(officialCap)). Clamp S to 0...10000. scorePercent P = floor((S + 50) / 100). score = P / 100. Negative minutesSinceActivity, unreadCount and messagesPerWeek count as 0. Null minutesSinceActivity means unknown. Order: P descending, then minutesSinceActivity ascending with unknown last, then room ID ascending by code unit. Tier: walk the chats in that order. Each chat takes the first tier where P >= minScore * 100 and the tier is below maxChats (null: no limit). A full tier demotes the chat to the next. A chat past tier 4 gets no tile (tier null) and stays in the plain list. The caller passes joined, not archived chats only: a request or an archived chat gets no score. Reference: tools/lib/home-score.mjs. Vectors: test-vectors/home-score.json. model: unused in step 1, callers pass no model fields until step 3 of ADR 0246 passes its gate.",
+  "version": 1,
+  "weights": {
+    "mention": 0.24,
+    "unreadDirect": 0.22,
+    "unreadCompanyNoSeal": 0.10,
+    "unansweredDirect": 0.06,
+    "favourite": 0.10
+  },
+  "unreadGroup": { "min": 0.02, "max": 0.08, "logScale": 0.03 },
+  "tie": { "max": 0.16, "logScale": 0.03, "windowDays": 7 },
+  "recency": { "max": 0.14, "decayMinutes": 480 },
+  "unansweredMaxMinutes": 4320,
+  "mutedFactor": 0.4,
+  "officialCap": 0.14,
+  "tiers": [
+    { "tier": 1, "minScore": 0.60, "maxChats": 2, "columns": 1 },
+    { "tier": 2, "minScore": 0.30, "maxChats": 6, "columns": 2 },
+    { "tier": 3, "minScore": 0.14, "maxChats": null, "columns": 3 },
+    { "tier": 4, "minScore": 0, "maxChats": 12, "columns": null }
+  ],
+  "tile": { "firstTileMessages": 3, "secondTileMessages": 1, "tier2Bubbles": 1, "tier3TextLines": 2 },
+  "model": {
+    "status": "unused-step-1",
+    "attention": { "reply": 0.20, "decide": 0.20, "fyi": 0.02, "none": -0.18 },
+    "due": 0.06,
+    "maxWeight": 0.26,
+    "gistMaxLength": 80,
+    "dueMaxLength": 24,
+    "draftMaxLength": 120
+  }
+}
