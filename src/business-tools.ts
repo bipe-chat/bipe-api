@@ -101,22 +101,23 @@ export async function liveTools(db: Queryable, businessId: string): Promise<Busi
     tools: registry.tools.map((t) => t.id).filter((id) => current[id] === "live"),
     web_booking: current.agenda === "live" && web.web_booking,
     web_orders: current.orders === "live" && web.web_orders,
+    web_queue: current.queue === "live" && web.web_queue,
   };
 }
 
-export const WebSettingsBody = z.object({ web_booking: z.boolean(), web_orders: z.boolean() }).strict();
+export const WebSettingsBody = z.object({ web_booking: z.boolean(), web_orders: z.boolean(), web_queue: z.boolean() }).strict();
 
 /** The owner's web switches, on by default (ADR 0195 points 12 and 16). */
 export async function webSettings(db: Queryable, businessId: string): Promise<WebSettings> {
-  const { rows } = await db.query<WebSettings>("SELECT web_booking, web_orders FROM business_work_settings WHERE business_id = $1", [businessId]);
-  return rows[0] ?? { web_booking: true, web_orders: true };
+  const { rows } = await db.query<WebSettings>("SELECT web_booking, web_orders, web_queue FROM business_work_settings WHERE business_id = $1", [businessId]);
+  return rows[0] ?? { web_booking: true, web_orders: true, web_queue: true };
 }
 
 export async function setWebSettings(db: Queryable, businessId: string, body: WebSettings): Promise<WebSettings> {
   await db.query(
-    `INSERT INTO business_work_settings (business_id, web_booking, web_orders) VALUES ($1, $2, $3)
-     ON CONFLICT (business_id) DO UPDATE SET web_booking = EXCLUDED.web_booking, web_orders = EXCLUDED.web_orders`,
-    [businessId, body.web_booking, body.web_orders],
+    `INSERT INTO business_work_settings (business_id, web_booking, web_orders, web_queue) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (business_id) DO UPDATE SET web_booking = EXCLUDED.web_booking, web_orders = EXCLUDED.web_orders, web_queue = EXCLUDED.web_queue`,
+    [businessId, body.web_booking, body.web_orders, body.web_queue],
   );
   return webSettings(db, businessId);
 }

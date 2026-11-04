@@ -8,8 +8,9 @@ import { inTransaction, lockBusiness, type Queryable } from "./business-common.j
 import * as tools from "./business-tools.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import type { WebBookingResult, WebOrderResult, WebRecords } from "./generated/business-api.js";
+import type { WebBookingResult, WebOrderResult, WebQueueResult, WebRecords } from "./generated/business-api.js";
 import * as orders from "./orders.js";
+import * as queue from "./queue.js";
 
 export const TOKEN_HEADER = "x-bipe-shop-token";
 export const ClaimBody = z.object({ token: z.string().min(1).max(128) }).strict();
@@ -56,9 +57,28 @@ export async function order(db: Db, businessId: string, token: string | undefine
   });
 }
 
+export async function joinQueue(db: Db, businessId: string, token: string | undefined, body: z.infer<typeof queue.WebJoinBody>): Promise<WebQueueResult> {
+  await tools.requireLive(db, businessId, "queue");
+  if (!(await tools.webSettings(db, businessId)).web_queue) throw new ApiError("web_off");
+  return inTransaction(db, async (client) => {
+    await lockBusiness(client, businessId);
+    const { hash, fresh } = await tokenOrNew(client, businessId, token);
+    const position = await queue.webJoin(client, businessId, hash, body);
+    return { ...(fresh ? { token: fresh } : {}), position };
+  });
+}
+
+export async function leaveQueue(db: Db, businessId: string, token: string | undefined, placeId: string) {
+  return queue.webLeave(db, businessId, await requireToken(db, businessId, token), placeId);
+}
+
 async function recordsOf(db: Queryable, businessId: string, hash: string): Promise<WebRecords> {
-  const [bookings, list] = await Promise.all([agenda.webBookings(db, businessId, hash), orders.webOrders(db, businessId, hash)]);
-  return { bookings, orders: list };
+  const [bookings, list, place] = await Promise.all([
+    agenda.webBookings(db, businessId, hash),
+    orders.webOrders(db, businessId, hash),
+    queue.webPlace(db, businessId, hash),
+  ]);
+  return { bookings, orders: list, ...(place ? { queue_place: place } : {}) };
 }
 
 export async function records(db: Db, businessId: string, token: string | undefined): Promise<WebRecords> {
@@ -81,6 +101,7 @@ export async function claim(db: Db, businessId: string, token: string, userId: s
     const hash = await requireToken(client, businessId, token);
     await agenda.claimWebBookings(client, businessId, hash, userId);
     await orders.claimWebOrders(client, businessId, hash, userId);
+    await queue.claimWebPlaces(client, businessId, hash, userId);
     await client.query("UPDATE shop_tokens SET claimed_at = now() WHERE token_hash = $1", [hash]);
     const [bookings, mine] = await Promise.all([agenda.myBookings(client, userId), orders.myOrders(client, userId)]);
     return {
