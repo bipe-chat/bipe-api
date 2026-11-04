@@ -8,7 +8,10 @@ import type { Pusher } from "./synapse-admin.js";
 // Logs carry the push kind, counts and HTTP statuses only: never a user ID, a device ID or a pushkey.
 
 /** The bipe_push_kind values the apps read (spec notification-service). */
-export type PushKind = "device_approval" | "recovery_started" | "recovery_completed" | "invite_joined" | "group_link_joined";
+export type PushKind =
+  | "device_approval" | "recovery_started" | "recovery_completed" | "invite_joined" | "group_link_joined"
+  | "booking_tomorrow" | "booking_soon" | "booking_changed" | "order_updated" | "queue_called"
+  | "work_new_booking" | "work_new_order" | "work_cancelled" | "work_today";
 
 /** APNs format event_id_only needs an event ID, else Sygnal builds a full payload. Not a real event. */
 export const pushEventId = (kind: PushKind) => `$${kind}`;
