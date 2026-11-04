@@ -1958,6 +1958,8 @@
     "bipe_web_orders_switch": "Pedidos pela web",
     "bipe_web_orders_switch_footer": "Pessoas sem o Bipe pedem com o primeiro nome, só para retirada e pagamento na hora.",
     "bipe_web_record_mark": "Pela web",
+    "bipe_web_queue_switch": "Entrar na fila pela web",
+    "bipe_loja_queue_position": "Você é o %1$sº da fila",
     "bipe_business_tools_title": "Ferramentas do negócio",
     "bipe_business_tools_footer": "Seus clientes encontram estas ferramentas no seu perfil e na conversa com você.",
     "bipe_business_tools_a11y": "Ferramentas do negócio",
