@@ -56,7 +56,7 @@ export type BookingStatus = ("held" | "requested" | "confirmed" | "done" | "canc
 export type BookingCustomer = ({ "user_id": string } | { "name": string });
 
 /** Minimal record (ADR 0102). No notes, address, allergy, message or other customer text. The only name is a name-only owner entry or a retained name after account deletion. End and hold expiry are server-derived. A held row expires five minutes after creation. */
-export type Booking = { "id": string; "business_id": string; "service_id": string; "agenda_id": string; /** UTC, with a trailing Z. */ "start": string; /** UTC, with a trailing Z. */ "end": string; "status": BookingStatus; "customer": BookingCustomer; "source": ("customer" | "owner"); /** UTC, with a trailing Z. */ "hold_expires_at"?: string };
+export type Booking = { "id": string; "business_id": string; "service_id": string; "agenda_id": string; /** UTC, with a trailing Z. */ "start": string; /** UTC, with a trailing Z. */ "end": string; "status": BookingStatus; "customer": BookingCustomer; "source": ("customer" | "owner"); /** UTC, with a trailing Z. */ "hold_expires_at"?: string; /** Made on the web with a first name and a shop token, with no account (ADR 0195). No chat. */ "web"?: boolean };
 
 /** Authenticated customer only. Customer, end, status and expiry are server-derived. Rate and open-booking limits apply. */
 export type BookingHold = { "service_id": string; /** An eligible agenda ID or any. For any, the server chooses at hold time: least booked that local day, then agenda sort and ID. */ "agenda_id": string; /** UTC, with a trailing Z. */ "start": string };
@@ -87,7 +87,7 @@ export type BusyImport = { "id": string; "agenda_id": string; /** UTC, with a tr
 
 export type AgendaError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed"); "reason"?: string };
 
-export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live"); "reason"?: string };
+export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live" | "web_off" | "shop_token_invalid"); "reason"?: string };
 
 export type EmptyBusinessRequest = Record<string, never>;
 
@@ -159,7 +159,7 @@ export type OrderRefusal = { "reason": OrderRefuseReason };
 export type OrderPolicy = { "time_zone": string; "weekdays": Array<number>; /** Local wall time in the business time zone. Start is inclusive; end is exclusive. */ "cutoff": string };
 
 /** Minimal order record. No address, notes or customer messages. One open order per customer per business; sent/accepted/ready are open. Payment choice and a charge link do not establish paid status. Retain for two years (ADR 0105). */
-export type Order = { "id": string; "business_id": string; "customer": BookingCustomer; "source": ("customer" | "owner"); /** UTC, with a trailing Z. */ "created_at": string; "lines": Array<OrderLine>; "total_amount_cents": number; "currency": "BRL"; "fulfilment": ("pickup" | "delivery"); "payment": ("in_person" | "pix"); "status": OrderStatus; "refuse_reason"?: OrderRefuseReason; "pix_charge_id"?: string; "quote_id"?: string };
+export type Order = { "id": string; "business_id": string; "customer": BookingCustomer; "source": ("customer" | "owner"); /** UTC, with a trailing Z. */ "created_at": string; "lines": Array<OrderLine>; "total_amount_cents": number; "currency": "BRL"; "fulfilment": ("pickup" | "delivery"); "payment": ("in_person" | "pix"); "status": OrderStatus; "refuse_reason"?: OrderRefuseReason; "pix_charge_id"?: string; "quote_id"?: string; /** Made on the web with a first name and a shop token, with no account (ADR 0195). No chat. */ "web"?: boolean };
 
 export type BusinessToolId = ("agenda" | "catalog" | "orders" | "quotes" | "queue");
 
@@ -175,7 +175,7 @@ export type BusinessTools = { "tools": Array<BusinessToolStatus>; "sector"?: str
 export type BusinessToolChange = { "state": BusinessToolState };
 
 /** The public read: live tools only (ADR 0194 point 2). */
-export type BusinessLiveTools = { "tools": Array<BusinessToolId> };
+export type BusinessLiveTools = { "tools": Array<BusinessToolId>; /** The Agenda is live and the owner keeps booking on the web on. */ "web_booking"?: boolean; /** Pedidos is live and the owner keeps orders on the web on. */ "web_orders"?: boolean };
 
 /** One sector ID of registries/business-tools.json. Absent clears the sector (Pular). */
 export type WorkSector = { "sector"?: string };
@@ -192,3 +192,24 @@ export type WorkSuggestions = { "suggestions": Array<WorkSuggestion> };
 
 /** The Hoje section in one call: today's bookings in the business time zone, open orders, today's queue and the requests that wait for a quote. */
 export type BusinessToday = { "bookings": Array<Booking>; "orders": Array<Order>; "queue_open": boolean; "queue_waiting": number; "quote_requests": Array<QuoteRequest> };
+
+/** No session. A first name and no phone, e-mail or location (ADR 0195 point 4). Always starts requested. */
+export type WebBooking = { "name": string; "service_id": string; /** An eligible agenda ID or any. */ "agenda_id": string; "start": string };
+
+/** No session. Retirada and pago na hora only: delivery needs an address, and free text stays in the encrypted chat (ADR 0195 point 14). */
+export type WebOrder = { "name": string; "lines": Array<OrderLineInput> };
+
+/** token: only on the first web action of this browser at this shop. The server keeps its hash. */
+export type WebBookingResult = { "token"?: string; "booking": Booking };
+
+/** token: only on the first web action of this browser at this shop. The server keeps its hash. */
+export type WebOrderResult = { "token"?: string; "order": Order };
+
+/** Every record of one shop token at one shop, open ones and the last 30 days. */
+export type WebRecords = { "bookings": Array<Booking>; "orders": Array<Order> };
+
+/** A signed-in person takes the records of the token. The token then stops working. */
+export type WebClaim = { "token": string };
+
+/** Owner switches, on by default (ADR 0195 points 12 and 16). */
+export type WebSettings = { "web_booking": boolean; "web_orders": boolean };

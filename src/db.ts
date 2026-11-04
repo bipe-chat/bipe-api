@@ -935,6 +935,18 @@ export const MIGRATIONS: readonly string[] = [
    );`,
   // Reach tiers (bipe#851): whether the sign-up's device was attested (ADR 0043). NULL for sign-ups before this column.
   `ALTER TABLE signups ADD COLUMN attested boolean;`,
+  // The shop on the web (ADR 0195, bipe#804). A shop token is stored hashed; a claimed token stops working.
+  `CREATE TABLE shop_tokens (
+     token_hash text PRIMARY KEY,
+     business_id text NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     claimed_at timestamptz
+   );
+   ALTER TABLE bookings ADD COLUMN web boolean NOT NULL DEFAULT false, ADD COLUMN shop_token_hash text;
+   ALTER TABLE orders ADD COLUMN web boolean NOT NULL DEFAULT false, ADD COLUMN shop_token_hash text;
+   CREATE INDEX bookings_shop_token ON bookings (business_id, shop_token_hash) WHERE shop_token_hash IS NOT NULL;
+   CREATE INDEX orders_shop_token ON orders (business_id, shop_token_hash) WHERE shop_token_hash IS NOT NULL;
+   ALTER TABLE business_work_settings ADD COLUMN web_booking boolean NOT NULL DEFAULT true, ADD COLUMN web_orders boolean NOT NULL DEFAULT true;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
