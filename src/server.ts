@@ -32,7 +32,7 @@ import { createGovbrChallenge, GOVBR_PDF_MAX_BYTES, pruneGovbrChallenges, submit
 import { ProfileFacts } from "./profile-facts.js";
 import { Theft } from "./theft.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
-import { accountRules, assistantRules, legalRules, profileRules } from "./registry.js";
+import { appString, accountRules, assistantRules, legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
