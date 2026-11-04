@@ -126,6 +126,20 @@ export class Mas {
     return ids;
   }
 
+  /**
+   * The active OAuth 2.0 sessions that a browser session approved (user_session_id), with their Matrix device: the
+   * computer's session of a web sign-in (bipe#398). A session whose user_session_id does not match is left out, in case
+   * MAS ignores the filter (fail closed).
+   */
+  async oauthSessionsApprovedBy(userSessionId: string): Promise<MasSession[]> {
+    const q = new URLSearchParams({ "filter[user-session]": userSessionId, "filter[status]": "active", "page[first]": "100" });
+    const body = await this.json(await this.call("GET", `/oauth2-sessions?${q}`));
+    const data = body.data as { id: string; attributes?: { user_session_id?: string | null; device_id?: string | null; scope?: string | null; finished_at?: string | null } }[];
+    return data
+      .filter((s) => s.attributes?.user_session_id === userSessionId && !s.attributes?.finished_at)
+      .map((s) => ({ kind: "oauth2-sessions" as const, id: s.id, deviceId: deviceOf(s.attributes) }));
+  }
+
   async finishBrowserSession(sessionId: string): Promise<void> {
     const res = await this.call("POST", `/user-sessions/${encodeURIComponent(sessionId)}/finish`, {});
     // 400: the session is already finished.
