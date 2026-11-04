@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createInvite, inviteConnections, inviterReport } from "../dist/invites.js";
+import {
+  createInvite,
+  createPersonalInvite,
+  inviteConnections,
+  inviterReport,
+  myInvites,
+  previewInvite,
+  returnInviteUse,
+  revokePersonalInvite,
+  takeInviteUse,
+} from "../dist/invites.js";
 import { isolatedDatabase } from "./helpers/database.mjs";
 
 // bipe#513, ADR 0138 rule 2: a company account made with its owner's invite is never linked to the owner.
@@ -29,4 +39,35 @@ test("a company account is not an invite pair with the account whose invite made
   const row = report.find((r) => r.user_id === owner);
   assert.equal(row?.joined, 1);
   assert.equal(row?.downstream, 1);
+});
+
+test("an invite a company sign-up took shows as used, holds its slot and cannot be revoked", async (t) => {
+  const db = await isolatedDatabase(t);
+  const policy = { perUser: 2, respawnDays: 7 };
+  const invite = await createPersonalInvite(db, owner, policy, "https://bipe.test");
+  const inviteId = await takeInviteUse(db, invite.code);
+  assert.equal(String(inviteId), invite.id);
+  // The company row keeps no invite_id (bipe#513).
+  await db.query("INSERT INTO signups (user_id, account_type) VALUES ($1, 'company')", [company]);
+
+  const mine = await myInvites(db, owner, policy);
+  assert.equal(mine.invites.length, 1);
+  assert.equal(mine.invites[0].status, "used");
+  assert.equal(mine.invites[0].joined_user_id, undefined);
+  assert.equal(mine.available, 1);
+  await assert.rejects(revokePersonalInvite(db, owner, invite.id), { id: "not_found" });
+
+  // A failed sign-up gives the use back: the invite is pending again.
+  await returnInviteUse(db, inviteId);
+  assert.equal((await myInvites(db, owner, policy)).invites[0].status, "pending");
+});
+
+test("a personal invite lasts 7 days and its preview gives the expiry", async (t) => {
+  const db = await isolatedDatabase(t);
+  const invite = await createPersonalInvite(db, owner, { perUser: 2, respawnDays: 7 }, "https://bipe.test");
+  const days = (Date.parse(invite.expires_at) - Date.now()) / 86_400_000;
+  assert.ok(days > 6.9 && days <= 7, `expires in ${days} days`);
+  const preview = await previewInvite(db, invite.code);
+  assert.equal(preview.valid, true);
+  assert.equal(preview.expires_at, invite.expires_at);
 });

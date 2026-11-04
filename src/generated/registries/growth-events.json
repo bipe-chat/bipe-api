@@ -2,9 +2,19 @@
   "$comment": "Server-side growth events (ADR 0098 in bipe/docs/adr, bipe#67). The apps send no telemetry: the Bipe API derives each event from what the server already sees. It keeps a row per pseudonymous user (HMAC-SHA256 of the Matrix ID under BIPE_GROWTH_HMAC_SECRET), event and day, with a count. No event carries content, room IDs, Matrix IDs, IPs or devices. The platform events (ADR 0124) keep only ios, android or web: never the user agent, the model or the OS version. source: api = a Bipe API action; synapse_db = read from the Synapse database by the read-only role bipe_growth, which has SELECT only on the columns that bipe-api src/growth.ts names (no event content, no IP, no device name). once: the API keeps only the first day per user. funnel: the steps of the report, in order; a user counts at a step only with every earlier step. retentionEvent and retentionDays: the report shows the share of each sign-up week with retentionEvent on day N after sign-up. retentionDaysKept: rows older than this are deleted. A new event needs a line here, not a new ADR.",
   "version": 1,
   "retentionDaysKept": 395,
-  "funnel": ["signup_done", "onboarding_finished", "first_message_sent", "contact_verified", "invite_sent"],
+  "funnel": [
+    "signup_done",
+    "onboarding_finished",
+    "first_message_sent",
+    "contact_verified",
+    "invite_sent"
+  ],
   "retentionEvent": "active_day",
-  "retentionDays": [1, 7, 30],
+  "retentionDays": [
+    1,
+    7,
+    30
+  ],
   "events": [
     {
       "id": "signup_done",
@@ -95,6 +105,48 @@
       "once": true,
       "source": "synapse_db",
       "detail": "The day the user got a fifth contact (bipe-chat/bipe#752). A contact is another local person who shares a DM with the user: a room that is not a space, has no room name, 2 joined members, no invited member, and m.room.member events from exactly those 2 people (room_stats_current, room_stats_state.room_type, current_state_events type, events sender, type, room_id and origin_server_ts only). The day of a contact is the day of the first member event of the person who came second. Only that day is kept: not the contacts, not the rooms, not the count.",
+      "content": "none"
+    },
+    {
+      "id": "work_step_shown",
+      "once": false,
+      "source": "api",
+      "detail": "GET /v1/me/business/setup answered with a step not done (ADR 0194). One event per account and day; no step ID and no record content.",
+      "content": "none"
+    },
+    {
+      "id": "work_step_done",
+      "once": false,
+      "source": "api",
+      "detail": "The server computed a setup step as done for the first time for this account (ADR 0194).",
+      "content": "none"
+    },
+    {
+      "id": "work_sector_skipped",
+      "once": true,
+      "source": "api",
+      "detail": "PUT /v1/me/business/sector with no sector (Pular) on an account that never had one (ADR 0194).",
+      "content": "none"
+    },
+    {
+      "id": "web_booking",
+      "once": false,
+      "source": "api",
+      "detail": "A booking made on the web with a shop token (ADR 0195). No name and no shop.",
+      "content": "none"
+    },
+    {
+      "id": "web_order",
+      "once": false,
+      "source": "api",
+      "detail": "An order made on the web with a shop token (ADR 0195). No name and no shop.",
+      "content": "none"
+    },
+    {
+      "id": "web_claim",
+      "once": false,
+      "source": "api",
+      "detail": "A signed-in person claimed the records of a shop token (ADR 0195).",
       "content": "none"
     }
   ]

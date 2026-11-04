@@ -4,6 +4,7 @@ import { forgetBugReports } from "./bug-reports.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { removeHandle } from "./handles.js";
+import { inviteeHash, inviteeKey } from "./reach.js";
 import { accountRules, appString } from "./registry.js";
 import { type StateEvent, type SynapseAdminApi, SynapseHttpError } from "./synapse-admin.js";
 
@@ -333,14 +334,23 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     // user made or cleared for someone else stay for that account, without the user's ID.
     await q("DELETE FROM guardians WHERE owner_id = $1 OR guardian_id = $1");
     await q("DELETE FROM account_phones WHERE user_id = $1");
+    await q("DELETE FROM web_links WHERE user_id = $1");
     await q("UPDATE theft_marks SET root_id = NULL WHERE root_id IN (SELECT id FROM theft_marks WHERE user_id = $1)");
     await q("DELETE FROM theft_marks WHERE user_id = $1");
     // ADR 0164: the voice uploads stay registered without their owner, so the purge still deletes the files.
     await q("UPDATE voice_media SET user_id = NULL WHERE user_id = $1");
+    // bipe#845: first contacts the user started or received. The counts of other senders stay: they hold no ID.
+    await q("DELETE FROM first_contacts WHERE inviter = $1");
+    if (deps.config.BIPE_GROWTH_HMAC_SECRET) {
+      await q("DELETE FROM first_contacts WHERE invitee_hash = $1", [inviteeHash(inviteeKey(deps.config.BIPE_GROWTH_HMAC_SECRET), userId)]);
+    }
     await q("UPDATE theft_marks SET marked_by = 'deleted' WHERE marked_by = $1");
     await q("UPDATE theft_marks SET cleared_by = 'deleted' WHERE cleared_by = $1");
     // Invites the user made stay for the people who joined with them, without the maker.
     await q("UPDATE invites SET created_by = NULL, name = NULL, revoked_at = COALESCE(revoked_at, now()) WHERE created_by = $1");
+    // Group links the user made stop working and lose their maker (ADR 0184). The user's own joins go.
+    await q("UPDATE group_links SET created_by = NULL, revoked_at = COALESCE(revoked_at, now()) WHERE created_by = $1");
+    await q("DELETE FROM group_link_joins WHERE user_id = $1");
     for (const table of [
       "signups",
       "account_secrets",
@@ -354,6 +364,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "phone_links",
       "invite_grants",
       "terms_acceptances",
+      "age_signals",
       "signup_replays",
       "support_rooms",
       "news_deliveries",
@@ -365,9 +376,11 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "link_nonces",
       "link_flows",
       "work_hours",
+      "notification_prefs",
       "profile_changes",
       "profile_snapshots",
       "kept_media",
+      "reach_daily",
     ]) {
       await q(`DELETE FROM ${table} WHERE user_id = $1`);
     }

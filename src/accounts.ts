@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { GroupLinks } from "./group-links.js";
 import type { Growth } from "./growth.js";
 import type { KeyAttestationVerifier } from "./key-attest.js";
 import type pg from "pg";
@@ -9,6 +10,7 @@ import { type Mailer, mailBody } from "./mailer.js";
 import type { Mas } from "./mas.js";
 import { accountRules, appString, type Lang, problemWithPin } from "./registry.js";
 import { newSecret, PinHasher, sameSecret, SECRET_PATTERN, secretHash } from "./secrets.js";
+import { ageSignalOf } from "./age.js";
 import { acceptedTermsVersion } from "./terms.js";
 import { linkState } from "./links.js";
 import { hasIndependentRecovery } from "./transfer.js";
@@ -39,6 +41,8 @@ export interface AccountDeps {
   verifyKeyAttestation?: KeyAttestationVerifier;
   /** Content-free pushes to the account's devices (bipe#171). Absent in the admin CLI: nothing is pushed. */
   push?: DevicePushDeps;
+  /** Group links (ADR 0184): invites an account made with a group code into its group. Absent in the admin CLI. */
+  groupLinks?: Pick<GroupLinks, "inviteNewAccount">;
 }
 
 type Queryable = Db | pg.PoolClient;
@@ -125,9 +129,17 @@ export async function verifyPin({ db, pins }: AccountDeps, userId: string, pin: 
   if (outcome.kind === "wrong") throw new ApiError("pin_wrong", undefined, { tries_left: outcome.left });
 }
 
-/** Signed-in device: set or change the PIN (biometric check on the device first, ADR 0057). */
-export async function setPin(deps: AccountDeps, userId: string, pin: string): Promise<void> {
+/**
+ * Signed-in device: set or change the PIN (biometric check on the device first, ADR 0057). A change needs the current
+ * PIN (bipe-chat/bipe#908), checked and counted like verifyPin, so a session alone cannot take the PIN.
+ */
+export async function setPin(deps: AccountDeps, userId: string, pin: string, oldPin?: string): Promise<void> {
   checkPinRule(pin);
+  const { rows: current } = await deps.db.query("SELECT 1 FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL", [userId]);
+  if (current.length > 0) {
+    if (oldPin === undefined) throw new ApiError("bad_request", "old_pin");
+    await verifyPin(deps, userId, oldPin);
+  }
   const hash = await deps.pins.hash(pin);
   const hadPin = await inTransaction(deps.db, async (client) => {
     const { rows } = await client.query<{ pin_hash: string | null }>("SELECT pin_hash FROM account_secrets WHERE user_id = $1 FOR UPDATE", [userId]);
@@ -177,10 +189,20 @@ export async function issueCredentials(
   return { user_id: userId, password, recovery_token: token };
 }
 
-/** Beta account (own password) moves to a hidden password; also for an app that lost its stored password. */
-export async function moveToDeviceFirst(deps: AccountDeps, userId: string): Promise<Credentials> {
-  const { rows } = await deps.db.query("SELECT 1 FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL", [userId]);
-  if (rows.length === 0) throw new ApiError("pin_not_set");
+/**
+ * Beta account (own password) moves to a hidden password, once. It needs the current PIN (bipe-chat/bipe#908): with a
+ * session alone, a thief or a phished web session would get a permanent password and lock the owner out. A
+ * device-first account that lost its password recovers with the token or email instead.
+ */
+export async function moveToDeviceFirst(deps: AccountDeps, userId: string, pin: string): Promise<Credentials> {
+  const { rows } = await deps.db.query<{ device_first: boolean }>(
+    "SELECT device_first FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL",
+    [userId],
+  );
+  const row = rows[0];
+  if (!row) throw new ApiError("pin_not_set");
+  if (row.device_first) throw new ApiError("already_device_first");
+  await verifyPin(deps, userId, pin);
   return inTransaction(deps.db, (client) => issueCredentials(deps, client, userId));
 }
 
@@ -238,7 +260,7 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
  * `deviceId`: the caller's device, so a waiting deletion says whether this device asked (ADR 0140).
  */
 export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts, deviceId: string | null = null) {
-  const [secrets, emails, recoveries, termsVersion, signupRow, links, independent, deletion] = await Promise.all([
+  const [secrets, emails, recoveries, termsVersion, signupRow, links, independent, deletion, age] = await Promise.all([
     db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
       "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
       [userId],
@@ -258,6 +280,7 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     linkState(db, userId),
     hasIndependentRecovery(db, userId),
     pendingDeletion(db, userId, deviceId),
+    ageSignalOf(db, userId),
   ]);
   const s = secrets.rows[0];
   const e = emails.rows[0];
@@ -291,6 +314,9 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     ...links,
     // ADR 0140: the waiting deletion. The device that asked shows a banner; every other device shows the alert.
     ...(deletion ? { deletion } : {}),
+    // ADR 0229: the band from the last OS age signal; without age_checked_at the app reads the OS and sends it.
+    age_band: age.band,
+    ...(age.checkedAt ? { age_checked_at: age.checkedAt.toISOString() } : {}),
   };
 }
 

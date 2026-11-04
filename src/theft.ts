@@ -2,6 +2,7 @@ import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import type { MasSession } from "./mas.js";
 import { theftRules } from "./registry.js";
+import { webDevicesApprovedBy } from "./weblink.js";
 
 // Theft protection (ADR 0044, ADR 0051, bipe#600, bipe#268; contract /v1/me/guardians, /v1/theft/*, /v1/theft-marks).
 // A guardian marks an account: the API locks the MAS user first, then ends every active session, so a thief cannot sign
@@ -179,9 +180,12 @@ export class Theft {
     for (const company of covered.filter((c) => c.company)) {
       try {
         const id = await this.masId(company.user_id);
+        // The phone's own device and the web sessions it approved (bipe#398). Other seats and their web sessions stay.
+        const web = await webDevicesApprovedBy(this.db, company.user_id, company.device_id);
         for (const session of await this.mas.activeSessions(id)) {
-          if (session.deviceId === company.device_id) await this.mas.finishSession(session);
+          if (session.deviceId && (session.deviceId === company.device_id || web.has(session.deviceId))) await this.mas.finishSession(session);
         }
+        await this.db.query("DELETE FROM web_links WHERE user_id = $1 AND approver_device_id = $2", [company.user_id, company.device_id]);
       } catch {
         failed = true;
       }
