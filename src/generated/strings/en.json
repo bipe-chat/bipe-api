@@ -1202,8 +1202,6 @@
     "bipe_help_licenses": "Open source licences",
     "bipe_help_versions": "Version history",
     "bipe_versions_note": "The release notes are in English.",
-    "bipe_versions_testing": "In testing",
-    "bipe_versions_released": "Released %1$s",
     "bipe_versions_build": "Build %1$s",
     "bipe_versions_kind_new": "New",
     "bipe_versions_kind_improved": "Improved",
