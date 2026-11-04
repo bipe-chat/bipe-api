@@ -224,7 +224,7 @@ export type WebQueueResult = { "token"?: string; "position": QueuePosition };
 export type QuoteLinkInput = { "lines": Array<QuoteLineInput>; /** UTC, with a trailing Z. */ "valid_until": string; "visit_service_id"?: string; "customer_name": string };
 
 /** link: the only copy. The server keeps a hash of its ID. */
-export type QuoteLinkResult = { "quote": Quote; "link": string };
+export type QuoteLinkResult = { "quote": Quote; "link": string; /** The name for the share text. */ "business_name": string };
 
 /** What the link shows, with no session. The current version only. */
 export type WebQuote = { "business_name": string; "customer_name": string; "status": ("offered" | "accepted" | "refused" | "expired"); "version": QuoteVersion };
