@@ -43,6 +43,7 @@ export function loadRegistries(root) {
     maps: read("registries/maps.json"),
     voiceTranscript: read("registries/voice-transcript.json"),
     chatArchive: read("registries/chat-archive.json"),
+    homeScore: read("registries/home-score.json"),
     dmSelection: read("registries/dm-selection.json"),
     dmPowerLevels: read("registries/dm-power-levels.json"),
     groupPowerLevels: read("registries/group-power-levels.json"),
@@ -70,6 +71,69 @@ export function loadRegistries(root) {
 
 function fail(msg) {
   throw new Error(`registry validation failed: ${msg}`);
+}
+
+// Mural home score (ADR 0246, registries/home-score.json). The formula reads these fields. Fails closed on a shape it does not know.
+export function validateHomeScore(h) {
+  const bad = (msg) => fail(`home-score: ${msg}`);
+  const exactKeys = (value, keys, where) => {
+    if (value === null || typeof value !== "object" || Array.isArray(value) || Object.keys(value).sort().join() !== [...keys].sort().join()) bad(`${where} must have exactly ${keys.join(", ")}`);
+  };
+  // A weight is a decimal with at most 4 places: U(x) = floor(x * 10000 + 0.5) loses nothing.
+  const weight = (x, where, min = 0) => {
+    if (typeof x !== "number" || !Number.isFinite(x) || x < min || x > 1 || Math.abs(x * 10000 - Math.round(x * 10000)) > 1e-6) bad(`${where} must be a decimal from ${min} to 1 with at most 4 places`);
+  };
+  const positiveInt = (x, where) => {
+    if (!Number.isSafeInteger(x) || x < 1) bad(`${where} must be a positive integer`);
+  };
+  exactKeys(h, ["$comment", "version", "weights", "unreadGroup", "tie", "recency", "unansweredMaxMinutes", "mutedFactor", "officialCap", "tiers", "tile", "model"], "the registry");
+  if (h.version !== 1) bad("version must be 1");
+  exactKeys(h.weights, ["mention", "unreadDirect", "unreadCompanyNoSeal", "unansweredDirect", "favourite"], "weights");
+  for (const [k, v] of Object.entries(h.weights)) weight(v, `weights.${k}`);
+  if (h.weights.unreadCompanyNoSeal >= h.weights.unreadDirect) bad("a company without a seal must weigh less than unreadDirect");
+  exactKeys(h.unreadGroup, ["min", "max", "logScale"], "unreadGroup");
+  weight(h.unreadGroup.min, "unreadGroup.min");
+  weight(h.unreadGroup.max, "unreadGroup.max");
+  weight(h.unreadGroup.logScale, "unreadGroup.logScale");
+  if (h.unreadGroup.min >= h.unreadGroup.max) bad("unreadGroup.min must be below max");
+  exactKeys(h.tie, ["max", "logScale", "windowDays"], "tie");
+  weight(h.tie.max, "tie.max");
+  weight(h.tie.logScale, "tie.logScale");
+  positiveInt(h.tie.windowDays, "tie.windowDays");
+  exactKeys(h.recency, ["max", "decayMinutes"], "recency");
+  weight(h.recency.max, "recency.max");
+  positiveInt(h.recency.decayMinutes, "recency.decayMinutes");
+  positiveInt(h.unansweredMaxMinutes, "unansweredMaxMinutes");
+  weight(h.mutedFactor, "mutedFactor");
+  if (h.mutedFactor === 0 || h.mutedFactor === 1) bad("mutedFactor must be between 0 and 1");
+  weight(h.officialCap, "officialCap");
+  if (!Array.isArray(h.tiers) || h.tiers.length !== 4) bad("tiers must list 4 tiers");
+  h.tiers.forEach((t, i) => {
+    exactKeys(t, ["tier", "minScore", "maxChats", "columns"], `tiers[${i}]`);
+    if (t.tier !== i + 1) bad(`tiers[${i}].tier must be ${i + 1}`);
+    weight(t.minScore, `tiers[${i}].minScore`);
+    if (Math.abs(t.minScore * 100 - Math.round(t.minScore * 100)) > 1e-6) bad(`tiers[${i}].minScore must have at most 2 places`);
+    if (i > 0 && t.minScore >= h.tiers[i - 1].minScore) bad("tier minScore must fall from tier to tier");
+    if (i === 2 ? t.maxChats !== null : !Number.isSafeInteger(t.maxChats) || t.maxChats < 1) bad(`tiers[${i}].maxChats: only tier 3 has no limit`);
+    if (i === 3 ? t.columns !== null : !Number.isSafeInteger(t.columns) || t.columns < 1) bad(`tiers[${i}].columns: only tier 4 has no columns`);
+  });
+  if (h.tiers[3].minScore !== 0) bad("tier 4 takes every other chat, so its minScore must be 0");
+  if (h.officialCap >= h.tiers[1].minScore) bad("officialCap must stay below tier 2");
+  exactKeys(h.tile, ["firstTileMessages", "secondTileMessages", "tier2Bubbles", "tier3TextLines"], "tile");
+  for (const [k, v] of Object.entries(h.tile)) positiveInt(v, `tile.${k}`);
+  const m = h.model;
+  exactKeys(m, ["status", "attention", "due", "maxWeight", "gistMaxLength", "dueMaxLength", "draftMaxLength"], "model");
+  if (m.status !== "unused-step-1") bad('model.status must be "unused-step-1" until step 3 of ADR 0246');
+  exactKeys(m.attention, ["reply", "decide", "fyi", "none"], "model.attention");
+  weight(m.attention.reply, "model.attention.reply");
+  weight(m.attention.decide, "model.attention.decide");
+  weight(m.attention.fyi, "model.attention.fyi");
+  weight(m.attention.none, "model.attention.none", -1);
+  if (m.attention.none >= 0) bad("model.attention.none must be negative");
+  weight(m.due, "model.due");
+  weight(m.maxWeight, "model.maxWeight");
+  if (Math.max(m.attention.reply, m.attention.decide, m.attention.fyi) + m.due > m.maxWeight + 1e-9) bad("model weights must fit in model.maxWeight");
+  for (const k of ["gistMaxLength", "dueMaxLength", "draftMaxLength"]) positiveInt(m[k], `model.${k}`);
 }
 
 // Age signals (bipe ADR 0229, registries/age-signals.json).
@@ -430,6 +494,7 @@ function validate(reg, phosphor) {
   if (reg.clearedChats.eventType !== "chat.bipe.cleared_chats") fail("cleared-chats: eventType must be chat.bipe.cleared_chats");
   if (reg.chatFavourites.version !== 1 || reg.chatFavourites.orderEventType !== "chat.bipe.favourites_order") fail("chat-favourites: orderEventType must be chat.bipe.favourites_order");
   if (!Number.isSafeInteger(reg.chatFavourites.orderMax) || reg.chatFavourites.orderMax < 1) fail("chat-favourites: orderMax must be a positive integer");
+  validateHomeScore(reg.homeScore);
   const du = reg.dataUse;
   if (!Number.isInteger(du.budgetMegabytesPerDay) || du.budgetMegabytesPerDay < 1 || typeof du.dataSaverDefault !== "boolean") fail("data-use: budgetMegabytesPerDay must be a positive integer and dataSaverDefault a boolean");
   validateBusinessTools(reg);
