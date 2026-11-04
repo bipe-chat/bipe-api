@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from "node:crypto";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import { normalizePhone, phoneRules } from "./registry.js";
+import { coreProvesPhone, normalizePhone, phoneRules } from "./registry.js";
 
 // Phone-number discovery, phase 0 (bipe/docs/phone-link.md). Lookup compares HMAC-SHA256 with a server secret.
 // The linked number itself is stored only encrypted (number_enc, ADR 0191) and goes back only to its owner in
@@ -152,7 +152,9 @@ export async function getDiscovery(db: Db, userId: string) {
  */
 export async function linkPhone(db: Db, hasher: PhoneHasher, userId: string, raw: string, force: boolean): Promise<string> {
   const e164 = normalizePhone(raw);
-  if (!e164) throw new Error("not a Brazilian mobile number");
+  if (!e164) throw new Error("not a valid mobile number");
+  // ADR 0197: a number is proved or absent. A person with another number is found by handle, QR or invite.
+  if (!coreProvesPhone(e164)) throw new Error("this region does not prove numbers of this country");
   const hash = hasher.hash(e164);
   const sealed = hasher.seal(e164);
   const client = await db.connect();
