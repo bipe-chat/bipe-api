@@ -255,7 +255,7 @@ export async function saveSettings(db: Db, apiUrl: string, businessId: string, b
     const services = (await serviceRows(db, businessId)).filter((s) => s.active && (s.agenda_ids ?? []).some((id) => active.has(id)));
     if (!services.length) throw new ApiError("bad_request", "incomplete");
   }
-  await db.query("UPDATE agenda_settings SET published = $2, time_zone = $3 WHERE business_id = $1", [businessId, body.published, body.time_zone]);
+  await db.query("UPDATE agenda_settings SET published = $2, time_zone = $3, tool_off = (tool_off AND NOT $2) WHERE business_id = $1", [businessId, body.published, body.time_zone]);
   return agendaState(db, apiUrl, businessId);
 }
 

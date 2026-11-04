@@ -57,6 +57,17 @@ export async function waitlistReport(db: Db) {
   };
 }
 
+/** User numbers (signups.user_number): the last number given, the accounts that exist, the numbered accounts deleted. */
+export async function accountCount(db: Db) {
+  // One statement, one snapshot: the counter and the rows agree.
+  const { rows } = await db.query<{ last: string; accounts: number }>(
+    "SELECT (SELECT last FROM user_number_counter) AS last, (SELECT count(*)::int FROM signups) AS accounts",
+  );
+  const last = Number(rows[0]!.last);
+  const accounts = rows[0]!.accounts;
+  return { min_cell: MIN_CELL, last_number: cell(last), accounts: cell(accounts), deleted: cell(last - accounts) };
+}
+
 /** CNPJ claims (bipe#375, ADR 0042): business records, the same rows as `business list`. */
 export async function businessReport(db: Db) {
   const { rows } = await db.query<{

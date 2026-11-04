@@ -334,6 +334,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     // user made or cleared for someone else stay for that account, without the user's ID.
     await q("DELETE FROM guardians WHERE owner_id = $1 OR guardian_id = $1");
     await q("DELETE FROM account_phones WHERE user_id = $1");
+    await q("DELETE FROM web_links WHERE user_id = $1");
     await q("UPDATE theft_marks SET root_id = NULL WHERE root_id IN (SELECT id FROM theft_marks WHERE user_id = $1)");
     await q("DELETE FROM theft_marks WHERE user_id = $1");
     // ADR 0164: the voice uploads stay registered without their owner, so the purge still deletes the files.
@@ -347,6 +348,9 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q("UPDATE theft_marks SET cleared_by = 'deleted' WHERE cleared_by = $1");
     // Invites the user made stay for the people who joined with them, without the maker.
     await q("UPDATE invites SET created_by = NULL, name = NULL, revoked_at = COALESCE(revoked_at, now()) WHERE created_by = $1");
+    // Group links the user made stop working and lose their maker (ADR 0184). The user's own joins go.
+    await q("UPDATE group_links SET created_by = NULL, revoked_at = COALESCE(revoked_at, now()) WHERE created_by = $1");
+    await q("DELETE FROM group_link_joins WHERE user_id = $1");
     for (const table of [
       "signups",
       "account_secrets",
@@ -360,6 +364,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "phone_links",
       "invite_grants",
       "terms_acceptances",
+      "age_signals",
       "signup_replays",
       "support_rooms",
       "news_deliveries",
@@ -371,6 +376,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "link_nonces",
       "link_flows",
       "work_hours",
+      "notification_prefs",
       "profile_changes",
       "profile_snapshots",
       "kept_media",

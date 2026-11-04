@@ -3,12 +3,14 @@
 const KINDS = ["link", "choice", "switch", "info", "url", "action", "destructive"];
 const GATE = /^(ios|android|flag:[A-Za-z]+|planned:\d+)$/;
 const KEY = /^[a-z][A-Za-z]*$/;
+const ICON = /^[a-z]+(-[a-z]+)*$/;
 
 function fail(msg) {
   throw new Error(`registry validation failed: settings: ${msg}`);
 }
 
-export function validateSettings(reg) {
+/** `phosphor`: the icon names of bipe-app tools/phosphor.json, when that checkout is next to this repo. */
+export function validateSettings(reg, phosphor) {
   const s = reg.settings;
   const has = (key) => key in reg.strings.strings && key in reg.stringsEn.strings;
   const needString = (key, where) => {
@@ -23,6 +25,10 @@ export function validateSettings(reg) {
     groups.add(g.key);
     needString(g.title, g.key);
     if (g.screen !== undefined && g.screen !== "element") fail(`${g.key}: screen must be "element"`);
+    if (s.root.includes(g.key) !== (g.icon !== undefined)) fail(`${g.key}: a root group and only a root group has an icon`);
+    if (g.icon !== undefined && (!ICON.test(g.icon) || (phosphor && !phosphor.includes(g.icon)))) {
+      fail(`${g.key}: icon "${g.icon}" is not in bipe-app tools/phosphor.json`);
+    }
     if (g.screen === "element" && g.sections.length) fail(`${g.key}: an element screen lists no rows`);
     const sections = new Set();
     for (const sec of g.sections) {
@@ -76,6 +82,13 @@ ${s.groups.map((g) => `    case ${g.key}`).join("\n")}
     public var title: String {
         switch self {
 ${s.groups.map((g) => `        case .${g.key}: ${loc(g.title)}`).join("\n")}
+        }
+    }
+
+    /// The Phosphor icon name of the root row (bipe-app PhosphorIcon raw value). nil for \`profile\`.
+    public var icon: String? {
+        switch self {
+${s.groups.map((g) => `        case .${g.key}: ${opt(g.icon)}`).join("\n")}
         }
     }
 
@@ -147,6 +160,18 @@ ${rows.filter(({ r }) => r.url).map(({ r, id }) => `        case .${id}: URL(str
         }
     }
 }
+
+/// The bipe.chat pages of \`urls\`, for a screen that links a page outside a url row.
+public enum BipeSettingsUrl: String, CaseIterable, Sendable {
+${Object.keys(s.urls).map((k) => `    case ${k}`).join("\n")}
+
+    /// The page in the app language ("pt" or "en").
+    public func url(language: String) -> URL? {
+        switch self {
+${Object.entries(s.urls).map(([k, u]) => `        case .${k}: URL(string: language == "pt" ? ${quote(u.pt)} : ${quote(u.en)})`).join("\n")}
+        }
+    }
+}
 `;
   }
   // Kotlin
@@ -181,6 +206,15 @@ ${rows.map(({ g, r, id }) => `    ${snake(id)}(${quote(`${g.key}.${r.key}`)}, Bi
     fun url(language: String): String? = if (language == "pt") urlPt else urlEn
 }
 
+/** The bipe.chat pages of \`urls\`, for a screen that links a page outside a url row. */
+enum class BipeSettingsUrl(val pt: String, val en: String) {
+${Object.entries(s.urls).map(([k, u]) => `    ${snake(k)}(${quote(u.pt)}, ${quote(u.en)}),`).join("\n")}
+    ;
+
+    /** The page in the app language ("pt" or "en"). */
+    fun url(language: String): String = if (language == "pt") pt else en
+}
+
 data class BipeSettingsSection(
     val key: String,
     @StringRes val title: Int?,
@@ -190,10 +224,12 @@ data class BipeSettingsSection(
 
 enum class BipeSettingsGroup(
     @StringRes val title: Int,
+    /** The Phosphor icon id of the root row (bipe-app PhosphorIcon.id). null for [PROFILE]. */
+    val icon: String?,
     /** True when the group keeps its Element screen and lists no rows here. */
     val usesElementScreen: Boolean,
 ) {
-${s.groups.map((g) => `    ${snake(g.key)}(${res(g.title)}, ${g.screen === "element"}),`).join("\n")}
+${s.groups.map((g) => `    ${snake(g.key)}(${res(g.title)}, ${g.icon ? quote(g.icon) : "null"}, ${g.screen === "element"}),`).join("\n")}
     ;
 
     val sections: List<BipeSettingsSection>

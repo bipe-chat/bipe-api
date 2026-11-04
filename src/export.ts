@@ -24,9 +24,9 @@ const all = async <T extends Record<string, unknown>>(db: Db, sql: string, userI
   (await db.query<T>(sql, [userId])).rows;
 
 export async function exportData(db: Db, growth: Growth, userId: string, now = new Date(), phones?: PhoneHasher) {
-  const profile = await one<{ enabled: boolean; name: string; bio: string; photo: Buffer | null; updated_at: Date }>(
+  const profile = await one<{ enabled: boolean; name: string; bio: string; socials: Record<string, string>; photo: Buffer | null; updated_at: Date }>(
     db,
-    "SELECT enabled, name, bio, photo, updated_at FROM public_profiles WHERE user_id = $1",
+    "SELECT enabled, name, bio, socials, photo, updated_at FROM public_profiles WHERE user_id = $1",
     userId,
   );
   return {
@@ -35,7 +35,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     generated_at: now.toISOString(),
     user_id: userId,
     not_included: ["messages", "contacts", "media"],
-    sign_up: await one(db, "SELECT created_at, account_type FROM signups WHERE user_id = $1", userId),
+    sign_up: await one(db, "SELECT created_at, account_type, user_number FROM signups WHERE user_id = $1", userId),
     account: await one(
       db,
       `SELECT device_first, pin_hash IS NOT NULL AS pin_set, pin_set_at, pin_wrong_tries, pin_blocked_at,
@@ -63,6 +63,8 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     // bipe#531: the iPhones that moved their keychain items before the App Store transfer.
     keychain_moves: await all(db, "SELECT device_id, moved_at FROM keychain_moves WHERE user_id = $1 ORDER BY moved_at", userId),
     work_hours: await one(db, "SELECT enabled, time_zone, days, updated_at FROM work_hours WHERE user_id = $1", userId),
+    // bipe-chat/bipe#967: the join push switches.
+    notification_prefs: await one(db, "SELECT invite_joined, group_link_joined, updated_at FROM notification_prefs WHERE user_id = $1", userId),
     // ADR 0096: the provider and the dates only. The subject hash is keyed and stays out.
     linked_accounts: await all(db, "SELECT provider, linked_at FROM account_links WHERE user_id = $1 ORDER BY provider", userId),
     link_events: await all(db, "SELECT provider, change, at FROM link_events WHERE user_id = $1 ORDER BY at", userId),
@@ -79,6 +81,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       enabled: profile.enabled,
       name: profile.name,
       bio: profile.bio,
+      socials: profile.socials,
       photo_jpeg_base64: profile.photo ? profile.photo.toString("base64") : null,
       updated_at: profile.updated_at,
     },
@@ -92,6 +95,13 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       userId,
     ),
     invite_grants: await one(db, "SELECT extra FROM invite_grants WHERE user_id = $1", userId),
+    // Group links (ADR 0184): the links the caller made (no code hash) and the links the caller came in with.
+    group_links_created: await all(
+      db,
+      "SELECT id, room_id, signs_up, signups, created_at, expires_at, revoked_at FROM group_links WHERE created_by = $1 ORDER BY created_at",
+      userId,
+    ),
+    group_link_joins: await all(db, "SELECT link_id, signed_up, joined_at FROM group_link_joins WHERE user_id = $1 ORDER BY joined_at", userId),
     invite_connections: (await inviteConnections(db, userId)).user_ids,
     business: await one(
       db,
@@ -114,6 +124,8 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       "SELECT domain, verified_at, last_checked_at FROM business_domains WHERE user_id = $1 ORDER BY domain",
       userId,
     ),
+    // ADR 0229: the age band from the OS signal, its source and time. Bipe keeps no range and no date of birth.
+    age_signal: await one(db, "SELECT band, source, method, checked_at FROM age_signals WHERE user_id = $1", userId),
     terms_accepted: await all(
       db,
       "SELECT version, source, accepted_at FROM terms_acceptances WHERE user_id = $1 ORDER BY accepted_at",
@@ -186,12 +198,13 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
   };
 }
 
-/** Guardians the caller chose, the caller's marks and phone records (bipe#600). */
+/** Guardians the caller chose, the caller's marks, phone records (bipe#600) and the web sessions its phones approved (bipe#398). */
 async function theftExport(db: Db, userId: string) {
   return {
     guardians: await all(db, "SELECT guardian_id, added_at FROM guardians WHERE owner_id = $1 ORDER BY added_at", userId),
     marks: await all(db, "SELECT stolen_at, cleared_at FROM theft_marks WHERE user_id = $1 ORDER BY stolen_at", userId),
     phones: await all(db, "SELECT device_id, seen_at FROM account_phones WHERE user_id = $1 ORDER BY seen_at", userId),
+    web_links: await all(db, "SELECT web_device_id, approver_device_id, linked_at FROM web_links WHERE user_id = $1 ORDER BY linked_at", userId),
   };
 }
 

@@ -4,6 +4,7 @@
   "accounts": {
     "support": { "userId": "@suporte:bipe.net.br", "handle": "suporte" },
     "news": { "userId": "@bipe:bipe.net.br", "handle": "bipe" },
-    "company": { "userId": "@r2vrihsgkqd5:bipe.net.br", "handle": "bipechat" }
+    "company": { "userId": "@r2vrihsgkqd5:bipe.net.br", "handle": "bipechat" },
+    "groups": { "userId": "@grupos:bipe.net.br", "handle": "grupos" }
   }
 }
