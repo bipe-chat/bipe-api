@@ -24,6 +24,9 @@ export const voiceMediaRules = reg.voiceMedia as { transcriptDays: number; noTra
 /** Profile change facts (ADR 0049, registries/profile-facts.json). */
 export const profileFactRules = reg.profileFacts as { windowDays: number; newAccountDays: number; noticePairHours: number; noticeDays: number };
 
+/** First-contact outcomes for reach reputation (bipe-chat/bipe#845, registries/reach.json). */
+export const reachRules = reg.reach as { recipientDays: number; blockWindowDays: number; dailyCountDays: number; windowHours: number; tiers: string[] };
+
 /** Age signals (ADR 0229, registries/age-signals.json). */
 export const ageRules = reg.ageSignals as { bands: { id: string; min?: number; max?: number }[]; unknownBand: string; adultBand: string; recheckDays: number; sources: string[] };
 
