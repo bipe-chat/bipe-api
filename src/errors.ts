@@ -23,6 +23,7 @@ export type ErrorId =
   | "pin_wrong"
   | "pin_blocked"
   | "pin_not_set"
+  | "already_device_first"
   | "recovery_invalid"
   | "email_unavailable"
   | "terms_required"
@@ -33,6 +34,7 @@ export type ErrorId =
   | "brand_mark_limit"
   | "deletion_pending"
   | "keep_limit"
+  | "group_link_no_access"
   // Business tools (bipe-shared api/business-schemas.json AgendaError, BusinessToolError).
   | "slot_taken"
   | "hold_expired"
@@ -53,7 +55,9 @@ export type ErrorId =
   | "price_not_fixed"
   | "orders_closed"
   | "payment_requires_verified_business"
-  | "pix_charge_unavailable";
+  | "pix_charge_unavailable"
+  | "tool_needs_catalog"
+  | "tool_not_live";
 
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503> = {
   bad_request: 400,
@@ -79,6 +83,7 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   pin_wrong: 403,
   pin_blocked: 403,
   pin_not_set: 409,
+  already_device_first: 409,
   recovery_invalid: 403,
   email_unavailable: 503,
   terms_required: 403,
@@ -89,6 +94,7 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   brand_mark_limit: 409,
   deletion_pending: 409,
   keep_limit: 409,
+  group_link_no_access: 409,
   slot_taken: 409,
   hold_expired: 409,
   too_many_open_bookings: 422,
@@ -109,6 +115,8 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   orders_closed: 422,
   payment_requires_verified_business: 422,
   pix_charge_unavailable: 422,
+  tool_needs_catalog: 409,
+  tool_not_live: 422,
 };
 
 export class ApiError extends Error {

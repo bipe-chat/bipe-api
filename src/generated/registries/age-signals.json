@@ -1,0 +1,15 @@
+{
+  "$comment": "Age signals, ADR 0229 (bipe/docs/adr): the age comes from the OS, never from a date of birth. The apps read Apple Declared Age Range (iOS, with appleGates) or Google Play Age Signals (Android Play build) and send the range to PUT /v1/me/age. The server maps the range to one band with ageBand() in tools/lib/registries.mjs and stores only the band. Rule: the band that holds the lowest age the range allows (lower, or 0 when lower is absent). No range is unknown. bands: in order, youngest first, each from min to max inclusive; the first has no min and the last no max. adultBand: the only band that does not get the under-18 defaults (unknown gets them too). recheckDays: the app reads the OS signal again when the server's age_checked_at is older than this. sources: where a range came from; none means the OS gave nothing (declined, no signal, foss build).",
+  "version": 1,
+  "appleGates": [13, 16, 18],
+  "bands": [
+    { "id": "under_13", "max": 12 },
+    { "id": "13_15", "min": 13, "max": 15 },
+    { "id": "16_17", "min": 16, "max": 17 },
+    { "id": "18_plus", "min": 18 }
+  ],
+  "unknownBand": "unknown",
+  "adultBand": "18_plus",
+  "recheckDays": 7,
+  "sources": ["apple", "play", "none"]
+}

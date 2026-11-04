@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync, sign, verify } from "node:crypto";
 import { test } from "node:test";
 import { Theft } from "../dist/theft.js";
+import { endWebLinks } from "../dist/weblink.js";
 import { isolatedDatabase } from "./helpers/database.mjs";
 
 // bipe#600, bipe#268, ADR 0044, ADR 0051. Synthetic IDs only. A fake MAS keeps locks and sessions in memory.
@@ -94,4 +95,44 @@ test("a MAS failure keeps the mark and a retry finishes the steps", async (t) =>
   assert.ok(mas.state.locked.has("mas-ana"));
   await theft.clear("staff", ana, true);
   assert.equal(await theft.isMarked(ana), false);
+});
+
+// bipe#398: a company account on the stolen phone also loses the web sessions that phone approved.
+test("the mark ends the web sessions the stolen phone approved in a company account, not other seats' ones", async (t) => {
+  const db = await isolatedDatabase(t);
+  const mas = fakeMas();
+  const theft = new Theft(db, mas, signer, "example.test");
+  const loja = "@loja:example.test";
+  await theft.setGuardians(ana, [bia]);
+  await db.query("INSERT INTO signups (user_id, account_type) VALUES ($1, 'company')", [loja]);
+  await theft.recordPhone(ana, "DEV-A", "phone-fixture-0001");
+  await theft.recordPhone(loja, "DEV-L", "phone-fixture-0001");
+  await db.query("INSERT INTO web_links (user_id, web_device_id, approver_device_id) VALUES ($1, 'WEB-L', 'DEV-L'), ($1, 'WEB-SEAT', 'DEV-SEAT')", [loja]);
+  mas.state.sessions.push(
+    { kind: "compat-sessions", id: "phone", user: "mas-loja", deviceId: "DEV-L" },
+    { kind: "oauth2-sessions", id: "web", user: "mas-loja", deviceId: "WEB-L" },
+    { kind: "compat-sessions", id: "seat", user: "mas-loja", deviceId: "DEV-SEAT" },
+    { kind: "oauth2-sessions", id: "seat-web", user: "mas-loja", deviceId: "WEB-SEAT" },
+  );
+  await theft.mark(bia, ana);
+  assert.deepEqual(mas.state.sessions.filter((s) => s.finished).map((s) => s.id).sort(), ["phone", "web"]);
+  const { rows } = await db.query("SELECT web_device_id FROM web_links WHERE user_id = $1", [loja]);
+  assert.deepEqual(rows.map((r) => r.web_device_id), ["WEB-SEAT"]);
+});
+
+test("sign-out ends only the web sessions this device approved and forgets them", async (t) => {
+  const db = await isolatedDatabase(t);
+  const mas = fakeMas();
+  const loja = "@loja:example.test";
+  await db.query("INSERT INTO web_links (user_id, web_device_id, approver_device_id) VALUES ($1, 'WEB-1', 'DEV-L'), ($1, 'WEB-GONE', 'DEV-L'), ($1, 'WEB-SEAT', 'DEV-SEAT')", [loja]);
+  mas.state.sessions.push(
+    { kind: "oauth2-sessions", id: "w1", user: "mas-loja", deviceId: "WEB-1" },
+    { kind: "compat-sessions", id: "phone", user: "mas-loja", deviceId: "DEV-L" },
+    { kind: "oauth2-sessions", id: "seat-web", user: "mas-loja", deviceId: "WEB-SEAT" },
+  );
+  assert.equal(await endWebLinks(mas, db, "mas-loja", loja, "DEV-L"), 1);
+  assert.deepEqual(mas.state.sessions.filter((s) => s.finished).map((s) => s.id), ["w1"]);
+  assert.equal(await endWebLinks(mas, db, "mas-loja", loja, "DEV-L"), 0);
+  const { rows } = await db.query("SELECT web_device_id FROM web_links WHERE user_id = $1", [loja]);
+  assert.deepEqual(rows.map((r) => r.web_device_id), ["WEB-SEAT"]);
 });

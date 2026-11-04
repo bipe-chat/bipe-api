@@ -105,7 +105,7 @@ export class Growth {
   }
 
   /** An API-side event. Never throws and never logs the user: growth must not break a request. */
-  record(userId: string, event: "signup_done" | "invite_sent" | "invite_redeemed"): void {
+  record(userId: string, event: "signup_done" | "invite_sent" | "invite_redeemed" | "work_step_shown" | "work_step_done" | "work_sector_skipped"): void {
     if (!this.enabled) return;
     this.put(this.db, this.uid(userId), event, dayOf(Date.now())).catch((e) =>
       console.error(`growth: ${event} not recorded: ${(e as Error).message}`),

@@ -87,7 +87,7 @@ export type BusyImport = { "id": string; "agenda_id": string; /** UTC, with a tr
 
 export type AgendaError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed"); "reason"?: string };
 
-export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable"); "reason"?: string };
+export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live"); "reason"?: string };
 
 export type EmptyBusinessRequest = Record<string, never>;
 
@@ -160,3 +160,35 @@ export type OrderPolicy = { "time_zone": string; "weekdays": Array<number>; /** 
 
 /** Minimal order record. No address, notes or customer messages. One open order per customer per business; sent/accepted/ready are open. Payment choice and a charge link do not establish paid status. Retain for two years (ADR 0105). */
 export type Order = { "id": string; "business_id": string; "customer": BookingCustomer; "source": ("customer" | "owner"); /** UTC, with a trailing Z. */ "created_at": string; "lines": Array<OrderLine>; "total_amount_cents": number; "currency": "BRL"; "fulfilment": ("pickup" | "delivery"); "payment": ("in_person" | "pix"); "status": OrderStatus; "refuse_reason"?: OrderRefuseReason; "pix_charge_id"?: string; "quote_id"?: string };
+
+export type BusinessToolId = ("agenda" | "catalog" | "orders" | "quotes" | "queue");
+
+export type BusinessToolState = ("off" | "setup" | "live");
+
+/** One tool of the account. missing: what the tool needs before it can leave off (registries/business-tools.json needs). */
+export type BusinessToolStatus = { "id": BusinessToolId; "state": BusinessToolState; "missing"?: ("catalog_service" | "catalog_product") };
+
+/** The owner's read. sector is absent when the owner skipped the question or chose nothing yet. */
+export type BusinessTools = { "tools": Array<BusinessToolStatus>; "sector"?: string };
+
+/** The owner's write. Refused with tool_needs_catalog when a dependency is missing. */
+export type BusinessToolChange = { "state": BusinessToolState };
+
+/** The public read: live tools only (ADR 0194 point 2). */
+export type BusinessLiveTools = { "tools": Array<BusinessToolId> };
+
+/** One sector ID of registries/business-tools.json. Absent clears the sector (Pular). */
+export type WorkSector = { "sector"?: string };
+
+export type WorkSetupStep = { "id": ("profile" | "link" | "catalog" | "first_tool" | "seal" | "second_seat"); "done": boolean };
+
+/** The steps in the order of the sector, each computed by the server from records (ADR 0194 point 12). first_tool: the tool of the first_tool step and the first suggestion. */
+export type WorkSetup = { "steps": Array<WorkSetupStep>; "done_count": number; "first_tool": BusinessToolId };
+
+export type WorkSuggestion = { "id": string; "tool": BusinessToolId };
+
+/** From records only, never from chats (ADR 0194 point 15). A dismissed suggestion stays out for suggestionDismissDays. */
+export type WorkSuggestions = { "suggestions": Array<WorkSuggestion> };
+
+/** The Hoje section in one call: today's bookings in the business time zone, open orders, today's queue and the requests that wait for a quote. */
+export type BusinessToday = { "bookings": Array<Booking>; "orders": Array<Order>; "queue_open": boolean; "queue_waiting": number; "quote_requests": Array<QuoteRequest> };

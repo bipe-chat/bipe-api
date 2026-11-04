@@ -17,8 +17,11 @@ import { SignupLimits } from "./signup-limits.js";
 import { newChallenge } from "./attest.js";
 import { refreshKeyAttestationStatus } from "./key-attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
+import { Reach } from "./reach.js";
+import { ReachTiers, reachSettings } from "./reach-tiers.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
+import { recordAgeSignal } from "./age.js";
 import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
@@ -36,12 +39,12 @@ import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
 import { researchRoutes } from "./research/routes.js";
-import { finishWebLink, Geo } from "./weblink.js";
+import { finishWebLink, Geo, signOutWebLinks } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
 import { deleteLocalMedia, SynapseAdmin } from "./synapse-admin.js";
-import { businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
+import { accountCount, businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
 import { BrandMarks } from "./brand-marks.js";
@@ -51,10 +54,12 @@ import { SupportBot } from "./support.js";
 import { NewsBot } from "./news.js";
 import { startCvmRefresh } from "./cvm.js";
 import { currentBanner } from "./banner.js";
-import { invitePreviewHtml } from "./invite-preview.js";
+import { groupLinkPreviewHtml, invitePreviewHtml } from "./invite-preview.js";
+import { GroupLinks, MatrixGroupRooms, pruneGroupLinks } from "./group-links.js";
 import { MEDIA_ID, VoiceMedia } from "./voice-media.js";
 import { type DevicePushDeps, pushToDevices } from "./device-push.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
+import { getNotificationPrefs, pushJoin, setNotificationPrefs } from "./notification-prefs.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
 import { orderHousekeeping } from "./orders.js";
@@ -74,31 +79,46 @@ const auth = new MatrixAuth(config);
 const staff = new StaffGate(auth, mas);
 const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
-const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID] });
+const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID, config.GROUPS_USER_ID] });
 const news = new NewsBot(db, config);
+// First-contact outcomes (bipe#845): off without BIPE_GROWTH_HMAC_SECRET; reports need SYNAPSE_DATABASE_URL.
+const reach = new Reach(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 // Synapse admin API (account deletion, voice audio expiry, device pushes). Null without SYNAPSE_ADMIN_TOKEN.
 const synapseAdmin = config.SYNAPSE_ADMIN_TOKEN ? new SynapseAdmin(config.SYNAPSE_URL, config.SYNAPSE_ADMIN_TOKEN) : null;
-// Content-free pushes to an account's devices (approval nudge bipe#628, recovery alerts bipe#171).
+// Content-free pushes to an account's devices (approval nudge bipe#628, recovery alerts bipe#171, join pushes bipe#967).
 const devicePush: DevicePushDeps = { pushers: synapseAdmin ? (userId: string) => synapseAdmin.pushers(userId) : null, sygnalUrl: config.SYGNAL_URL ?? null };
 console.log(`device push: ${devicePush.pushers && devicePush.sygnalUrl ? "on" : "off (no SYNAPSE_ADMIN_TOKEN or SYGNAL_URL)"}`);
-const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news, push: devicePush };
+const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
+// Group links (ADR 0184, bipe#744): the groups service account invites people who have the link. Off without its token.
+const groupLinks = new GroupLinks({
+  db,
+  rooms: config.GROUPS_ACCESS_TOKEN ? new MatrixGroupRooms(config.SYNAPSE_URL, config.GROUPS_ACCESS_TOKEN, config.GROUPS_USER_ID) : null,
+  verified: async (userId) => (await badges.forUser(userId)).status === 200,
+  siteUrl: config.PUBLIC_SITE_URL,
+  joined: (creatorId, roomId) => void pushJoin(db, devicePush, creatorId, "group_link_joined", { bipe_room_id: roomId }),
+});
+const accounts: AccountDeps = { db, mas, config, pins: new PinHasher(config.BIPE_PIN_PEPPER), mailer: new Mailer(config), growth, news, push: devicePush, groupLinks };
 const linkDeps: LinkDeps = { ...accounts, links: new Links(config) };
 const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
-const badges = new Badges(db, { keyDir: config.BIPE_BADGE_KEY_DIR, synapseUrl: config.SYNAPSE_DATABASE_URL });
 const theft = new Theft(db, mas, badges, config.SERVER_NAME);
 const profileFacts = new ProfileFacts(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_INTAKE_KEY);
 const support = new SupportBot(db, config, intake);
 const bugReports: BugReportDeps = { db, intake, dir: config.BUG_REPORTS_DIR, publicApiUrl: config.PUBLIC_API_URL, support };
 console.log(`badges: ${badges.state}`);
+// Reach tiers and the first-contact budget (bipe#851). Budgets and thresholds: REACH_* in the environment.
+const reachTiers = new ReachTiers(db, reach, reachSettings(config), (id) => badges.verifiedBrand(id));
+console.log(`first-contact budget: ${reachTiers.state}`);
 const brandMarks = new BrandMarks(db, (id) => badges.verifiedBrand(id), config.PUBLIC_SITE_URL);
 console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" : "off (no STARLINGS_APP_INTAKE_KEY)"}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
 console.log(`growth events: ${growth.enabled ? (growth.synapseEnabled ? "api and synapse" : "api only (no SYNAPSE_DATABASE_URL)") : "off (no BIPE_GROWTH_HMAC_SECRET)"}`);
+console.log(`first-contact outcomes: ${reach.state}`);
 console.log(`support bot: ${support.enabled ? "on" : "off (no SUPPORT_ACCESS_TOKEN or SUPPORT_STORE_PASSPHRASE)"}`);
 console.log(`news bot: ${news.enabled ? "on" : "off (no NEWS_ACCESS_TOKEN or NEWS_STORE_PASSPHRASE)"}`);
+console.log(`group links: ${groupLinks.state}`);
 console.log(`cvm register: ${config.CVM_REFRESH ? "daily refresh on" : "off (CVM_REFRESH=false)"}`);
 console.log(`pin pepper: ${config.BIPE_PIN_PEPPER ? "set" : "NOT SET (PIN routes answer internal)"}; outgoing email: ${accounts.mailer.enabled ? "on" : "off"}`);
 console.log(`strategic page summaries: ${config.PROPOSTA_NOTIFY_EMAIL && accounts.mailer.enabled ? "on" : "off (no PROPOSTA_NOTIFY_EMAIL or no email)"}`);
@@ -108,6 +128,7 @@ const limits = {
   signup: new SignupLimits(config.SIGNUP_MAX_PER_HOUR),
   signupResume: new RateLimiter(30, 3_600_000),
   terms: new RateLimiter(10, 3_600_000),
+  age: new RateLimiter(10, 3_600_000),
   availability: new RateLimiter(60, 60_000),
   lookup: new RateLimiter(30, 60_000),
   resolve: new RateLimiter(120, 60_000),
@@ -126,6 +147,7 @@ const limits = {
   contactsLookup: new RateLimiter(30, 3_600_000),
   attestChallenge: new RateLimiter(20, 3_600_000),
   setMessaging: new RateLimiter(30, 3_600_000),
+  reach: new RateLimiter(60, 60_000),
   dataExport: new RateLimiter(3, 3_600_000),
   waitlist: new RateLimiter(5, 3_600_000),
   waitlistGlobal: new RateLimiter(500, 3_600_000),
@@ -182,6 +204,7 @@ const limits = {
   assistantResolve: new RateLimiter(60, 60_000),
   mcp: new RateLimiter(60, 60_000),
   workHours: new RateLimiter(30, 3_600_000),
+  notificationPrefs: new RateLimiter(30, 3_600_000),
   // gov.br signed challenge (bipe#543).
   govbrChallenge: new RateLimiter(10, 3_600_000),
   govbrDocument: new RateLimiter(20, 3_600_000),
@@ -191,6 +214,10 @@ const limits = {
   brandMarks: new RateLimiter(120, 60_000),
   brandMarkInvite: new RateLimiter(30, 3_600_000),
   brandMarkCode: new RateLimiter(60, 3_600_000),
+  // Group links (ADR 0184).
+  groupLinkCreate: new RateLimiter(30, 3_600_000),
+  groupLinkPreview: new RateLimiter(120, 3_600_000),
+  groupLinkJoin: new RateLimiter(30, 3_600_000),
 };
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
@@ -243,6 +270,19 @@ const pruneBrandMarks = () =>
     .catch((e) => console.error(`brand mark prune failed: ${(e as Error).message}`));
 pruneBrandMarks();
 setInterval(pruneBrandMarks, 24 * 3_600_000).unref();
+const pruneGroupLinkRows = () =>
+  void pruneGroupLinks(db)
+    .then((n) => n > 0 && console.log(`group links pruned: ${n}`))
+    .catch((e) => console.error(`group link prune failed: ${(e as Error).message}`));
+pruneGroupLinkRows();
+setInterval(pruneGroupLinkRows, 24 * 3_600_000).unref();
+const leaveEndedGroups = () =>
+  void groupLinks
+    .leaveUnused()
+    .then((n) => n > 0 && console.log(`group links: service account left ${n} groups`))
+    .catch((e) => console.error(`group link leave failed: ${(e as Error).message}`));
+leaveEndedGroups();
+setInterval(leaveEndedGroups, 3_600_000).unref();
 support.start();
 news.start();
 // Profile change facts (ADR 0049): Synapse profile sync every 15 minutes, 30-day retention.
@@ -283,7 +323,7 @@ const deletions: DeletionDeps = {
   ...accounts,
   synapse: synapseAdmin,
   bugReportsDir: config.BUG_REPORTS_DIR,
-  serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID],
+  serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID, config.GROUPS_USER_ID],
 };
 console.log(`account deletion job: ${deletions.synapse ? "on" : "off (no SYNAPSE_ADMIN_TOKEN): requests wait"}`);
 const deletionJob = () => void runDueDeletions(deletions).catch((e) => console.error(`deletion job failed: ${(e as Error).message}`));
@@ -314,6 +354,21 @@ const purgeVoiceMedia = () =>
     .catch((e) => console.error(`voice audio purge failed: ${(e as Error).message}`));
 purgeVoiceMedia();
 setInterval(purgeVoiceMedia, 24 * 3_600_000).unref();
+// First-contact outcomes (bipe#845): user reports every 15 minutes; first contacts go after recipientDays (hourly).
+const syncReachReports = () =>
+  void reach
+    .syncReports()
+    .then((n) => n && console.log(`reach: user reports read: ${n}`))
+    .catch((e) => console.error(`reach report sync failed: ${(e as Error).message}`));
+syncReachReports();
+setInterval(syncReachReports, 15 * 60_000).unref();
+const pruneReach = () =>
+  void reach
+    .prune()
+    .then((r) => r.firstContacts + r.days > 0 && console.log(`reach rows pruned: ${r.firstContacts} first contacts, ${r.days} daily counts`))
+    .catch((e) => console.error(`reach prune failed: ${(e as Error).message}`));
+pruneReach();
+setInterval(pruneReach, 3_600_000).unref();
 const syncGrowth = () => void growth.sync().catch((e) => console.error(`growth sync failed: ${(e as Error).message}`));
 syncGrowth();
 setInterval(syncGrowth, 15 * 60_000).unref();
@@ -360,9 +415,18 @@ const SignupBody = z.object({
   account_type: z.enum(["personal", "company"]).optional(),
 });
 const TermsBody = z.object({ terms_version: z.string().regex(TERMS_VERSION_PATTERN) });
+const AgeYears = z.number().int().min(0).max(150);
+const AgeBody = z.object({
+  source: z.enum(["apple", "play", "none"]),
+  lower: AgeYears.optional(),
+  upper: AgeYears.optional(),
+  method: z.string().max(64).optional(),
+});
 const SignupResumeBody = z.object({ signup_key: z.string().regex(SECRET_PATTERN) });
 const HandleBody = z.object({ handle: z.string().max(64) });
 const PinBody = z.object({ pin: PinField });
+// bipe-chat/bipe#908: changing the PIN needs the current one when the account has a PIN.
+const PinChangeBody = z.object({ pin: PinField, old_pin: PinField.nullish() });
 const EmailBody = z.object({ email: z.email().max(254), lang: Lang.default("pt") });
 const TokenBody = z.object({ token: SecretField });
 const RedeemBody = z.object({ recovery_token: SecretField, pin: PinField });
@@ -386,13 +450,18 @@ const LinkWebBody = z.object({ app_id: z.enum(APP_IDS) });
 const LookupBody = z.object({ phones: z.array(z.string().max(64)).max(LOOKUP_MAX_PER_REQUEST) });
 const DiscoveryBody = z.object({ by_phone: z.boolean() });
 const ResolveBody = z.object({ user_ids: z.array(z.string().max(255)).max(100) });
-const GuardiansBody = z.object({ user_ids: z.array(z.string().max(255)).max(10) });
+const GuardiansBody = z.object({ user_ids: z.array(z.string().max(255)).max(10), pin: PinField });
 const PhoneBody = z.object({ phone_id: z.string().min(16).max(64) });
 const TheftMarksBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
 const ProfileFactsBody = z.object({ user_ids: z.array(z.string().max(255)).min(1).max(100) });
 const HandleChangesBody = z.object({ user_ids: z.array(z.string().max(255)).max(100), since: z.iso.datetime({ offset: true }).optional() });
 // Lengths are checked by problemWithProfile(); these caps only bound the request.
-const ProfileBody = z.object({ enabled: z.boolean(), name: z.string().max(400), bio: z.string().max(2000) });
+const ProfileBody = z.object({
+  enabled: z.boolean(),
+  name: z.string().max(400),
+  bio: z.string().max(2000),
+  socials: z.record(z.string().max(40), z.string().max(400)).optional(),
+});
 const PHOTO_PATH = "/v1/me/profile/photo";
 const BUG_REPORT_PATH = "/v1/bug-reports/submit";
 const GOVBR_DOCUMENT_PATH = /^\/v1\/verifications\/govbr\/[^/]+\/document$/;
@@ -415,14 +484,34 @@ const smallBody = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error
 const signatureBody = bodyLimit({ maxSize: 160 * 1024, onError: (c) => c.json({ error: "bad_request" }, 413) });
 const reportBody = bodyLimit({ maxSize: BODY_MAX_BYTES, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
 const govbrBody = bodyLimit({ maxSize: GOVBR_PDF_MAX_BYTES, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
+// An ignore list (bipe#845) can hold many IDs; only the Synapse module calls this route.
+const ignoredBody = bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
 const photoBody = bodyLimit({ maxSize: profileRules.photoMaxBytes, onError: (c) => c.json({ error: "photo_invalid", reason: "too_large" }, 413) });
 app.use("*", (c, next) => {
   if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
   if (c.req.path === PHOTO_PATH || CATALOG_PHOTO_PATH.test(c.req.path)) return photoBody(c, next);
   if (GOVBR_DOCUMENT_PATH.test(c.req.path)) return govbrBody(c, next);
+  if (c.req.path === "/internal/v1/first-contacts/ignored") return ignoredBody(c, next);
   return smallBody(c, next);
 });
+
+// The own web client (ADR 0216, ADR 0225) calls the same routes as the apps, from WEB_CLIENT_ORIGIN, with the
+// account's Matrix token in authorization. Only that origin gets CORS here; staff and internal routes never do.
+const webOrigin = config.WEB_CLIENT_ORIGIN.replace(/\/$/, "");
+const siteOrigin = config.PUBLIC_SITE_URL.replace(/\/$/, "");
+/** Public routes the site and the web client both read. */
+const siteAndWeb = [siteOrigin, webOrigin];
+const webCors = cors({
+  origin: (origin) => (origin === webOrigin ? origin : null),
+  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowHeaders: ["authorization", "content-type", "x-matrix-server-name"],
+  maxAge: 600,
+});
+// Only a request from the web origin reaches webCors, so the site's own preflights keep their route's CORS.
+app.use("/v1/*", (c, next) =>
+  c.req.header("origin") === webOrigin && !c.req.path.startsWith("/v1/admin/") ? webCors(c, next) : next(),
+);
 
 /** Core routes (ADR 0168, bipe-chat/bipe#646): a token of this homeserver, or an OpenID token with X-Matrix-Server-Name. */
 function coreSession(c: Context): Promise<{ userId: string; deviceId: string | null }> {
@@ -518,10 +607,20 @@ app.post("/v1/me/terms", async (c) => {
   return c.body(null, 204);
 });
 
+// ADR 0229: the OS age range. The server keeps only the band.
+app.put("/v1/me/age", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.age.check(userId);
+  const body = await parse(c, AgeBody);
+  if (body.lower !== undefined && body.upper !== undefined && body.lower > body.upper) throw new ApiError("bad_request", "range");
+  return c.json({ age_band: await recordAgeSignal(db, userId, body) });
+});
+
 app.put("/v1/me/pin", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.pinSet.check(userId);
-  await setPin(accounts, userId, (await parse(c, PinBody)).pin);
+  const body = await parse(c, PinChangeBody);
+  await setPin(accounts, userId, body.pin, body.old_pin ?? undefined);
   return c.body(null, 204);
 });
 
@@ -533,12 +632,20 @@ app.post("/v1/me/pin/check", async (c) => {
 });
 
 // Web sign-in approval on the phone (ADR 0118). Never log the IP.
-const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }) });
+const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }), kind: z.enum(["computer", "phone"]).optional() });
 app.post("/v1/web-link/finish", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   limits.webLinkFinish.check(userId);
-  const finished = await finishWebLink(mas, userId, (await parse(c, WebLinkFinishBody)).since);
+  const body = await parse(c, WebLinkFinishBody);
+  const finished = await finishWebLink(mas, userId, body.since, { db, deviceId, kind: body.kind });
   return c.json({ finished });
+});
+
+// The phone signs out the web sessions it approved before it leaves a company account (bipe#398).
+app.post("/v1/web-link/sign-out", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  limits.webLinkFinish.check(userId);
+  return c.json({ signed_out: await signOutWebLinks(mas, db, userId, deviceId) });
 });
 
 app.get("/v1/web-link/place", async (c) => {
@@ -553,13 +660,16 @@ app.get("/v1/web-link/place", async (c) => {
 app.post("/v1/me/device-first", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.credentials.check(userId);
+  const { pin } = await parse(c, PinBody);
   c.header("cache-control", "no-store");
-  return c.json(await moveToDeviceFirst(accounts, userId));
+  return c.json(await moveToDeviceFirst(accounts, userId, pin));
 });
 
 app.post("/v1/me/recovery-token", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.credentials.check(userId);
+  const { pin } = await parse(c, PinBody);
+  await verifyPin(accounts, userId, pin);
   c.header("cache-control", "no-store");
   return c.json(await rotateRecoveryToken(accounts, userId));
 });
@@ -747,7 +857,7 @@ app.post("/v1/links/callback/apple", async (c) => {
 
 
 // The invite page on the public site reads the preview from the browser.
-app.use("/v1/invites/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/invites/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 // The waitlist form on the public site posts from the browser.
 app.use("/v1/waitlist", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["POST"], allowHeaders: ["content-type"] }));
@@ -781,6 +891,50 @@ app.get("/v1/web/convite/:code", async (c) => {
   return c.html(await invitePreviewHtml(db, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("code")));
 });
 
+// Group links (ADR 0184, bipe#744). The group link page on the public site reads the preview from the browser.
+app.use("/v1/group-links/:code", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
+
+app.get("/v1/group-links/:code", async (c) => {
+  limits.groupLinkPreview.check(clientIp(c));
+  return c.json(await groupLinks.preview(c.req.param("code")));
+});
+
+app.post("/v1/group-links/:code/join", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.groupLinkJoin.check(userId);
+  return c.json(await groupLinks.join(userId, c.req.param("code")));
+});
+
+// Link-preview crawlers only: the site edge routes them here for bipe.chat/g/<code>.
+app.get("/v1/web/g/:code", async (c) => {
+  limits.invitePreviewHead.check(clientIp(c));
+  c.header("Cache-Control", "no-store");
+  c.header("Referrer-Policy", "no-referrer");
+  c.header("X-Robots-Tag", "noindex");
+  return c.html(groupLinkPreviewHtml(config.PUBLIC_SITE_URL, await groupLinks.preview(c.req.param("code"))));
+});
+
+const GroupLinkBody = z.object({ room_id: z.string().min(2).max(255) });
+
+app.get("/v1/me/group-links", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  const roomId = c.req.query("room_id");
+  if (!roomId || roomId.length > 255) throw new ApiError("bad_request", "room_id");
+  return c.json(await groupLinks.list(userId, roomId));
+});
+
+app.post("/v1/me/group-links", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.groupLinkCreate.check(userId);
+  return c.json(await groupLinks.create(userId, (await parse(c, GroupLinkBody)).room_id), 201);
+});
+
+app.delete("/v1/me/group-links/:id", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await groupLinks.revoke(userId, c.req.param("id"));
+  return c.body(null, 204);
+});
+
 app.get("/v1/me/invites", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   return c.json(await myInvites(db, userId, invitePolicy));
@@ -799,6 +953,17 @@ const MayInviteBody = z.object({
   inviter: z.string().max(255),
   invitee: z.string().max(255),
   shares_room: z.boolean(),
+  // Sent by bipe_messaging from bipe#845 on; an older module sends none.
+  room_id: z.string().max(255).optional(),
+});
+const MemberChangeBody = z.object({
+  room_id: z.string().min(1).max(255),
+  user_id: z.string().min(1).max(255),
+  membership: z.enum(["join", "leave"]),
+});
+const IgnoredUsersBody = z.object({
+  user_id: z.string().min(1).max(255),
+  ignored_users: z.array(z.string().max(255)).max(10_000),
 });
 
 app.get("/v1/me/messaging", async (c) => {
@@ -812,6 +977,14 @@ app.put("/v1/me/messaging", async (c) => {
   const { who_can_message } = await parse(c, MessagingBody);
   await setPolicy(db, userId, who_can_message);
   return c.json({ who_can_message });
+});
+
+// Reach tier and first-contact budget (bipe#851). No score: the tier, the budget and the step that raises it.
+app.get("/v1/me/reach", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.reach.check(userId);
+  c.header("cache-control", "no-store");
+  return c.json(await reachTiers.status(userId));
 });
 
 // Data export (LGPD art. 18, ADR 0112). The app asks for a biometric check first.
@@ -840,11 +1013,32 @@ app.post(BUG_REPORT_PATH, async (c) => {
 // Called by the Synapse module before every invite. Caddy does not route /internal/*.
 app.post("/internal/v1/may-invite", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
-  const { inviter, invitee, shares_room } = await parse(c, MayInviteBody);
+  const { inviter, invitee, shares_room, room_id } = await parse(c, MayInviteBody);
   // The support account (ADR 0114) opens one support room per user, whatever their policy.
-  // So does the news account (ADR 0117): one read-only room per user.
-  if (inviter === config.SUPPORT_USER_ID || inviter === config.NEWS_USER_ID) return c.json({ allow: true, policy: await policyOf(db, invitee) });
-  return c.json(await mayInvite(db, inviter, invitee, shares_room));
+  // So does the news account (ADR 0117): one read-only room per user. The groups account (ADR 0184) invites only
+  // people who asked with a group link.
+  if (inviter === config.SUPPORT_USER_ID || inviter === config.NEWS_USER_ID || inviter === config.GROUPS_USER_ID) {
+    return c.json({ allow: true, policy: await policyOf(db, invitee) });
+  }
+  // bipe#851: reason reach_limit when the inviter's first-contact budget is used; the module answers M_LIMIT_EXCEEDED.
+  return c.json(await mayInvite(db, inviter, invitee, shares_room, { reach, tiers: reachTiers, roomId: room_id ?? null }));
+});
+
+// First-contact outcomes (bipe#845), from bipe_messaging: the invitee's join or own leave, and ignore-list changes.
+// The module drops a failed call; it never blocks the event. Never log the user IDs.
+app.post("/internal/v1/first-contacts/membership", async (c) => {
+  checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
+  const { room_id, user_id, membership } = await parse(c, MemberChangeBody);
+  await reach.membership(room_id, user_id, membership);
+  // A JSON body: the module's client parses every answer as JSON.
+  return c.json({});
+});
+
+app.post("/internal/v1/first-contacts/ignored", async (c) => {
+  checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
+  const { user_id, ignored_users } = await parse(c, IgnoredUsersBody);
+  await reach.ignored(user_id, ignored_users);
+  return c.json({});
 });
 
 // Support DM (ADR 0114): the caller's room with the support account.
@@ -866,6 +1060,20 @@ app.put("/v1/me/work-hours", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.workHours.check(userId);
   return c.json(await setWorkHours(db, userId, await parse(c, WorkHoursBody)));
+});
+
+// Join pushes (bipe-chat/bipe#967): whether the account gets invite_joined and group_link_joined.
+const NotificationPrefsBody = z.object({ invite_joined: z.boolean().optional(), group_link_joined: z.boolean().optional() });
+
+app.get("/v1/me/notification-prefs", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await getNotificationPrefs(db, userId));
+});
+
+app.put("/v1/me/notification-prefs", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.notificationPrefs.check(userId);
+  return c.json(await setNotificationPrefs(db, userId, await parse(c, NotificationPrefsBody)));
 });
 
 // Voice audio expiry (ADR 0164, bipe#622). Path: the server name and media ID of the mxc URI.
@@ -1027,6 +1235,8 @@ app.put("/v1/me/guardians", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.theftAction.check(userId);
   const body = await parse(c, GuardiansBody);
+  // bipe-chat/bipe#908: a session alone cannot replace the guardians.
+  await verifyPin(accounts, userId, body.pin);
   return c.json(await theft.setGuardians(userId, body.user_ids));
 });
 
@@ -1073,7 +1283,7 @@ app.get("/v1/handles/:handle", async (c) => {
 });
 
 // Public profiles (ADR 0041). The profile page on the public site reads them from the browser.
-app.use("/v1/profiles/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/profiles/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 app.get("/v1/profiles/:handle", async (c) => {
   limits.profile.check(clientIp(c));
@@ -1095,7 +1305,7 @@ app.get("/v1/profiles/:handle/photo", async (c) => {
 
 // Badges (bipe#399, ADR 0123). Public: anyone who sees a message may check the sender's seal. Apps verify the
 // envelope locally and never trust the status alone.
-app.use("/v1/badges/*", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/badges/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 
 app.get("/v1/badges/:userId", async (c) => {
   limits.badge.check(clientIp(c));
@@ -1110,7 +1320,7 @@ app.get("/v1/badges/:userId", async (c) => {
 });
 
 // Assistants as chat members (ADR 0210, bipe#867). Public like the badge: anyone who sees the account may check it.
-app.use("/v1/assistants/:userId", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/assistants/:userId", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 app.post("/v1/assistants/resolve", smallBody, async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.assistantResolve.check(userId);
@@ -1126,7 +1336,7 @@ app.get("/v1/assistants/:userId", async (c) => {
 
 // Brand marks (ADR 0162, bipe#483). Public like the badge: customers check a reseller's marks. The apps verify each
 // envelope locally and keep the answer for at most recheckMinutes.
-app.use("/v1/brand-marks/:userId", cors({ origin: config.PUBLIC_SITE_URL.replace(/\/$/, ""), allowMethods: ["GET"] }));
+app.use("/v1/brand-marks/:userId", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 app.get("/v1/brand-marks/:userId", async (c) => {
   limits.brandMarks.check(clientIp(c));
   const userId = c.req.param("userId");
@@ -1205,7 +1415,7 @@ app.put(PHOTO_PATH, async (c) => {
   limits.setProfilePhoto.check(userId);
   if (c.req.header("content-type")?.split(";")[0]?.trim() !== "image/jpeg") throw new ApiError("photo_invalid", "not_jpeg");
   const body = new Uint8Array(await c.req.arrayBuffer());
-  return c.json(await setPhoto(db, config.PUBLIC_API_URL, userId, body));
+  return c.json(await setPhoto(db, config.PUBLIC_API_URL, userId, body, c.req.query("source")));
 });
 
 app.delete(PHOTO_PATH, async (c) => {
@@ -1392,6 +1602,7 @@ staffGet("/v1/admin/experiments", () => experimentsReport(db));
 staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));
 staffGet("/v1/admin/retention", () => staffReports.retention());
+staffGet("/v1/admin/accounts", () => accountCount(db));
 // bipe#531: share of active iOS accounts with a way back that survives the App Store transfer.
 staffGet("/v1/admin/transfer-readiness", (c) => {
   const days = z.coerce.number().int().min(1).max(90).default(30).safeParse(c.req.query("days"));
@@ -1424,7 +1635,7 @@ staffGet("/v1/admin/reports", (c) => {
 });
 
 // Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
-app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, clientIp }));
+app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp, stepEvents: growth }));
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 app.onError((err, c) => {

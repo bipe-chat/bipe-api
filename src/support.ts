@@ -27,26 +27,9 @@ export class SupportBot extends EncryptedBot {
       passphrase: config.SUPPORT_STORE_PASSPHRASE,
       synapseUrl: config.SYNAPSE_URL,
       syncTable: "support_sync",
+      // The support DM shows the account's display name (ADR 0141).
+      displayName: appString("pt", "bipe_support_room_name"),
     });
-  }
-
-  protected override onReady(): void {
-    void this.ensureDisplayName().catch((e) => console.error(`support bot: display name failed: ${(e as Error).message}`));
-  }
-
-  /**
-   * The support DM shows the account's display name (ADR 0141), so the bot sets it to "Suporte Bipe"
-   * (bipe_support_room_name) at start. It writes only when the name differs: a change sends a member event into
-   * every room of the account. Returns true when it wrote the name.
-   */
-  async ensureDisplayName(): Promise<boolean> {
-    const wanted = appString("pt", "bipe_support_room_name");
-    const path = `/profile/${enc(this.userId)}/displayname`;
-    const current = await this.matrix<{ displayname?: string }>("GET", path).catch(() => null);
-    if (current?.displayname === wanted) return false;
-    await this.matrix("PUT", path, { displayname: wanted });
-    console.log("support bot: display name set");
-    return true;
   }
 
   // ---- Rooms -------------------------------------------------------------------------------------
