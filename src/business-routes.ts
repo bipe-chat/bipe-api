@@ -120,7 +120,6 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   app.get("/v1/me/business/today", async (c) => c.json(await tools.today(db, await owner(c, false))));
   app.get("/v1/businesses/:handle/tools", async (c) => c.json(await tools.liveTools(db, await publicBusiness(c))));
 
-<<<<<<< HEAD
   // ---- Parar de receber (ADR 0237) ----
   const stopTarget = (c: Context) => {
     const parsed = z.string().regex(/^@[^:\s]{1,255}:[^\s]{1,255}$/).safeParse(c.req.param("workAccount"));
@@ -135,8 +134,6 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   app.delete("/v1/business-stops/:workAccount", async (c) => c.json(await setStopped(db, await mine(c), stopTarget(c), false)));
 
   // ---- The shop on the web, no session (ADR 0195) ----
-=======
->>>>>>> origin/main
   // The limit counts per address on each shop; the key stays in memory only.
   const webWrite = async (c: Context) => {
     const businessId = await businessOf(db, c.req.param("handle")!);

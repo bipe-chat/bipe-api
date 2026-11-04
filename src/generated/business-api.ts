@@ -228,9 +228,6 @@ export type QuoteLinkResult = { "quote": Quote; "link": string; /** The name for
 
 /** What the link shows, with no session. The current version only. */
 export type WebQuote = { "business_name": string; "customer_name": string; "status": ("offered" | "accepted" | "refused" | "expired"); "version": QuoteVersion };
-<<<<<<< HEAD
 
 /** Whether the caller stopped this work account (ADR 0237). */
 export type BusinessStop = { "stopped": boolean };
-=======
->>>>>>> origin/main
