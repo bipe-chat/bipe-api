@@ -2,13 +2,13 @@
 // business, customer and time; the description and photos stay in the encrypted chat. Quote lines are business
 // text. A new version replaces the old one, which stays readable. Accepting turns the quote into a booking or an
 // order in the same transaction, so a retry cannot make a second one.
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { bookInTransaction } from "./agenda.js";
 import { inTransaction, isCompany, lockBusiness, type Queryable } from "./business-common.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import type { Quote, QuoteLine, QuoteRequest, QuoteVersion } from "./generated/business-api.js";
+import type { Quote, QuoteLine, QuoteRequest, QuoteVersion, WebQuote } from "./generated/business-api.js";
 import { insertOrder } from "./orders.js";
 
 export const RETENTION_DAYS = 730; // ADR 0106: the two years of ADR 0103.
@@ -38,9 +38,9 @@ export const AcceptBody = z.union([
 export const DeclineBody = z.object({ version: z.number().int().min(1) }).strict();
 
 type RequestRow = { id: string; business_id: string; customer_id: string; created_at: Date };
-type QuoteRow = { id: string; request_id: string; business_id: string; customer_id: string; status: "offered" | "accepted" | "refused"; current_version: number; booking_id: string | null; order_id: string | null };
+type QuoteRow = { id: string; request_id: string | null; business_id: string; customer_id: string | null; customer_name: string | null; link_hash: string | null; status: "offered" | "accepted" | "refused"; current_version: number; booking_id: string | null; order_id: string | null };
 type VersionRow = { quote_id: string; version: number; created_at: Date; valid_until: Date; lines: QuoteLine[]; total_amount_cents: string; visit_service_id: string | null };
-const QUOTE_COLUMNS = "id, request_id, business_id, customer_id, status, current_version, booking_id, order_id";
+const QUOTE_COLUMNS = "id, request_id, business_id, customer_id, customer_name, link_hash, status, current_version, booking_id, order_id";
 
 const requestJson = (r: RequestRow): QuoteRequest => ({ id: r.id, business_id: r.business_id, customer_id: r.customer_id, created_at: r.created_at.toISOString() });
 const versionJson = (v: VersionRow): QuoteVersion => ({
@@ -66,9 +66,11 @@ async function quotesJson(db: Queryable, rows: QuoteRow[]): Promise<Quote[]> {
     const expired = q.status === "offered" && !!current && current.valid_until.getTime() <= now;
     return {
       id: q.id,
-      request_id: q.request_id,
+      request_id: q.request_id ?? "",
       business_id: q.business_id,
-      customer_id: q.customer_id,
+      customer_id: q.customer_id ?? "",
+      ...(q.customer_name ? { customer_name: q.customer_name } : {}),
+      ...(q.link_hash ? { has_link: true } : {}),
       status: expired ? "expired" : q.status,
       current_version: q.current_version,
       versions: mine.map(versionJson),
@@ -240,6 +242,103 @@ export async function refuse(db: Db, businessId: string, customerId: string, quo
     if (body.version !== quote.current_version) throw new ApiError("quote_version_changed");
     const { rows } = await client.query<QuoteRow>(`UPDATE quotes SET status = 'refused', updated_at = now() WHERE id = $1 RETURNING ${QUOTE_COLUMNS}`, [quote.id]);
     return quoteJson(client, rows[0]!);
+  });
+}
+
+// ---- Shared as a link (ADR 0185, bipe#754): a name the owner typed, and the link as the only key. ----
+
+export const LinkBody = VersionBody.extend({ customer_name: z.string().trim().min(1).max(40) }).strict();
+
+const linkHash = (linkId: string) => createHash("sha256").update(linkId).digest("hex");
+
+/** Long and random; the server keeps only its hash, so a link shows once. */
+async function newLink(db: Queryable, quoteId: string): Promise<string> {
+  const linkId = randomBytes(24).toString("base64url");
+  await db.query("UPDATE quotes SET link_hash = $2, updated_at = now() WHERE id = $1", [quoteId, linkHash(linkId)]);
+  return linkId;
+}
+
+export async function createLinkQuote(db: Db, businessId: string, body: z.infer<typeof LinkBody>): Promise<{ quote: Quote; linkId: string }> {
+  return inTransaction(db, async (client) => {
+    const { lines, total } = await buildVersion(client, businessId, body);
+    const id = randomUUID();
+    await client.query(
+      "INSERT INTO quotes (id, business_id, customer_name, status, current_version) VALUES ($1, $2, $3, 'offered', 1)",
+      [id, businessId, body.customer_name],
+    );
+    await client.query(
+      "INSERT INTO quote_versions (quote_id, version, valid_until, lines, total_amount_cents, visit_service_id) VALUES ($1, 1, $2, $3, $4, $5)",
+      [id, body.valid_until, JSON.stringify(lines), total, body.visit_service_id ?? null],
+    );
+    const linkId = await newLink(client, id);
+    return { quote: await quoteJson(client, await quoteRow(client, "id = $1", [id])), linkId };
+  });
+}
+
+export async function renewLink(db: Db, businessId: string, quoteId: string): Promise<{ quote: Quote; linkId: string }> {
+  const row = await quoteRow(db, "id = $1 AND business_id = $2 AND customer_name IS NOT NULL", [quoteId, businessId]);
+  if (row.status !== "offered") throw new ApiError("quote_not_open", row.status);
+  const linkId = await newLink(db, quoteId);
+  return { quote: await quoteJson(db, await quoteRow(db, "id = $1", [quoteId])), linkId };
+}
+
+export async function revokeLink(db: Db, businessId: string, quoteId: string): Promise<Quote> {
+  await quoteRow(db, "id = $1 AND business_id = $2", [quoteId, businessId]);
+  await db.query("UPDATE quotes SET link_hash = NULL, updated_at = now() WHERE id = $1", [quoteId]);
+  return quoteJson(db, await quoteRow(db, "id = $1", [quoteId]));
+}
+
+async function linkRow(db: Queryable, businessId: string, linkId: string, lock = false): Promise<QuoteRow> {
+  return quoteRow(db, "link_hash = $1 AND business_id = $2", [linkHash(linkId), businessId], lock);
+}
+
+async function webQuote(db: Queryable, q: QuoteRow): Promise<WebQuote> {
+  const quote = await quoteJson(db, q);
+  const { rows } = await db.query<{ name: string | null; handle: string | null }>(
+    `SELECT (SELECT name FROM public_profiles WHERE user_id = $1 AND enabled AND name <> '') AS name,
+            (SELECT handle FROM handles WHERE user_id = $1) AS handle`,
+    [q.business_id],
+  );
+  return {
+    business_name: rows[0]?.name ?? (rows[0]?.handle ? `@${rows[0].handle}` : ""),
+    customer_name: q.customer_name ?? "",
+    status: quote.status,
+    version: quote.versions.find((v) => v.version === q.current_version)!,
+  };
+}
+
+export async function readLink(db: Queryable, businessId: string, linkId: string): Promise<WebQuote> {
+  return webQuote(db, await linkRow(db, businessId, linkId));
+}
+
+/** Makes a name-only order: pickup and pay on pickup. A quote with a visit makes no booking; the owner books it by hand. */
+export async function acceptLink(db: Db, businessId: string, linkId: string, version: number): Promise<WebQuote> {
+  return inTransaction(db, async (client) => {
+    await lockBusiness(client, businessId);
+    const quote = await linkRow(client, businessId, linkId, true);
+    if (quote.status === "accepted" && version === quote.current_version) return webQuote(client, quote);
+    const current = await openCurrent(client, quote, version);
+    const order = await insertOrder(client, {
+      businessId, customer: { name: quote.customer_name ?? "" }, source: "customer", lines: current.lines,
+      total: Number(current.total_amount_cents), fulfilment: "pickup", payment: "in_person", quoteId: quote.id,
+    });
+    await client.query("UPDATE orders SET web = true WHERE id = $1", [order.id]);
+    const { rows } = await client.query<QuoteRow>(
+      `UPDATE quotes SET status = 'accepted', order_id = $2, updated_at = now() WHERE id = $1 RETURNING ${QUOTE_COLUMNS}`,
+      [quote.id, order.id],
+    );
+    return webQuote(client, rows[0]!);
+  });
+}
+
+export async function refuseLink(db: Db, businessId: string, linkId: string, version: number): Promise<WebQuote> {
+  return inTransaction(db, async (client) => {
+    const quote = await linkRow(client, businessId, linkId, true);
+    if (quote.status === "refused") return webQuote(client, quote);
+    if (quote.status !== "offered") throw new ApiError("quote_not_open", quote.status);
+    if (version !== quote.current_version) throw new ApiError("quote_version_changed");
+    const { rows } = await client.query<QuoteRow>(`UPDATE quotes SET status = 'refused', updated_at = now() WHERE id = $1 RETURNING ${QUOTE_COLUMNS}`, [quote.id]);
+    return webQuote(client, rows[0]!);
   });
 }
 

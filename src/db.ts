@@ -958,6 +958,11 @@ export const MIGRATIONS: readonly string[] = [
      key text PRIMARY KEY,
      sent_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // A quote shared as a link (ADR 0185, bipe#754): a typed name and no request. The link is stored hashed.
+  `ALTER TABLE quotes ALTER COLUMN request_id DROP NOT NULL, ALTER COLUMN customer_id DROP NOT NULL,
+     ADD COLUMN customer_name text, ADD COLUMN link_hash text;
+   ALTER TABLE quotes ADD CONSTRAINT quotes_one_customer CHECK ((customer_id IS NULL) <> (customer_name IS NULL));
+   CREATE UNIQUE INDEX quotes_link ON quotes (link_hash) WHERE link_hash IS NOT NULL;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
