@@ -15,6 +15,7 @@ import type {
   BusinessTools,
   BusinessToolState,
   BusinessToolStatus,
+  WebSettings,
   WorkSetup,
   WorkSetupStep,
   WorkSuggestions,
@@ -41,7 +42,7 @@ export const SectorBody = z.object({ sector: z.string().min(1).max(40).optional(
 export const ToolId = z.enum(["agenda", "catalog", "orders", "quotes", "queue"]);
 
 /** Growth events of the steps, from the server's own computation (registries/growth-events.json). */
-export type StepEvents = { record(userId: string, event: "work_step_shown" | "work_step_done" | "work_sector_skipped"): void };
+export type StepEvents = { record(userId: string, event: "work_step_shown" | "work_step_done" | "work_sector_skipped" | "web_booking" | "web_order" | "web_claim"): void };
 
 type CatalogFacts = { items: number; services: number; products: number; onRequest: number };
 
@@ -95,7 +96,29 @@ export async function tools(db: Queryable, businessId: string): Promise<Business
 
 export async function liveTools(db: Queryable, businessId: string): Promise<BusinessLiveTools> {
   const current = await states(db, businessId);
-  return { tools: registry.tools.map((t) => t.id).filter((id) => current[id] === "live") };
+  const web = await webSettings(db, businessId);
+  return {
+    tools: registry.tools.map((t) => t.id).filter((id) => current[id] === "live"),
+    web_booking: current.agenda === "live" && web.web_booking,
+    web_orders: current.orders === "live" && web.web_orders,
+  };
+}
+
+export const WebSettingsBody = z.object({ web_booking: z.boolean(), web_orders: z.boolean() }).strict();
+
+/** The owner's web switches, on by default (ADR 0195 points 12 and 16). */
+export async function webSettings(db: Queryable, businessId: string): Promise<WebSettings> {
+  const { rows } = await db.query<WebSettings>("SELECT web_booking, web_orders FROM business_work_settings WHERE business_id = $1", [businessId]);
+  return rows[0] ?? { web_booking: true, web_orders: true };
+}
+
+export async function setWebSettings(db: Queryable, businessId: string, body: WebSettings): Promise<WebSettings> {
+  await db.query(
+    `INSERT INTO business_work_settings (business_id, web_booking, web_orders) VALUES ($1, $2, $3)
+     ON CONFLICT (business_id) DO UPDATE SET web_booking = EXCLUDED.web_booking, web_orders = EXCLUDED.web_orders`,
+    [businessId, body.web_booking, body.web_orders],
+  );
+  return webSettings(db, businessId);
 }
 
 /** Customer routes of a tool that is not live are refused (ADR 0194 point 2). Records that exist stay readable. */

@@ -96,10 +96,10 @@ type OverrideRow = { id: string; agenda_id: string; date_from: string; date_to: 
 type BookingRow = {
   id: string; business_id: string; service_id: string; agenda_id: string; start_at: Date; end_at: Date; status: Booking["status"];
   customer_id: string | null; customer_name: string | null; source: "customer" | "owner"; hold_expires_at: Date | null;
-  buffer_before_minutes: number; buffer_after_minutes: number;
+  buffer_before_minutes: number; buffer_after_minutes: number; web: boolean;
 };
 const BOOKING_COLUMNS = `id, business_id, service_id, agenda_id, start_at, end_at, status, customer_id, customer_name, source,
-  hold_expires_at, buffer_before_minutes, buffer_after_minutes`;
+  hold_expires_at, buffer_before_minutes, buffer_after_minutes, web`;
 const OVERRIDE_COLUMNS = "id, agenda_id, date_from::text AS date_from, date_to::text AS date_to, closed, ranges";
 
 const policyJson = (s: SettingsRow): Policy => ({
@@ -127,6 +127,7 @@ export function bookingJson(b: BookingRow, now = Date.now()): Booking {
     status,
     customer: customerOf(b) as Booking["customer"],
     source: b.source,
+    ...(b.web ? { web: true } : {}),
     ...(b.status === "held" && b.hold_expires_at ? { hold_expires_at: b.hold_expires_at.toISOString() } : {}),
   };
 }
@@ -658,6 +659,59 @@ export async function bookInTransaction(client: pg.PoolClient, businessId: strin
     status: settings.confirm_mode === "request" ? "requested" : "confirmed", customer: { user_id: customerId }, source: "customer", holdExpiresAt: null,
   });
   return bookingJson(row);
+}
+
+// ---- Web bookings (ADR 0195): a first name and a shop token, no account. Always requested; the owner confirms. ----
+
+export const WebBookingBody = HoldBody.extend({ name: z.string().trim().min(1).max(40) }).strict();
+
+export async function webBook(client: pg.PoolClient, businessId: string, tokenHash: string, body: z.infer<typeof WebBookingBody>): Promise<Booking> {
+  const settings = await publishedSettings(client, businessId);
+  await expireHolds(client, businessId);
+  const { rows: open } = await client.query<{ n: number }>(
+    "SELECT count(*)::int AS n FROM bookings WHERE business_id = $1 AND shop_token_hash = $2 AND status = ANY($3) AND end_at > now()",
+    [businessId, tokenHash, ACTIVE],
+  );
+  if (open[0]!.n > 0) throw new ApiError("too_many_open_bookings");
+  const { agenda, service } = await freeAgenda(client, settings, body.service_id, body.agenda_id, body.start);
+  const row = await insertBooking(client, {
+    businessId, serviceId: service.id, agendaId: agenda, start: Date.parse(body.start), service,
+    status: "requested", customer: { name: body.name }, source: "customer", holdExpiresAt: null,
+  });
+  return bookingJson(await update(client, row.id, "web = true, shop_token_hash = $2", [tokenHash]));
+}
+
+export async function webBookings(db: Queryable, businessId: string, tokenHash: string): Promise<Booking[]> {
+  const { rows } = await db.query<BookingRow>(
+    `SELECT ${BOOKING_COLUMNS} FROM bookings WHERE business_id = $1 AND shop_token_hash = $2
+       AND end_at > now() - interval '30 days' ORDER BY start_at DESC LIMIT 100`,
+    [businessId, tokenHash],
+  );
+  return rows.map((r) => bookingJson(r));
+}
+
+export async function webCancel(db: Db, businessId: string, tokenHash: string, bookingId: string): Promise<Booking> {
+  return inTransaction(db, async (client) => {
+    const settings = await requireSettings(client, businessId);
+    const { rows } = await client.query<BookingRow>(
+      `SELECT ${BOOKING_COLUMNS} FROM bookings WHERE id = $1 AND business_id = $2 AND shop_token_hash = $3 FOR UPDATE`,
+      [bookingId, businessId, tokenHash],
+    );
+    const booking = rows[0];
+    if (!booking) throw new ApiError("not_found");
+    if (booking.status === "cancelled") return bookingJson(booking);
+    if (!ACTIVE.includes(booking.status) || booking.end_at.getTime() <= Date.now()) throw new ApiError("bad_request", "not_open");
+    checkWindow(settings, booking);
+    return bookingJson(await update(client, booking.id, "status = 'cancelled', ended_reason = 'customer'"));
+  });
+}
+
+/** The claim: the token's bookings move to the account and then get cards and pushes (ADR 0102). */
+export async function claimWebBookings(client: pg.PoolClient, businessId: string, tokenHash: string, userId: string): Promise<void> {
+  await client.query(
+    "UPDATE bookings SET customer_id = $3, customer_name = NULL, shop_token_hash = NULL, updated_at = now() WHERE business_id = $1 AND shop_token_hash = $2",
+    [businessId, tokenHash, userId],
+  );
 }
 
 async function customerBooking(client: Queryable, businessId: string, customerId: string, bookingId: string): Promise<BookingRow> {

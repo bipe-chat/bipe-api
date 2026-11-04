@@ -57,7 +57,9 @@ export type ErrorId =
   | "payment_requires_verified_business"
   | "pix_charge_unavailable"
   | "tool_needs_catalog"
-  | "tool_not_live";
+  | "tool_not_live"
+  | "web_off"
+  | "shop_token_invalid";
 
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503> = {
   bad_request: 400,
@@ -117,6 +119,8 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   pix_charge_unavailable: 422,
   tool_needs_catalog: 409,
   tool_not_live: 422,
+  web_off: 422,
+  shop_token_invalid: 401,
 };
 
 export class ApiError extends Error {
