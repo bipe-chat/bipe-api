@@ -202,3 +202,47 @@ test("tool state: the Agenda maps activation to setup and publication to live; o
   await tools.setToolState(db, API, shop, "agenda", "live");
   assert.equal(await state(), "live");
 });
+
+test("shop on the web: token, one open order, cancel, switches, claim", async (t) => {
+  const db = await setup(t);
+  const tools = await import("../dist/business-tools.js");
+  const shopWeb = await import("../dist/shop-web.js");
+  const item = await catalog.createItem(db, API, shop, product("Pão", { mode: "fixed", text: "R$ 2", amount_cents: 200 }));
+  const body = { name: "Zé", lines: [{ item_id: item.id, quantity: 2 }] };
+  await rejects(shopWeb.order(db, shop, undefined, body), "tool_not_live");
+  await tools.setToolState(db, API, shop, "orders", "live");
+  const first = await shopWeb.order(db, shop, undefined, body);
+  assert.ok(first.token);
+  assert.equal(first.order.web, true);
+  assert.deepEqual(first.order.customer, { name: "Zé" });
+  assert.equal(first.order.fulfilment, "pickup");
+  await rejects(shopWeb.order(db, shop, first.token, body), "order_already_open");
+  await rejects(shopWeb.order(db, shop, "wrong", body), "shop_token_invalid");
+  assert.equal((await shopWeb.records(db, shop, first.token)).orders.length, 1);
+  assert.equal((await shopWeb.cancelOrder(db, shop, first.token, first.order.id)).status, "cancelled");
+  const second = await shopWeb.order(db, shop, first.token, body);
+  assert.equal(second.token, undefined, "the token comes back once");
+  await tools.setWebSettings(db, shop, { web_booking: true, web_orders: false });
+  await rejects(shopWeb.order(db, shop, undefined, body), "web_off");
+  assert.equal((await tools.liveTools(db, shop)).web_orders, false);
+  const claimed = await shopWeb.claim(db, shop, first.token, ana);
+  assert.equal(claimed.orders.length, 2);
+  assert.ok(claimed.orders.every((o) => o.customer.user_id === ana));
+  await rejects(shopWeb.records(db, shop, first.token), "shop_token_invalid");
+});
+
+test("shop on the web: a booking starts requested, one open per token; the owner sees web", async (t) => {
+  const db = await setup(t);
+  const tools = await import("../dist/business-tools.js");
+  const shopWeb = await import("../dist/shop-web.js");
+  await agenda.activate(db, API, shop, { template_id: "barbershop", time_zone: "UTC" });
+  await tools.setToolState(db, API, shop, "agenda", "live");
+  const service = (await agenda.publicServices(db, API, shop)).services[0];
+  const date = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+  const days = await agenda.slots(db, shop, { service_id: service.id, agenda_id: "any", date_from: date, date_to: new Date(Date.now() + 9 * 86_400_000).toISOString().slice(0, 10) });
+  const free = days.days.flatMap((d) => d.slots);
+  const made = await shopWeb.book(db, shop, undefined, { name: "Zé", service_id: service.id, agenda_id: "any", start: free[0].start });
+  assert.equal(made.booking.status, "requested");
+  assert.equal(made.booking.web, true);
+  await rejects(shopWeb.book(db, shop, made.token, { name: "Zé", service_id: service.id, agenda_id: "any", start: free[1].start }), "too_many_open_bookings");
+});

@@ -9,6 +9,7 @@ import * as agenda from "./agenda.js";
 import type { MatrixAuth } from "./auth.js";
 import { businessOf, requireCompany } from "./business-common.js";
 import * as tools from "./business-tools.js";
+import * as shopWeb from "./shop-web.js";
 import * as catalog from "./catalog.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
@@ -57,6 +58,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     join: new RateLimiter(20, 3_600_000),
     order: new RateLimiter(20, 3_600_000),
     quoteRequest: new RateLimiter(10, 3_600_000),
+    webWrite: new RateLimiter(20, 3_600_000),
   };
   const mine = async (c: Context) => {
     const userId = await auth.userId(c.req.header("authorization"));
@@ -83,7 +85,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   };
   // The site and the own web client (ADR 0225) both read the public business routes.
   const origin = [siteUrl, ...(webOrigin ? [webOrigin] : [])].map((o) => o.replace(/\/$/, ""));
-  app.use("/v1/businesses/*", cors({ origin, allowMethods: ["GET", "POST"], allowHeaders: ["authorization", "content-type"] }));
+  app.use("/v1/businesses/*", cors({ origin, allowMethods: ["GET", "POST"], allowHeaders: ["authorization", "content-type", shopWeb.TOKEN_HEADER] }));
 
   // ---- Tool state, sector, steps, suggestions, Hoje (ADR 0194) ----
   app.get("/v1/me/business/tools", async (c) => c.json(await tools.tools(db, await owner(c, false))));
@@ -111,6 +113,54 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   });
   app.get("/v1/me/business/today", async (c) => c.json(await tools.today(db, await owner(c, false))));
   app.get("/v1/businesses/:handle/tools", async (c) => c.json(await tools.liveTools(db, await publicBusiness(c))));
+
+  // ---- The shop on the web, no session (ADR 0195) ----
+  // The limit counts per address on each shop; the key stays in memory only.
+  const webWrite = async (c: Context) => {
+    const businessId = await businessOf(db, c.req.param("handle")!);
+    limits.webWrite.check(`${clientIp(c)}|${businessId}`);
+    c.header("cache-control", "no-store");
+    return businessId;
+  };
+  const shopToken = (c: Context) => c.req.header(shopWeb.TOKEN_HEADER);
+  app.post("/v1/businesses/:handle/web/bookings", async (c) => {
+    const businessId = await webWrite(c);
+    const body = await parse(c, agenda.WebBookingBody);
+    const result = await shopWeb.book(db, businessId, shopToken(c), body);
+    stepEvents?.record(businessId, "web_booking");
+    return c.json(result, 201);
+  });
+  app.post("/v1/businesses/:handle/web/orders", async (c) => {
+    const businessId = await webWrite(c);
+    const body = await parse(c, orders.WebOrderBody);
+    const result = await shopWeb.order(db, businessId, shopToken(c), body);
+    stepEvents?.record(businessId, "web_order");
+    return c.json(result, 201);
+  });
+  app.get("/v1/businesses/:handle/web/records", async (c) => {
+    const businessId = await publicBusiness(c);
+    return c.json(await shopWeb.records(db, businessId, shopToken(c)));
+  });
+  app.post("/v1/businesses/:handle/web/bookings/:bookingId/cancel", async (c) => {
+    const businessId = await webWrite(c);
+    return c.json(await shopWeb.cancelBooking(db, businessId, shopToken(c), c.req.param("bookingId")));
+  });
+  app.post("/v1/businesses/:handle/web/orders/:orderId/cancel", async (c) => {
+    const businessId = await webWrite(c);
+    return c.json(await shopWeb.cancelOrder(db, businessId, shopToken(c), c.req.param("orderId")));
+  });
+  app.post("/v1/businesses/:handle/web/claim", async (c) => {
+    const { userId, businessId } = await customer(c);
+    const { token } = await parse(c, shopWeb.ClaimBody);
+    const result = await shopWeb.claim(db, businessId, token, userId);
+    stepEvents?.record(businessId, "web_claim");
+    return c.json(result);
+  });
+  app.get("/v1/me/business/web-settings", async (c) => c.json(await tools.webSettings(db, await owner(c, false))));
+  app.put("/v1/me/business/web-settings", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await tools.setWebSettings(db, businessId, await parse(c, tools.WebSettingsBody)));
+  });
 
   // ---- Catálogo, owner ----
   app.get("/v1/me/business/catalog", async (c) => c.json(await catalog.ownerCatalog(db, apiUrl, await owner(c, false))));
