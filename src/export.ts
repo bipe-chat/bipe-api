@@ -128,6 +128,13 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     ),
     // ADR 0229: the age band from the OS signal, its source and time. Bipe keeps no range and no date of birth.
     age_signal: await one(db, "SELECT band, source, method, checked_at FROM age_signals WHERE user_id = $1", userId),
+    // bipe#469: the caller's side of a number move. The other account stays out.
+    phone_moves: await all(
+      db,
+      `SELECT CASE WHEN from_user = $1 THEN 'out' ELSE 'in' END AS direction, state, started_at, ends_at, ended_at
+       FROM phone_moves WHERE from_user = $1 OR to_user = $1 ORDER BY started_at`,
+      userId,
+    ),
     terms_accepted: await all(
       db,
       "SELECT version, source, region, accepted_at FROM terms_acceptances WHERE user_id = $1 ORDER BY accepted_at",

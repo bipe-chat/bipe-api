@@ -22,7 +22,7 @@ import { ReachTiers, reachSettings } from "./reach-tiers.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { recordAgeSignal } from "./age.js";
-import { getDiscovery, lookupContacts, LOOKUP_MAX_PER_REQUEST, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "./phones.js";
+import { blockMove, getDiscovery, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
@@ -32,7 +32,7 @@ import { createGovbrChallenge, GOVBR_PDF_MAX_BYTES, pruneGovbrChallenges, submit
 import { ProfileFacts } from "./profile-facts.js";
 import { Theft } from "./theft.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
-import { accountRules, assistantRules, legalRules, profileRules } from "./registry.js";
+import { appString, accountRules, assistantRules, legalRules, profileRules } from "./registry.js";
 import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
@@ -298,6 +298,14 @@ setInterval(pruneReports, 24 * 3_600_000).unref();
 // Retries for Starlings intake lines that failed. A new line is sent at once.
 setInterval(() => void intake.flush(), 60_000).unref();
 void intake.flush();
+// Number moves (bipe#469): the notices go through the support room. Without the bot no alert goes out, so no number moves.
+if (support.enabled) {
+  const phoneMovesJob = () =>
+    void runPhoneMoves(db, (userId, key, ...args) => support.notice(userId, appString("pt", key, ...args)))
+      .catch((e) => console.error(`phone moves failed: ${(e as Error).message}`));
+  phoneMovesJob();
+  setInterval(phoneMovesJob, 60_000).unref();
+}
 // Agenda (bipe#318): confirmed bookings past their end become done, expired holds end, bookings go after two years.
 const agendaJob = () =>
   void agendaHousekeeping(db)
@@ -1193,6 +1201,13 @@ app.get("/v1/me/phone", async (c) => {
 app.delete("/v1/me/phone", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   await unlinkPhone(db, userId);
+  return c.body(null, 204);
+});
+
+// bipe#469: the holder keeps the number.
+app.post("/v1/me/phone/moves/:id/block", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await blockMove(db, userId, c.req.param("id"));
   return c.body(null, 204);
 });
 

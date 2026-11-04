@@ -690,6 +690,7 @@ function validate(reg, phosphor) {
     const n = d.countryCode.length + [...d.pattern].filter((c) => c === "#").length;
     if (n < ph.internationalMinDigits || n > ph.internationalMaxDigits) fail(`phones: display pattern length ${d.countryCode}`);
   }
+  if (!(Number.isInteger(ph.moveHoldDays) && ph.moveHoldDays >= 1 && Number.isInteger(ph.moveBlockedRetryDays) && ph.moveBlockedRetryDays >= ph.moveHoldDays)) fail("phones: moveHoldDays and moveBlockedRetryDays");
   if (!(Number.isInteger(ph.linkConfirmWarnDays) && ph.linkConfirmWarnDays >= 1 && ph.linkConfirmWarnDays < ph.linkConfirmMonths * 28)) fail("phones: linkConfirmWarnDays");
   validateBadgeKeys(reg.badgeKeys);
   const ac = reg.accounts;
