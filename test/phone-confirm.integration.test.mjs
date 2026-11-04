@@ -57,3 +57,12 @@ test("the linked number is stored encrypted and goes back only to its owner", { 
   assert.equal((await db.query("SELECT 1 FROM phone_links WHERE user_id = $1", [owner])).rowCount, 0);
   assert.equal((await myPhone(db, hasher, owner)).linked, false);
 });
+
+// ADR 0197: the Brazilian core proves only +55. A foreign number is refused and nobody finds it.
+test("a number from another country is not linked and lookup finds nothing", { timeout: 30000 }, async (t) => {
+  const db = await isolatedDatabase(t);
+  const owner = "@owner:example.test";
+  await assert.rejects(linkPhone(db, hasher, owner, "+351 912 345 678", false), /does not prove/);
+  assert.equal((await db.query("SELECT 1 FROM phone_links WHERE user_id = $1", [owner])).rowCount, 0);
+  assert.equal((await lookupContacts(db, hasher, "@finder:example.test", ["+351912345678"])).matches.length, 0);
+});

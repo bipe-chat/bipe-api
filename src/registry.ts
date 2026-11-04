@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from bipe-shared by `pnpm gen`. Never edit generated/.
-import { ageBand, cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, isBipeUserID, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, socialHandleClean, socialHandleProblem, workHoursProblem } from "./generated/lib/registries.mjs";
+import { ageBand, canProvePhone, cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, isBipeUserID, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, socialHandleClean, socialHandleProblem, workHoursProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
@@ -84,9 +84,14 @@ export function isBipeServer(serverName: string): boolean {
   return isBipeUserID(`@x:${serverName}`, reg) as boolean;
 }
 
-/** A Brazilian mobile number in E.164 from an address-book entry, or null (registries/phone-numbers.json). */
+/** A number in E.164 from an address-book entry, or null: a Brazilian mobile, or another country written with + (registries/phone-numbers.json). */
 export function normalizePhone(text: string): string | null {
   return normalizePhoneWith(text, reg) as string | null;
+}
+
+/** True when this core may prove the number (ADR 0197, registries/regions.json phoneProofCountryCodes). */
+export function coreProvesPhone(e164: string): boolean {
+  return canProvePhone(e164, coreRegionId, reg) as boolean;
 }
 
 // --- CNPJ (ADR 0042) -----------------------------------------------------------------------------------
