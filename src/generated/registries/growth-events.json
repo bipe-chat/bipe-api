@@ -127,6 +127,27 @@
       "source": "api",
       "detail": "PUT /v1/me/business/sector with no sector (Pular) on an account that never had one (ADR 0194).",
       "content": "none"
+    },
+    {
+      "id": "web_booking",
+      "once": false,
+      "source": "api",
+      "detail": "A booking made on the web with a shop token (ADR 0195). No name and no shop.",
+      "content": "none"
+    },
+    {
+      "id": "web_order",
+      "once": false,
+      "source": "api",
+      "detail": "An order made on the web with a shop token (ADR 0195). No name and no shop.",
+      "content": "none"
+    },
+    {
+      "id": "web_claim",
+      "once": false,
+      "source": "api",
+      "detail": "A signed-in person claimed the records of a shop token (ADR 0195).",
+      "content": "none"
     }
   ]
 }
