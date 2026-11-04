@@ -270,3 +270,16 @@ test("web queue: a first name, one place per token, leave, switch, claim", async
   await shopWeb.claim(db, shop, first.token, ana);
   assert.equal((await queue.myPlace(db, shop, ana)).place.id, again.position.place.id);
 });
+
+test("parar de receber: a stopped work account cannot invite, even in a shared room; undo works", async (t) => {
+  const db = await setup(t);
+  const stops = await import("../dist/business-stops.js");
+  const { mayInvite } = await import("../dist/messaging.js");
+  await db.query("INSERT INTO messaging_settings (user_id, policy) VALUES ($1, 'everyone') ON CONFLICT DO NOTHING", [ana]).catch(() => {});
+  assert.deepEqual(await stops.setStopped(db, ana, shop, true), { stopped: true });
+  assert.equal(await stops.isStopped(db, ana, shop), true);
+  assert.equal((await mayInvite(db, shop, ana, true)).allow, false);
+  await stops.setStopped(db, ana, shop, false);
+  assert.equal((await mayInvite(db, shop, ana, true)).allow, true);
+  await rejects(stops.setStopped(db, ana, bia, true), "not_found");
+});
