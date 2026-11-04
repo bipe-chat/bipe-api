@@ -293,6 +293,8 @@ test("quote link: a typed name, read and accept with the link, one order, revoke
   await rejects(quotes.readLink(db, shop, second.linkId), "not_found");
   await quotes.revokeLink(db, shop, second.quote.id);
   await rejects(quotes.readLink(db, shop, renewed.linkId), "not_found");
+});
+
 test("parar de receber: a stopped work account cannot invite, even in a shared room; undo works", async (t) => {
   const db = await setup(t);
   const stops = await import("../dist/business-stops.js");
