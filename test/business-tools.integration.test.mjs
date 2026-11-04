@@ -222,7 +222,7 @@ test("shop on the web: token, one open order, cancel, switches, claim", async (t
   assert.equal((await shopWeb.cancelOrder(db, shop, first.token, first.order.id)).status, "cancelled");
   const second = await shopWeb.order(db, shop, first.token, body);
   assert.equal(second.token, undefined, "the token comes back once");
-  await tools.setWebSettings(db, shop, { web_booking: true, web_orders: false });
+  await tools.setWebSettings(db, shop, { web_booking: true, web_orders: false, web_queue: true });
   await rejects(shopWeb.order(db, shop, undefined, body), "web_off");
   assert.equal((await tools.liveTools(db, shop)).web_orders, false);
   const claimed = await shopWeb.claim(db, shop, first.token, ana);
@@ -245,4 +245,28 @@ test("shop on the web: a booking starts requested, one open per token; the owner
   assert.equal(made.booking.status, "requested");
   assert.equal(made.booking.web, true);
   await rejects(shopWeb.book(db, shop, made.token, { name: "Zé", service_id: service.id, agenda_id: "any", start: free[1].start }), "too_many_open_bookings");
+});
+
+test("web queue: a first name, one place per token, leave, switch, claim", async (t) => {
+  const db = await setup(t);
+  const tools = await import("../dist/business-tools.js");
+  const shopWeb = await import("../dist/shop-web.js");
+  await rejects(shopWeb.joinQueue(db, shop, undefined, { name: "Zé" }), "tool_not_live");
+  await tools.setToolState(db, API, shop, "queue", "live");
+  await rejects(shopWeb.joinQueue(db, shop, undefined, { name: "Zé" }), "queue_closed");
+  await queue.setOpen(db, shop, true);
+  const first = await shopWeb.joinQueue(db, shop, undefined, { name: "Zé" });
+  assert.ok(first.token);
+  assert.equal(first.position.position, 1);
+  assert.equal(first.position.place.web, true);
+  await rejects(shopWeb.joinQueue(db, shop, first.token, { name: "Zé" }), "already_in_queue");
+  assert.equal((await shopWeb.records(db, shop, first.token)).queue_place.position, 1);
+  assert.equal((await shopWeb.leaveQueue(db, shop, first.token, first.position.place.id)).place.status, "left");
+  assert.equal((await shopWeb.records(db, shop, first.token)).queue_place, undefined);
+  await tools.setWebSettings(db, shop, { web_booking: true, web_orders: true, web_queue: false });
+  await rejects(shopWeb.joinQueue(db, shop, first.token, { name: "Zé" }), "web_off");
+  await tools.setWebSettings(db, shop, { web_booking: true, web_orders: true, web_queue: true });
+  const again = await shopWeb.joinQueue(db, shop, first.token, { name: "Zé" });
+  await shopWeb.claim(db, shop, first.token, ana);
+  assert.equal((await queue.myPlace(db, shop, ana)).place.id, again.position.place.id);
 });

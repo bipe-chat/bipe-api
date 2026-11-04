@@ -947,6 +947,10 @@ export const MIGRATIONS: readonly string[] = [
    CREATE INDEX bookings_shop_token ON bookings (business_id, shop_token_hash) WHERE shop_token_hash IS NOT NULL;
    CREATE INDEX orders_shop_token ON orders (business_id, shop_token_hash) WHERE shop_token_hash IS NOT NULL;
    ALTER TABLE business_work_settings ADD COLUMN web_booking boolean NOT NULL DEFAULT true, ADD COLUMN web_orders boolean NOT NULL DEFAULT true;`,
+  // Web places in the queue (ADR 0185, bipe#753), with the shop token of the shop on the web.
+  `ALTER TABLE queue_places ADD COLUMN web boolean NOT NULL DEFAULT false, ADD COLUMN shop_token_hash text;
+   CREATE INDEX queue_places_shop_token ON queue_places (business_id, shop_token_hash) WHERE shop_token_hash IS NOT NULL;
+   ALTER TABLE business_work_settings ADD COLUMN web_queue boolean NOT NULL DEFAULT true;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
