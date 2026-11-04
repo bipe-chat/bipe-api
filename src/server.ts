@@ -628,7 +628,7 @@ app.put("/v1/me/pin", async (c) => {
 app.post("/v1/me/pin/check", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.pinCheck.check(userId);
-  await verifyPin(accounts, userId, (await parse(c, PinBody)).pin);
+  await verifyPin(accounts, userId, (await parse(c, PinBody)).pin, "session");
   return c.body(null, 204);
 });
 
@@ -670,7 +670,7 @@ app.post("/v1/me/recovery-token", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
   limits.credentials.check(userId);
   const { pin } = await parse(c, PinBody);
-  await verifyPin(accounts, userId, pin);
+  await verifyPin(accounts, userId, pin, "session");
   c.header("cache-control", "no-store");
   return c.json(await rotateRecoveryToken(accounts, userId));
 });
@@ -1237,7 +1237,7 @@ app.put("/v1/me/guardians", async (c) => {
   limits.theftAction.check(userId);
   const body = await parse(c, GuardiansBody);
   // bipe-chat/bipe#908: a session alone cannot replace the guardians.
-  await verifyPin(accounts, userId, body.pin);
+  await verifyPin(accounts, userId, body.pin, "session");
   return c.json(await theft.setGuardians(userId, body.user_ids));
 });
 

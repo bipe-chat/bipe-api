@@ -81,7 +81,7 @@ test("concurrent wrong PINs across recovery paths stop at five in total", { time
   const row = await secretRow(f);
   assert.equal(row.pin_wrong_tries, 5);
   assert.ok(row.pin_blocked_at);
-  await assert.rejects(verifyPin(f.deps, f.user, GOOD_PIN), failsWith("pin_blocked"));
+  await assert.rejects(verifyPin(f.deps, f.user, GOOD_PIN, "session"), failsWith("pin_blocked"));
 });
 
 test("concurrent redemption of one recovery token succeeds once", { timeout: 30000 }, async (t) => {
