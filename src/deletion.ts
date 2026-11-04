@@ -87,7 +87,7 @@ export async function requestDeletion(
 ): Promise<AccountDeletion> {
   const open = await deps.db.query("SELECT 1 FROM account_deletions WHERE user_id = $1 AND state IN ('waiting', 'running')", [userId]);
   if (open.rows.length > 0) throw new ApiError("deletion_pending");
-  await verifyPin(deps, userId, pin);
+  await verifyPin(deps, userId, pin, "session");
   let row: DeletionRow;
   try {
     const res = await deps.db.query<DeletionRow>(

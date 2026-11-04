@@ -99,27 +99,42 @@ export async function inTransaction<T>(db: Db, work: (client: pg.PoolClient) => 
 
 /**
  * Checks the PIN and counts a wrong one. The row lock serialises parallel tries, so nobody gets more than
- * pinMaxWrongTries. The count is committed before the error goes out.
+ * pinMaxWrongTries on a path. The count is committed before the error goes out.
+ *
+ * Two counts (bipe-chat/bipe#915). `recovery`: a recovery path, after its other factor passed. `session`: a signed-in
+ * session. A stolen phone uses up only the session count, so it cannot block the PIN that the owner needs to recover
+ * the account. The session count is per account, not per device, so more devices do not give more tries. A PIN that
+ * recovery blocked is blocked for sessions too. A correct PIN clears both counts unless this path is blocked.
  */
-export async function verifyPin({ db, pins }: AccountDeps, userId: string, pin: string): Promise<void> {
+export async function verifyPin({ db, pins }: AccountDeps, userId: string, pin: string, path: "recovery" | "session"): Promise<void> {
   // A PIN of the wrong shape cannot be right. It does not count.
   if (!new RegExp(`^[0-9]{${accountRules.pinLength}}$`).test(pin)) throw new ApiError("bad_request", "pin");
   const max = accountRules.pinMaxWrongTries;
   const outcome = await inTransaction(db, async (client) => {
-    const { rows } = await client.query<{ pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null }>(
-      "SELECT pin_hash, pin_wrong_tries, pin_blocked_at FROM account_secrets WHERE user_id = $1 FOR UPDATE",
+    const { rows } = await client.query<{
+      pin_hash: string | null;
+      pin_wrong_tries: number;
+      pin_blocked_at: Date | null;
+      pin_session_wrong_tries: number;
+      pin_session_blocked_at: Date | null;
+    }>(
+      "SELECT pin_hash, pin_wrong_tries, pin_blocked_at, pin_session_wrong_tries, pin_session_blocked_at FROM account_secrets WHERE user_id = $1 FOR UPDATE",
       [userId],
     );
     const row = rows[0];
     if (!row?.pin_hash) return { kind: "unset" as const };
-    if (row.pin_blocked_at) return { kind: "blocked" as const };
+    if (row.pin_blocked_at || (path === "session" && row.pin_session_blocked_at)) return { kind: "blocked" as const };
     if (await pins.verify(pin, row.pin_hash)) {
-      if (row.pin_wrong_tries > 0) await client.query("UPDATE account_secrets SET pin_wrong_tries = 0 WHERE user_id = $1", [userId]);
+      if (row.pin_wrong_tries > 0 || row.pin_session_wrong_tries > 0) {
+        await client.query("UPDATE account_secrets SET pin_wrong_tries = 0, pin_session_wrong_tries = 0, pin_session_blocked_at = NULL WHERE user_id = $1", [userId]);
+      }
       return { kind: "ok" as const };
     }
-    const tries = row.pin_wrong_tries + 1;
+    const tries = (path === "session" ? row.pin_session_wrong_tries : row.pin_wrong_tries) + 1;
     await client.query(
-      `UPDATE account_secrets SET pin_wrong_tries = $2::integer, pin_blocked_at = CASE WHEN $2::integer >= $3::integer THEN now() ELSE NULL END WHERE user_id = $1`,
+      path === "session"
+        ? `UPDATE account_secrets SET pin_session_wrong_tries = $2::integer, pin_session_blocked_at = CASE WHEN $2::integer >= $3::integer THEN now() ELSE NULL END WHERE user_id = $1`
+        : `UPDATE account_secrets SET pin_wrong_tries = $2::integer, pin_blocked_at = CASE WHEN $2::integer >= $3::integer THEN now() ELSE NULL END WHERE user_id = $1`,
       [userId, tries, max],
     );
     return tries >= max ? { kind: "blocked" as const } : { kind: "wrong" as const, left: max - tries };
@@ -138,14 +153,14 @@ export async function setPin(deps: AccountDeps, userId: string, pin: string, old
   const { rows: current } = await deps.db.query("SELECT 1 FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL", [userId]);
   if (current.length > 0) {
     if (oldPin === undefined) throw new ApiError("bad_request", "old_pin");
-    await verifyPin(deps, userId, oldPin);
+    await verifyPin(deps, userId, oldPin, "session");
   }
   const hash = await deps.pins.hash(pin);
   const hadPin = await inTransaction(deps.db, async (client) => {
     const { rows } = await client.query<{ pin_hash: string | null }>("SELECT pin_hash FROM account_secrets WHERE user_id = $1 FOR UPDATE", [userId]);
     await client.query(
       `INSERT INTO account_secrets (user_id, pin_hash, pin_set_at) VALUES ($1, $2, now())
-       ON CONFLICT (user_id) DO UPDATE SET pin_hash = $2, pin_set_at = now(), pin_wrong_tries = 0, pin_blocked_at = NULL`,
+       ON CONFLICT (user_id) DO UPDATE SET pin_hash = $2, pin_set_at = now(), pin_wrong_tries = 0, pin_blocked_at = NULL, pin_session_wrong_tries = 0, pin_session_blocked_at = NULL`,
       [userId, hash],
     );
     // A PIN set on a signed-in device replaces any PIN reset that is still waiting.
@@ -202,7 +217,7 @@ export async function moveToDeviceFirst(deps: AccountDeps, userId: string, pin: 
   const row = rows[0];
   if (!row) throw new ApiError("pin_not_set");
   if (row.device_first) throw new ApiError("already_device_first");
-  await verifyPin(deps, userId, pin);
+  await verifyPin(deps, userId, pin, "session");
   return inTransaction(deps.db, (client) => issueCredentials(deps, client, userId));
 }
 
@@ -223,7 +238,7 @@ export async function redeemToken(deps: AccountDeps, token: string, pin: string)
   const { rows } = await deps.db.query<{ user_id: string }>("SELECT user_id FROM account_secrets WHERE token_hash = $1", [hash]);
   const userId = rows[0]?.user_id;
   if (!userId) throw new ApiError("recovery_invalid");
-  await verifyPin(deps, userId, pin);
+  await verifyPin(deps, userId, pin, "recovery");
   const creds = await inTransaction(deps.db, async (client) => {
     const issued = await issueCredentials(deps, client, userId, hash);
     await client.query(
@@ -261,8 +276,8 @@ function shownState(row: RecoveryRow, now: number): "waiting" | "completed" | "c
  */
 export async function accountStatus({ db }: AccountDeps, userId: string, maxAccounts = accountRules.maxPersonalAccounts, deviceId: string | null = null) {
   const [secrets, emails, recoveries, termsVersion, signupRow, links, independent, deletion, age] = await Promise.all([
-    db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; token_hash: string | null }>(
-      "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
+    db.query<{ device_first: boolean; pin_hash: string | null; pin_wrong_tries: number; pin_blocked_at: Date | null; pin_session_wrong_tries: number; pin_session_blocked_at: Date | null; token_hash: string | null }>(
+      "SELECT device_first, pin_hash, pin_wrong_tries, pin_blocked_at, pin_session_wrong_tries, pin_session_blocked_at, token_hash FROM account_secrets WHERE user_id = $1",
       [userId],
     ),
     db.query<{ email: string | null; pending_email: string | null; pending_expires_at: Date | null }>(
@@ -289,8 +304,9 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
   return {
     user_id: userId,
     pin_set: Boolean(s?.pin_hash),
-    pin_blocked: Boolean(s?.pin_blocked_at),
-    pin_tries_left: s?.pin_hash ? Math.max(0, accountRules.pinMaxWrongTries - s.pin_wrong_tries) : accountRules.pinMaxWrongTries,
+    // The caller is a signed-in session: what its next PIN check would meet.
+    pin_blocked: Boolean(s?.pin_blocked_at || s?.pin_session_blocked_at),
+    pin_tries_left: s?.pin_hash ? Math.max(0, accountRules.pinMaxWrongTries - Math.max(s.pin_wrong_tries, s.pin_session_wrong_tries)) : accountRules.pinMaxWrongTries,
     device_first: s?.device_first ?? false,
     recovery_token_set: Boolean(s?.token_hash),
     ...(e?.email ? { email: e.email } : {}),
@@ -465,7 +481,7 @@ export async function confirmRecoveryEmail(deps: AccountDeps, token: string, pin
   let newPinHash: string | null = null;
   if (pin !== undefined) {
     purpose = "access";
-    await verifyPin(deps, found.user_id, pin);
+    await verifyPin(deps, found.user_id, pin, "recovery");
   } else {
     purpose = "pin_reset";
     checkPinRule(newPin!);
@@ -524,7 +540,7 @@ export async function claimRecovery(deps: AccountDeps, recoveryId: string, claim
     if (row.purpose === "pin_reset") {
       await client.query(
         `INSERT INTO account_secrets (user_id, pin_hash, pin_set_at) VALUES ($1, $2, now())
-         ON CONFLICT (user_id) DO UPDATE SET pin_hash = $2, pin_set_at = now(), pin_wrong_tries = 0, pin_blocked_at = NULL`,
+         ON CONFLICT (user_id) DO UPDATE SET pin_hash = $2, pin_set_at = now(), pin_wrong_tries = 0, pin_blocked_at = NULL, pin_session_wrong_tries = 0, pin_session_blocked_at = NULL`,
         [row.user_id, row.new_pin_hash],
       );
       return { state: "completed", ...base };

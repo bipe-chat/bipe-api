@@ -38,7 +38,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     sign_up: await one(db, "SELECT created_at, account_type, user_number, attested FROM signups WHERE user_id = $1", userId),
     account: await one(
       db,
-      `SELECT device_first, pin_hash IS NOT NULL AS pin_set, pin_set_at, pin_wrong_tries, pin_blocked_at,
+      `SELECT device_first, pin_hash IS NOT NULL AS pin_set, pin_set_at, pin_wrong_tries, pin_blocked_at, pin_session_wrong_tries, pin_session_blocked_at,
               token_hash IS NOT NULL AS recovery_token_set, token_set_at AS recovery_token_set_at, created_at
        FROM account_secrets WHERE user_id = $1`,
       userId,
