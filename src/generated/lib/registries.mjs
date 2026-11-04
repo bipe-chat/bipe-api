@@ -37,6 +37,7 @@ export function loadRegistries(root) {
     pixMarks: read("registries/pix-marks.json"),
     dataUse: read("registries/data-use.json"),
     brandMarks: read("registries/brand-marks.json"),
+    businessTools: read("registries/business-tools.json"),
     voiceMedia: read("registries/voice-media.json"),
     stickers: read("registries/stickers.json"),
     maps: read("registries/maps.json"),
@@ -362,6 +363,40 @@ export function validateMessageFormatting(formatting) {
   if (formatting.safeSchemes.some(scheme => !["https", "http", "mailto", "tel", "matrix"].includes(scheme))) fail("message-formatting: unsafe scheme");
 }
 
+/** Throws unless registries/business-tools.json is consistent (ADR 0194, bipe-chat/bipe#798). */
+export function validateBusinessTools(reg) {
+  const b = reg.businessTools;
+  const tools = new Set(b.tools.map((t) => t.id));
+  const steps = b.steps.map((s) => s.id);
+  if (tools.size !== b.tools.length) fail("business-tools: duplicate tool id");
+  if (new Set(steps).size !== steps.length) fail("business-tools: duplicate step id");
+  for (const t of b.tools) {
+    if (t.needs !== undefined && !["catalog_service", "catalog_product"].includes(t.needs)) fail(`business-tools: ${t.id}.needs`);
+  }
+  for (const s of steps) if (!reg.stringsEn?.strings?.[`bipe_work_step_${s}`]) fail(`business-tools: step ${s} has no string`);
+  if (!Number.isInteger(b.catalogMinItems) || b.catalogMinItems < 1) fail("business-tools: catalogMinItems");
+  if (!Number.isInteger(b.suggestionDismissDays) || b.suggestionDismissDays < 1) fail("business-tools: suggestionDismissDays");
+  const templates = new Set(reg.agendaTemplates.templates.map((t) => t.id));
+  const path = (name, p) => {
+    if (!tools.has(p.first_tool)) fail(`business-tools: ${name}.first_tool`);
+    if ([...p.step_order].sort().join() !== [...steps].sort().join()) fail(`business-tools: ${name}.step_order must hold every step once`);
+  };
+  path("generic", b.generic);
+  const sectors = new Set();
+  for (const s of b.sectors) {
+    if (sectors.has(s.id)) fail(`business-tools: duplicate sector ${s.id}`);
+    sectors.add(s.id);
+    path(s.id, s);
+    if (s.agenda_template !== undefined && !templates.has(s.agenda_template)) fail(`business-tools: ${s.id}.agenda_template`);
+    if (!reg.stringsEn?.strings?.[`bipe_sector_${s.id}`]) fail(`business-tools: sector ${s.id} has no string`);
+  }
+  if (!sectors.has(b.resaleSector)) fail("business-tools: resaleSector");
+  for (const r of b.suggestions) {
+    if (!tools.has(r.tool)) fail(`business-tools: suggestion ${r.id}.tool`);
+    if (!reg.stringsEn?.strings?.[`bipe_work_suggest_${r.id}`]) fail(`business-tools: suggestion ${r.id} has no string`);
+  }
+}
+
 function validate(reg, phosphor) {
   validateReportCategories(reg);
   validateMessageFormatting(reg.messageFormatting);
@@ -379,6 +414,7 @@ function validate(reg, phosphor) {
   if (!Number.isSafeInteger(reg.chatFavourites.orderMax) || reg.chatFavourites.orderMax < 1) fail("chat-favourites: orderMax must be a positive integer");
   const du = reg.dataUse;
   if (!Number.isInteger(du.budgetMegabytesPerDay) || du.budgetMegabytesPerDay < 1 || typeof du.dataSaverDefault !== "boolean") fail("data-use: budgetMegabytesPerDay must be a positive integer and dataSaverDefault a boolean");
+  validateBusinessTools(reg);
   const bm = reg.brandMarks;
   if (!Array.isArray(bm.labels) || bm.labels.length === 0 || new Set(bm.labels).size !== bm.labels.length || !bm.labels.every((l) => typeof l === "string" && /^[a-z]+$/.test(l))) fail("brand-marks: labels must be unique lower-case ids");
   for (const l of bm.labels) if (!reg.stringsEn?.strings?.[`bipe_brand_mark_label_${l}`]) fail(`brand-marks: label ${l} has no string bipe_brand_mark_label_${l}`);

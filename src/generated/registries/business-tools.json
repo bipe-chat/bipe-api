@@ -1,0 +1,169 @@
+{
+  "$comment": "Business tools and the step-by-step path of the Trabalho tab (ADR 0194, bipe-chat/bipe#798). Stable IDs. needs: a real dependency; catalog_service and catalog_product mean at least one active catálogo item of that kind. A tool with no needs is never blocked. steps: the done rule is computed by bipe-api from records. sectors: step_order is the order the sector sets, first_tool the first tool the tab suggests, agenda_template an ID of agenda-templates.json (or absent). A sector never limits the tools (ADR 0194 point 9). generic: the path of an account with no sector. suggestions: rules on records only, never on chats (ADR 0194 points 14 to 16). resale: the sector that shows Selos de revenda in the tab (ADR 0194 point 19).",
+  "version": 1,
+  "tools": [
+    {
+      "id": "catalog"
+    },
+    {
+      "id": "agenda",
+      "needs": "catalog_service"
+    },
+    {
+      "id": "orders",
+      "needs": "catalog_product"
+    },
+    {
+      "id": "quotes"
+    },
+    {
+      "id": "queue"
+    }
+  ],
+  "steps": [
+    {
+      "id": "profile",
+      "rule": "photo, description and work hours"
+    },
+    {
+      "id": "link",
+      "rule": "the account has a handle and the owner opened the link or QR code screen"
+    },
+    {
+      "id": "catalog",
+      "rule": "at least catalogMinItems active catálogo items"
+    },
+    {
+      "id": "first_tool",
+      "rule": "at least one tool is live"
+    },
+    {
+      "id": "seal",
+      "rule": "a verified CNPJ claim; an autônomo with no CNPJ does not get this step (ADR 0138)"
+    },
+    {
+      "id": "second_seat",
+      "rule": "the account has a second seat"
+    }
+  ],
+  "catalogMinItems": 3,
+  "generic": {
+    "first_tool": "catalog",
+    "step_order": [
+      "profile",
+      "link",
+      "catalog",
+      "first_tool",
+      "seal",
+      "second_seat"
+    ]
+  },
+  "sectors": [
+    {
+      "id": "beauty",
+      "first_tool": "agenda",
+      "agenda_template": "barbershop",
+      "step_order": [
+        "profile",
+        "catalog",
+        "first_tool",
+        "link",
+        "seal",
+        "second_seat"
+      ]
+    },
+    {
+      "id": "food",
+      "first_tool": "orders",
+      "step_order": [
+        "profile",
+        "catalog",
+        "first_tool",
+        "link",
+        "seal",
+        "second_seat"
+      ]
+    },
+    {
+      "id": "repair",
+      "first_tool": "quotes",
+      "step_order": [
+        "profile",
+        "link",
+        "first_tool",
+        "catalog",
+        "seal",
+        "second_seat"
+      ]
+    },
+    {
+      "id": "health",
+      "first_tool": "agenda",
+      "agenda_template": "clinic",
+      "step_order": [
+        "profile",
+        "catalog",
+        "first_tool",
+        "link",
+        "seal",
+        "second_seat"
+      ]
+    },
+    {
+      "id": "resale",
+      "first_tool": "catalog",
+      "step_order": [
+        "profile",
+        "catalog",
+        "link",
+        "first_tool",
+        "seal",
+        "second_seat"
+      ]
+    },
+    {
+      "id": "home_services",
+      "first_tool": "quotes",
+      "agenda_template": "other",
+      "step_order": [
+        "profile",
+        "link",
+        "first_tool",
+        "catalog",
+        "seal",
+        "second_seat"
+      ]
+    },
+    {
+      "id": "other",
+      "first_tool": "catalog",
+      "step_order": [
+        "profile",
+        "link",
+        "catalog",
+        "first_tool",
+        "seal",
+        "second_seat"
+      ]
+    }
+  ],
+  "resaleSector": "resale",
+  "suggestionDismissDays": 30,
+  "suggestions": [
+    {
+      "id": "quotes_for_on_request",
+      "tool": "quotes",
+      "rule": "an active catálogo item with the price on request, and the tool is off"
+    },
+    {
+      "id": "agenda_for_services",
+      "tool": "agenda",
+      "rule": "an active catálogo service, and the tool is off"
+    },
+    {
+      "id": "orders_for_products",
+      "tool": "orders",
+      "rule": "an active catálogo product with a fixed amount, and the tool is off"
+    }
+  ]
+}

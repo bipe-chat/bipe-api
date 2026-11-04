@@ -55,7 +55,9 @@ export type ErrorId =
   | "price_not_fixed"
   | "orders_closed"
   | "payment_requires_verified_business"
-  | "pix_charge_unavailable";
+  | "pix_charge_unavailable"
+  | "tool_needs_catalog"
+  | "tool_not_live";
 
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503> = {
   bad_request: 400,
@@ -113,6 +115,8 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   orders_closed: 422,
   payment_requires_verified_business: 422,
   pix_charge_unavailable: 422,
+  tool_needs_catalog: 409,
+  tool_not_live: 422,
 };
 
 export class ApiError extends Error {

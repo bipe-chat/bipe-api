@@ -158,3 +158,47 @@ test("quotes: accepting makes one order, or one booking, atomically; an expired 
   assert.equal((await quotes.customerQuote(db, shop, bia, q3.id)).status, "expired");
   await rejects(quotes.accept(db, shop, bia, q3.id, { version: 1, target: "order", fulfilment: "pickup", payment: "in_person" }), "quote_expired");
 });
+
+test("tool state: starts off; a dependency blocks; live tools only reach customers; steps and suggestions", async (t) => {
+  const db = await setup(t);
+  const tools = await import("../dist/business-tools.js");
+  const states = async () => Object.fromEntries((await tools.tools(db, shop)).tools.map((x) => [x.id, x.state]));
+  assert.deepEqual(await states(), { catalog: "off", agenda: "off", orders: "off", quotes: "off", queue: "off" });
+  await rejects(tools.setToolState(db, API, shop, "orders", "setup"), "tool_needs_catalog");
+  await rejects(tools.requireLive(db, shop, "queue"), "tool_not_live");
+  await catalog.createItem(db, API, shop, product("Bolo", { mode: "fixed", text: "R$ 10", amount_cents: 1000 }));
+  await catalog.createItem(db, API, shop, product("Festa", { mode: "on_request" }));
+  assert.deepEqual((await tools.suggestions(db, shop)).suggestions.map((s) => s.id), ["quotes_for_on_request", "orders_for_products"]);
+  assert.deepEqual((await tools.dismissSuggestion(db, shop, "orders_for_products")).suggestions.map((s) => s.id), ["quotes_for_on_request"]);
+  await tools.setToolState(db, API, shop, "orders", "live");
+  assert.deepEqual((await tools.liveTools(db, shop)).tools, ["orders"]);
+  assert.equal(await tools.catalogIsPublic(db, shop), true);
+  await tools.setToolState(db, API, shop, "orders", "off");
+  assert.equal(await tools.catalogIsPublic(db, shop), false);
+  let plan = await tools.setup(db, shop);
+  assert.equal(plan.first_tool, "catalog");
+  assert.equal(plan.done_count, 0);
+  assert.ok(!plan.steps.some((s) => s.id === "second_seat"), "no seats yet");
+  await tools.setSector(db, shop, { sector: "food" });
+  plan = await tools.setup(db, shop);
+  assert.equal(plan.first_tool, "orders");
+  await rejects(tools.setSector(db, shop, { sector: "nope" }), "bad_request");
+  const today = await tools.today(db, shop);
+  assert.deepEqual(today, { bookings: [], orders: [], queue_open: false, queue_waiting: 0, quote_requests: [] });
+});
+
+test("tool state: the Agenda maps activation to setup and publication to live; off hides it and keeps it", async (t) => {
+  const db = await setup(t);
+  const tools = await import("../dist/business-tools.js");
+  const state = async () => (await tools.tools(db, shop)).tools.find((x) => x.id === "agenda").state;
+  await rejects(tools.setToolState(db, API, shop, "agenda", "live"), "tool_needs_catalog");
+  await agenda.activate(db, API, shop, { template_id: "barbershop", time_zone: "UTC" });
+  assert.equal(await state(), "setup");
+  await tools.setToolState(db, API, shop, "agenda", "live");
+  assert.equal(await state(), "live");
+  await tools.setToolState(db, API, shop, "agenda", "off");
+  assert.equal(await state(), "off");
+  assert.equal((await agenda.agendaState(db, API, shop)).published, false);
+  await tools.setToolState(db, API, shop, "agenda", "live");
+  assert.equal(await state(), "live");
+});
