@@ -1,0 +1,13 @@
+{
+  "$comment": "Bipe regions (bipe ADR 0197). A region is what a chartered association covers. A core serves one region. An account's region comes from the server name of its user ID: each server in registries/bipe-servers.json belongs to exactly one region. floor: 'e2ee' federates with other regions, 'none' runs alone. The signed operator list (bipe-chat/bipe#645) adds operators under each region.",
+  "version": 1,
+  "regions": [
+    {
+      "id": "br",
+      "name": "Brasil",
+      "coreApi": "https://api.bipe.net.br",
+      "servers": ["bipe.net.br"],
+      "floor": "e2ee"
+    }
+  ]
+}

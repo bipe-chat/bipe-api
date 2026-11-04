@@ -6,6 +6,10 @@ import { ageBand, cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCn
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
 const reg = loadRegistries(root);
 
+/** The region this core serves (ADR 0197, registries/regions.json). A core serves one region. An unknown id stops the start. */
+export const coreRegionId = process.env.REGION_ID ?? "br";
+if (!(reg.regions.regions as { id: string }[]).some((r) => r.id === coreRegionId)) throw new Error("invalid environment: REGION_ID");
+
 /** Server-side growth events (ADR 0098, registries/growth-events.json). */
 export const growthRules = reg.growth as {
   retentionDaysKept: number;

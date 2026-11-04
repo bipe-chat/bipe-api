@@ -958,6 +958,8 @@ export const MIGRATIONS: readonly string[] = [
      key text PRIMARY KEY,
      sent_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // Regions (ADR 0197): the region whose terms the account accepted. Every earlier row is Brazil.
+  `ALTER TABLE terms_acceptances ADD COLUMN region text NOT NULL DEFAULT 'br';`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

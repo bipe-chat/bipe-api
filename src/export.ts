@@ -128,7 +128,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     age_signal: await one(db, "SELECT band, source, method, checked_at FROM age_signals WHERE user_id = $1", userId),
     terms_accepted: await all(
       db,
-      "SELECT version, source, accepted_at FROM terms_acceptances WHERE user_id = $1 ORDER BY accepted_at",
+      "SELECT version, source, region, accepted_at FROM terms_acceptances WHERE user_id = $1 ORDER BY accepted_at",
       userId,
     ),
     growth_events: await growth.rowsOf(userId),

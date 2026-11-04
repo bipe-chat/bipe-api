@@ -22,6 +22,7 @@ export function loadRegistries(root) {
     inviteCodes: read("registries/invite-codes.json"),
     phones: read("registries/phone-numbers.json"),
     bipeServers: read("registries/bipe-servers.json"),
+    regions: read("registries/regions.json"),
     accounts: read("registries/accounts.json"),
     legal: read("registries/legal.json"),
     agendaTemplates: read("registries/agenda-templates.json"),
@@ -362,6 +363,28 @@ export function validateOfficialAccounts(reg) {
 }
 
 /** Release trust list (ADR 0123): prod-YYYY-MM kids only, each a raw 32-byte Ed25519 public key in base64url. */
+// ADR 0197: every Bipe server belongs to exactly one region, so a user ID gives its region.
+export function validateRegions(reg) {
+  const regions = reg.regions.regions;
+  if (!(Array.isArray(regions) && regions.length > 0)) throw new Error("regions: at least one region");
+  const ids = new Set();
+  const owned = new Set();
+  for (const r of regions) {
+    if (!/^[a-z]{2,}$/.test(r.id)) throw new Error(`regions: bad id ${r.id}`);
+    if (ids.has(r.id)) throw new Error(`regions: duplicate ${r.id}`);
+    ids.add(r.id);
+    if (typeof r.name !== "string" || !r.name) throw new Error(`regions: ${r.id} needs a name`);
+    if (typeof r.coreApi !== "string" || !r.coreApi.startsWith("https://")) throw new Error(`regions: ${r.id} coreApi must be https`);
+    if (!["e2ee", "none"].includes(r.floor)) throw new Error(`regions: ${r.id} floor must be e2ee or none`);
+    for (const server of r.servers) {
+      if (owned.has(server)) throw new Error(`regions: ${server} is in two regions`);
+      if (!reg.bipeServers.servers.includes(server)) throw new Error(`regions: ${server} is not in bipe-servers.json`);
+      owned.add(server);
+    }
+  }
+  for (const server of reg.bipeServers.servers) if (!owned.has(server)) throw new Error(`regions: ${server} has no region`);
+}
+
 export function validateBadgeKeys(b) {
   if (!b.keys || typeof b.keys !== "object" || Array.isArray(b.keys)) fail("badge-keys: keys must be an object");
   for (const [kid, key] of Object.entries(b.keys)) {
@@ -496,6 +519,7 @@ function validate(reg, phosphor) {
   const bs = reg.bipeServers.servers;
   if (!(Array.isArray(bs) && bs.length > 0 && bs.every((s) => typeof s === "string" && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(s)))) fail("bipe servers: servers must be lower-case host names");
   if (new Set(bs).size !== bs.length) fail("bipe servers: duplicate server");
+  validateRegions(reg);
   for (const [cat, names] of Object.entries(reg.reserved.categories)) {
     if (!/^[a-z]+$/.test(cat)) fail(`reserved category id "${cat}"`);
     // Entries must already be in normalised form so lookups are exact.
