@@ -307,3 +307,25 @@ test("parar de receber: a stopped work account cannot invite, even in a shared r
   assert.equal((await mayInvite(db, shop, ana, true)).allow, true);
   await rejects(stops.setStopped(db, ana, bia, true), "not_found");
 });
+
+test("external calendars: a feed token works once issued and stops when rotated; imported busy times block slots", async (t) => {
+  const db = await setup(t);
+  const calendars = await import("../dist/agenda-calendars.js");
+  await agenda.activate(db, API, shop, { template_id: "barbershop", time_zone: "UTC" });
+  const agendaId = (await agenda.listAgendas(db, shop)).agendas[0].id;
+  const first = await calendars.issueFeed(db, API, shop, agendaId, { include_customer_first_name: false });
+  const token = /feeds\/([^.]+)\.ics$/.exec(first.url)[1];
+  assert.match(await calendars.feedIcs(db, token), /BEGIN:VCALENDAR/);
+  await calendars.issueFeed(db, API, shop, agendaId, { include_customer_first_name: false });
+  await rejects(calendars.feedIcs(db, token), "not_found");
+  await rejects(calendars.addImport(db, shop, agendaId, { url: "https://x.test/a.ics" }, async () => { throw new Error("refused"); }), "bad_request");
+  const start = new Date(Date.now() + 2 * 86_400_000);
+  const stamp = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  const text = `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Hidden\r\nDTSTART:${stamp(start)}\r\nDTEND:${stamp(new Date(start.getTime() + 3_600_000))}\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+  const made = await calendars.addImport(db, shop, agendaId, { url: "https://x.test/a.ics" }, async () => text);
+  const { rows } = await db.query("SELECT * FROM busy_blocks WHERE import_id = $1", [made.id]);
+  assert.equal(rows.length, 1);
+  assert.equal("summary" in rows[0], false);
+  await calendars.removeImport(db, shop, agendaId, made.id);
+  assert.equal((await db.query("SELECT 1 FROM busy_blocks")).rowCount, 0);
+});

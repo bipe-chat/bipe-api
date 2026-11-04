@@ -62,6 +62,7 @@ import { getWorkHours, setWorkHours } from "./work-hours.js";
 import { getNotificationPrefs, pushJoin, setNotificationPrefs } from "./notification-prefs.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
+import { refreshBusyImports } from "./agenda-calendars.js";
 import { businessPushes, runBusinessPushes } from "./business-pushes.js";
 import { orderHousekeeping } from "./orders.js";
 import { assistantFacts, oneAssistant } from "./assistants.js";
@@ -1637,6 +1638,7 @@ staffGet("/v1/admin/reports", (c) => {
 
 // Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
 app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp, stepEvents: growth, pushes: businessPushes(db, devicePush) }));
+setInterval(() => void refreshBusyImports(db).catch((e: Error) => console.error(`busy imports: ${e.name}`)), 15 * 60_000).unref();
 setInterval(() => void runBusinessPushes(db, devicePush).catch((e: Error) => console.error(`business pushes: ${e.name}`)), 60_000).unref();
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
