@@ -900,6 +900,39 @@ export const MIGRATIONS: readonly string[] = [
      UNION SELECT DISTINCT business_id, 'orders', 'live' FROM orders
      UNION SELECT DISTINCT business_id, 'quotes', 'live' FROM quote_requests
      UNION SELECT DISTINCT business_id, 'queue', 'live' FROM queue_places;`,
+  // First-contact outcomes (security.md rule 11, bipe#845, registries/reach.json). first_contacts: one row per
+  // allowed first contact, the invitee only as a keyed hash, for recipientDays. reach_daily: per-sender counts per
+  // day in Brazil, for dailyCountDays. reach_state: the read position in Synapse event_reports.
+  `CREATE TABLE first_contacts (
+     id bigserial PRIMARY KEY,
+     inviter text NOT NULL,
+     invitee_hash text NOT NULL,
+     room_id text,
+     sent_at timestamptz NOT NULL DEFAULT now(),
+     outcome text CHECK (outcome IN ('accepted', 'declined')),
+     outcome_at timestamptz,
+     blocked_at timestamptz
+   );
+   CREATE INDEX first_contacts_inviter ON first_contacts (inviter, sent_at);
+   CREATE INDEX first_contacts_invitee ON first_contacts (invitee_hash, inviter);
+   CREATE INDEX first_contacts_room ON first_contacts (room_id, invitee_hash);
+   CREATE INDEX first_contacts_sent ON first_contacts (sent_at);
+   CREATE TABLE reach_daily (
+     user_id text NOT NULL,
+     day date NOT NULL,
+     sent integer NOT NULL DEFAULT 0,
+     accepted integer NOT NULL DEFAULT 0,
+     declined integer NOT NULL DEFAULT 0,
+     ignored integer NOT NULL DEFAULT 0,
+     blocked integer NOT NULL DEFAULT 0,
+     reported integer NOT NULL DEFAULT 0,
+     PRIMARY KEY (user_id, day)
+   );
+   CREATE INDEX reach_daily_day ON reach_daily (day);
+   CREATE TABLE reach_state (
+     id integer PRIMARY KEY CHECK (id = 1),
+     reports_cursor bigint NOT NULL
+   );`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

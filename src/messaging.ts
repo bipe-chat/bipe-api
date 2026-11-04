@@ -3,6 +3,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
+import type { Reach } from "./reach.js";
 
 export const POLICIES = ["everyone", "verified", "contacts"] as const;
 export type Policy = (typeof POLICIES)[number];
@@ -33,12 +34,14 @@ async function invitePair(db: Db, a: string, b: string): Promise<boolean> {
 /**
  * Contacts (a shared joined room or an invite pair) may always invite.
  * "verified" also admits verified accounts; no account is verified yet, so it acts like "contacts".
+ * Any other allowed invite is a first contact (security.md rule 11, bipe#845): Reach records it.
  */
-export async function mayInvite(db: Db, inviter: string, invitee: string, sharesRoom: boolean) {
+export async function mayInvite(db: Db, inviter: string, invitee: string, sharesRoom: boolean, opts: { reach?: Reach; roomId?: string | null } = {}) {
   const policy = await policyOf(db, invitee);
-  if (policy === "everyone" || sharesRoom) return { allow: true, policy };
-  if (await invitePair(db, inviter, invitee)) return { allow: true, policy };
-  return { allow: false, policy };
+  if (sharesRoom || (await invitePair(db, inviter, invitee))) return { allow: true, policy };
+  if (policy !== "everyone") return { allow: false, policy };
+  if (opts.reach?.enabled) await opts.reach.record(inviter, invitee, opts.roomId ?? null);
+  return { allow: true, policy };
 }
 
 /** Constant-time check of the shared secret that only the Synapse module holds. */
