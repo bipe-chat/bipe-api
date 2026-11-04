@@ -958,6 +958,21 @@ export const MIGRATIONS: readonly string[] = [
      key text PRIMARY KEY,
      sent_at timestamptz NOT NULL DEFAULT now()
    );`,
+  // bipe-chat/bipe#915: a signed-in session has its own count of wrong PINs, so it cannot block the PIN for recovery.
+  `ALTER TABLE account_secrets ADD COLUMN pin_session_wrong_tries integer NOT NULL DEFAULT 0 CHECK (pin_session_wrong_tries >= 0),
+     ADD COLUMN pin_session_blocked_at timestamptz;`,
+  // A quote shared as a link (ADR 0185, bipe#754): a typed name and no request. The link is stored hashed.
+  `ALTER TABLE quotes ALTER COLUMN request_id DROP NOT NULL, ALTER COLUMN customer_id DROP NOT NULL,
+     ADD COLUMN customer_name text, ADD COLUMN link_hash text;
+   ALTER TABLE quotes ADD CONSTRAINT quotes_one_customer CHECK ((customer_id IS NULL) <> (customer_name IS NULL));
+   CREATE UNIQUE INDEX quotes_link ON quotes (link_hash) WHERE link_hash IS NOT NULL;`,
+  // Parar de receber (ADR 0237, bipe#1013).
+  `CREATE TABLE business_stops (
+     customer_id text NOT NULL,
+     business_id text NOT NULL,
+     stopped_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (customer_id, business_id)
+   );`,
   // Regions (ADR 0197): the region whose terms the account accepted. Every earlier row is Brazil.
   `ALTER TABLE terms_acceptances ADD COLUMN region text NOT NULL DEFAULT 'br';`,
 ];

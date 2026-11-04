@@ -87,7 +87,7 @@ export async function requestDeletion(
 ): Promise<AccountDeletion> {
   const open = await deps.db.query("SELECT 1 FROM account_deletions WHERE user_id = $1 AND state IN ('waiting', 'running')", [userId]);
   if (open.rows.length > 0) throw new ApiError("deletion_pending");
-  await verifyPin(deps, userId, pin);
+  await verifyPin(deps, userId, pin, "session");
   let row: DeletionRow;
   try {
     const res = await deps.db.query<DeletionRow>(
@@ -384,6 +384,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     ]) {
       await q(`DELETE FROM ${table} WHERE user_id = $1`);
     }
+    await q("DELETE FROM business_stops WHERE customer_id = $1 OR business_id = $1");
     // ADR 0140 point 6: only the CPF hash and the badge record stay (deletionVerificationKeepDays).
     await q("DELETE FROM business_claims WHERE user_id = $1 AND status NOT IN ('verified', 'revoked')");
     await q(

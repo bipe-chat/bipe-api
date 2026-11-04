@@ -270,3 +270,40 @@ test("web queue: a first name, one place per token, leave, switch, claim", async
   await shopWeb.claim(db, shop, first.token, ana);
   assert.equal((await queue.myPlace(db, shop, ana)).place.id, again.position.place.id);
 });
+
+test("quote link: a typed name, read and accept with the link, one order, revoke", async (t) => {
+  const db = await setup(t);
+  const body = { customer_name: "Carla", lines: [{ name: "Pintura", quantity: 1, unit_amount_cents: 5000 }], valid_until: new Date(Date.now() + 86_400_000).toISOString() };
+  const { quote, linkId } = await quotes.createLinkQuote(db, shop, body);
+  assert.equal(quote.customer_id, "");
+  assert.equal(quote.customer_name, "Carla");
+  assert.equal(quote.has_link, true);
+  const read = await quotes.readLink(db, shop, linkId);
+  assert.equal(read.version.total_amount_cents, 5000);
+  await rejects(quotes.readLink(db, shop, "wrong"), "not_found");
+  const accepted = await quotes.acceptLink(db, shop, linkId, 1);
+  assert.equal(accepted.status, "accepted");
+  assert.equal((await quotes.acceptLink(db, shop, linkId, 1)).status, "accepted", "a retry makes no second order");
+  const list = (await orders.ownerOrders(db, shop)).orders;
+  assert.equal(list.length, 1);
+  assert.deepEqual(list[0].customer, { name: "Carla" });
+  assert.equal(list[0].web, true);
+  const second = await quotes.createLinkQuote(db, shop, body);
+  const renewed = await quotes.renewLink(db, shop, second.quote.id);
+  await rejects(quotes.readLink(db, shop, second.linkId), "not_found");
+  await quotes.revokeLink(db, shop, second.quote.id);
+  await rejects(quotes.readLink(db, shop, renewed.linkId), "not_found");
+});
+
+test("parar de receber: a stopped work account cannot invite, even in a shared room; undo works", async (t) => {
+  const db = await setup(t);
+  const stops = await import("../dist/business-stops.js");
+  const { mayInvite } = await import("../dist/messaging.js");
+  await db.query("INSERT INTO messaging_settings (user_id, policy) VALUES ($1, 'everyone') ON CONFLICT DO NOTHING", [ana]).catch(() => {});
+  assert.deepEqual(await stops.setStopped(db, ana, shop, true), { stopped: true });
+  assert.equal(await stops.isStopped(db, ana, shop), true);
+  assert.equal((await mayInvite(db, shop, ana, true)).allow, false);
+  await stops.setStopped(db, ana, shop, false);
+  assert.equal((await mayInvite(db, shop, ana, true)).allow, true);
+  await rejects(stops.setStopped(db, ana, bia, true), "not_found");
+});

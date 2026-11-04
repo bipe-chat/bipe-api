@@ -38,7 +38,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     sign_up: await one(db, "SELECT created_at, account_type, user_number, attested FROM signups WHERE user_id = $1", userId),
     account: await one(
       db,
-      `SELECT device_first, pin_hash IS NOT NULL AS pin_set, pin_set_at, pin_wrong_tries, pin_blocked_at,
+      `SELECT device_first, pin_hash IS NOT NULL AS pin_set, pin_set_at, pin_wrong_tries, pin_blocked_at, pin_session_wrong_tries, pin_session_blocked_at,
               token_hash IS NOT NULL AS recovery_token_set, token_set_at AS recovery_token_set_at, created_at
        FROM account_secrets WHERE user_id = $1`,
       userId,
@@ -64,7 +64,9 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     keychain_moves: await all(db, "SELECT device_id, moved_at FROM keychain_moves WHERE user_id = $1 ORDER BY moved_at", userId),
     work_hours: await one(db, "SELECT enabled, time_zone, days, updated_at FROM work_hours WHERE user_id = $1", userId),
     // bipe-chat/bipe#967: the join push switches.
-    notification_prefs: await one(db, "SELECT invite_joined, group_link_joined, updated_at FROM notification_prefs WHERE user_id = $1", userId),
+    notification_prefs: await one(db, "SELECT invite_joined, group_link_joined, booking_reminders, work_alerts, work_summary, updated_at FROM notification_prefs WHERE user_id = $1", userId),
+    // ADR 0237: the work accounts this person stopped.
+    business_stops: await all(db, "SELECT business_id, stopped_at FROM business_stops WHERE customer_id = $1 ORDER BY stopped_at", userId),
     // ADR 0096: the provider and the dates only. The subject hash is keyed and stays out.
     linked_accounts: await all(db, "SELECT provider, linked_at FROM account_links WHERE user_id = $1 ORDER BY provider", userId),
     link_events: await all(db, "SELECT provider, change, at FROM link_events WHERE user_id = $1 ORDER BY at", userId),

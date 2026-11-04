@@ -1,6 +1,7 @@
 // "Quem pode me mandar mensagem" (docs/usernames.md "First contact"). The Synapse module
 // bipe_messaging asks POST /internal/v1/may-invite before every invite and blocks a "false".
 import { timingSafeEqual } from "node:crypto";
+import { isStopped } from "./business-stops.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import type { Reach } from "./reach.js";
@@ -46,6 +47,8 @@ export async function mayInvite(
   opts: { reach?: Reach; tiers?: ReachTiers; roomId?: string | null } = {},
 ): Promise<{ allow: boolean; policy: Policy; reason?: "reach_limit" }> {
   const policy = await policyOf(db, invitee);
+  // ADR 0237: a work account the person stopped cannot start a chat, even in a shared room.
+  if (await isStopped(db, invitee, inviter)) return { allow: false, policy };
   if (sharesRoom || (await invitePair(db, inviter, invitee))) return { allow: true, policy };
   if (policy !== "everyone") return { allow: false, policy };
   const roomId = opts.roomId ?? null;
