@@ -102,7 +102,7 @@ export type Queue = { "id": string; "business_id": string; "date": string; "time
 export type QueuePlaceStatus = ("waiting" | "called" | "served" | "no_show" | "left");
 
 /** No location, notes or customer description. Name-only entries are owner-created. Retain for 30 days after the queue day ends (ADR 0107). */
-export type QueuePlace = { "id": string; "queue_id": string; "business_id": string; "customer": BookingCustomer; "source": ("customer" | "owner"); "service_id"?: string; "status": QueuePlaceStatus; /** UTC, with a trailing Z. */ "joined_at": string; /** UTC, with a trailing Z. */ "called_at"?: string; /** UTC, with a trailing Z. */ "served_at"?: string };
+export type QueuePlace = { "id": string; "queue_id": string; "business_id": string; "customer": BookingCustomer; "source": ("customer" | "owner"); "service_id"?: string; "status": QueuePlaceStatus; /** UTC, with a trailing Z. */ "joined_at": string; /** UTC, with a trailing Z. */ "called_at"?: string; /** UTC, with a trailing Z. */ "served_at"?: string; /** Joined on the web with a first name and a shop token, with no account (ADR 0185). No chat. */ "web"?: boolean };
 
 /** The authenticated customer is derived from the token; one active place per customer per business. An optional catalogue service improves the estimate. */
 export type QueueJoin = { "service_id"?: string };
@@ -175,7 +175,7 @@ export type BusinessTools = { "tools": Array<BusinessToolStatus>; "sector"?: str
 export type BusinessToolChange = { "state": BusinessToolState };
 
 /** The public read: live tools only (ADR 0194 point 2). */
-export type BusinessLiveTools = { "tools": Array<BusinessToolId>; /** The Agenda is live and the owner keeps booking on the web on. */ "web_booking"?: boolean; /** Pedidos is live and the owner keeps orders on the web on. */ "web_orders"?: boolean };
+export type BusinessLiveTools = { "tools": Array<BusinessToolId>; /** The Agenda is live and the owner keeps booking on the web on. */ "web_booking"?: boolean; /** Pedidos is live and the owner keeps orders on the web on. */ "web_orders"?: boolean; /** The queue is live and the owner keeps joining on the web on. */ "web_queue"?: boolean };
 
 /** One sector ID of registries/business-tools.json. Absent clears the sector (Pular). */
 export type WorkSector = { "sector"?: string };
@@ -206,10 +206,16 @@ export type WebBookingResult = { "token"?: string; "booking": Booking };
 export type WebOrderResult = { "token"?: string; "order": Order };
 
 /** Every record of one shop token at one shop, open ones and the last 30 days. */
-export type WebRecords = { "bookings": Array<Booking>; "orders": Array<Order> };
+export type WebRecords = { "bookings": Array<Booking>; "orders": Array<Order>; "queue_place"?: QueuePosition };
 
 /** A signed-in person takes the records of the token. The token then stops working. */
 export type WebClaim = { "token": string };
 
 /** Owner switches, on by default (ADR 0195 points 12 and 16). */
-export type WebSettings = { "web_booking": boolean; "web_orders": boolean };
+export type WebSettings = { "web_booking": boolean; "web_orders": boolean; "web_queue": boolean };
+
+/** No session. A first name only (ADR 0185). One active place per token per shop. */
+export type WebQueueJoin = { "name": string };
+
+/** token: only on the first web action of this browser at this shop. */
+export type WebQueueResult = { "token"?: string; "position": QueuePosition };

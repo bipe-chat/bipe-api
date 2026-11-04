@@ -1,6 +1,7 @@
 // Fila virtual (ADR 0107, bipe#333): walk-in customers join today's queue and wait anywhere. One queue per business
 // per local day; it resets every day. No location and no free text. Places go 30 days after their day.
 import { randomUUID } from "node:crypto";
+import type pg from "pg";
 import { z } from "zod";
 import { businessTimeZone, customerOf, inTransaction, isCompany, lockBusiness, localParts, type Queryable } from "./business-common.js";
 import type { Db } from "./db.js";
@@ -27,9 +28,9 @@ export const OwnerPlaceBody = z
 type QueueRow = { id: string; business_id: string; day: string; time_zone: string; open: boolean };
 type PlaceRow = {
   id: string; queue_id: string; business_id: string; customer_id: string | null; customer_name: string | null;
-  source: "customer" | "owner"; service_id: string | null; status: QueuePlace["status"]; joined_at: Date; called_at: Date | null; served_at: Date | null;
+  web: boolean; source: "customer" | "owner"; service_id: string | null; status: QueuePlace["status"]; joined_at: Date; called_at: Date | null; served_at: Date | null;
 };
-const PLACE_COLUMNS = "id, queue_id, business_id, customer_id, customer_name, source, service_id, status, joined_at, called_at, served_at";
+const PLACE_COLUMNS = "id, queue_id, business_id, customer_id, customer_name, source, service_id, status, joined_at, called_at, served_at, web";
 
 function placeJson(p: PlaceRow): QueuePlace {
   return {
@@ -38,6 +39,7 @@ function placeJson(p: PlaceRow): QueuePlace {
     business_id: p.business_id,
     customer: customerOf(p) as QueuePlace["customer"],
     source: p.source,
+    ...(p.web ? { web: true } : {}),
     ...(p.service_id ? { service_id: p.service_id } : {}),
     status: p.status,
     joined_at: p.joined_at.toISOString(),
@@ -226,6 +228,61 @@ export async function leave(db: Db, businessId: string, customerId: string, plac
     const { rows: updated } = await client.query<PlaceRow>(`UPDATE queue_places SET status = 'left' WHERE id = $1 RETURNING ${PLACE_COLUMNS}`, [placeId]);
     return { place: placeJson(updated[0]!), position: 0 };
   });
+}
+
+// ---- Web places (ADR 0185, ADR 0195): a first name and the shop token, no account. ----
+
+export const WebJoinBody = z.object({ name: z.string().trim().min(1).max(40) }).strict();
+
+export async function webJoin(client: pg.PoolClient, businessId: string, tokenHash: string, body: z.infer<typeof WebJoinBody>): Promise<QueuePosition> {
+  const q = await today(client, businessId);
+  if (!q.open) throw new ApiError("queue_closed");
+  await expireCalls(client, businessId);
+  const { rowCount } = await client.query(
+    "SELECT 1 FROM queue_places WHERE business_id = $1 AND shop_token_hash = $2 AND status IN ('waiting', 'called')",
+    [businessId, tokenHash],
+  );
+  if (rowCount) throw new ApiError("already_in_queue");
+  const place = await insertPlace(client, q, { name: body.name }, "customer", undefined);
+  const { rows } = await client.query<PlaceRow>(
+    `UPDATE queue_places SET web = true, shop_token_hash = $2 WHERE id = $1 RETURNING ${PLACE_COLUMNS}`,
+    [place.id, tokenHash],
+  );
+  return position(client, rows[0]!);
+}
+
+export async function webPlace(db: Queryable, businessId: string, tokenHash: string): Promise<QueuePosition | undefined> {
+  await expireCalls(db, businessId);
+  const { rows } = await db.query<PlaceRow>(
+    `SELECT ${PLACE_COLUMNS} FROM queue_places WHERE business_id = $1 AND shop_token_hash = $2 AND status IN ('waiting', 'called')
+     ORDER BY joined_at DESC LIMIT 1`,
+    [businessId, tokenHash],
+  );
+  return rows[0] ? position(db, rows[0]) : undefined;
+}
+
+export async function webLeave(db: Db, businessId: string, tokenHash: string, placeId: string): Promise<QueuePosition> {
+  return inTransaction(db, async (client) => {
+    const { rows } = await client.query<PlaceRow>(
+      `SELECT ${PLACE_COLUMNS} FROM queue_places WHERE id = $1 AND business_id = $2 AND shop_token_hash = $3 FOR UPDATE`,
+      [placeId, businessId, tokenHash],
+    );
+    if (!rows[0]) throw new ApiError("not_found");
+    if (!["waiting", "called"].includes(rows[0].status)) throw new ApiError("place_not_active");
+    const { rows: updated } = await client.query<PlaceRow>(`UPDATE queue_places SET status = 'left' WHERE id = $1 RETURNING ${PLACE_COLUMNS}`, [placeId]);
+    return { place: placeJson(updated[0]!), position: 0 };
+  });
+}
+
+/** The claim. One active place per customer per business still holds: with one already, the web place stays name-only. */
+export async function claimWebPlaces(client: pg.PoolClient, businessId: string, tokenHash: string, userId: string): Promise<void> {
+  await client.query(
+    `UPDATE queue_places p SET customer_id = $3, customer_name = NULL, shop_token_hash = NULL
+      WHERE p.business_id = $1 AND p.shop_token_hash = $2
+        AND (p.status NOT IN ('waiting', 'called')
+             OR NOT EXISTS (SELECT 1 FROM queue_places x WHERE x.business_id = $1 AND x.customer_id = $3 AND x.status IN ('waiting', 'called')))`,
+    [businessId, tokenHash, userId],
+  );
 }
 
 /** A person's active places across businesses, or a company's active places. */
