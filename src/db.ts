@@ -951,6 +951,13 @@ export const MIGRATIONS: readonly string[] = [
   `ALTER TABLE queue_places ADD COLUMN web boolean NOT NULL DEFAULT false, ADD COLUMN shop_token_hash text;
    CREATE INDEX queue_places_shop_token ON queue_places (business_id, shop_token_hash) WHERE shop_token_hash IS NOT NULL;
    ALTER TABLE business_work_settings ADD COLUMN web_queue boolean NOT NULL DEFAULT true;`,
+  // Business pushes (ADR 0102, bipe#320): the switches, and one row per sent reminder or summary, kept 30 days.
+  `ALTER TABLE notification_prefs ADD COLUMN booking_reminders boolean NOT NULL DEFAULT true,
+     ADD COLUMN work_alerts boolean NOT NULL DEFAULT true, ADD COLUMN work_summary boolean NOT NULL DEFAULT true;
+   CREATE TABLE business_pushes_sent (
+     key text PRIMARY KEY,
+     sent_at timestamptz NOT NULL DEFAULT now()
+   );`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

@@ -8,26 +8,30 @@ import { type DevicePushDeps, pushToDevices } from "./device-push.js";
 export interface NotificationPrefs {
   invite_joined: boolean;
   group_link_joined: boolean;
+  booking_reminders: boolean;
+  work_alerts: boolean;
+  work_summary: boolean;
 }
 
-const DEFAULTS: NotificationPrefs = { invite_joined: true, group_link_joined: true };
+const DEFAULTS: NotificationPrefs = { invite_joined: true, group_link_joined: true, booking_reminders: true, work_alerts: true, work_summary: true };
 
 /** GET /v1/me/notification-prefs. */
 export async function getNotificationPrefs(db: Db, userId: string): Promise<NotificationPrefs> {
   const { rows } = await db.query<NotificationPrefs>(
-    "SELECT invite_joined, group_link_joined FROM notification_prefs WHERE user_id = $1",
+    "SELECT invite_joined, group_link_joined, booking_reminders, work_alerts, work_summary FROM notification_prefs WHERE user_id = $1",
     [userId],
   );
-  return rows[0] ? { invite_joined: rows[0].invite_joined, group_link_joined: rows[0].group_link_joined } : { ...DEFAULTS };
+  return rows[0] ?? { ...DEFAULTS };
 }
 
 /** PUT /v1/me/notification-prefs. A missing field keeps its saved value. */
 export async function setNotificationPrefs(db: Db, userId: string, change: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
   const prefs = { ...(await getNotificationPrefs(db, userId)), ...change };
   await db.query(
-    `INSERT INTO notification_prefs (user_id, invite_joined, group_link_joined, updated_at) VALUES ($1, $2, $3, now())
-     ON CONFLICT (user_id) DO UPDATE SET invite_joined = $2, group_link_joined = $3, updated_at = now()`,
-    [userId, prefs.invite_joined, prefs.group_link_joined],
+    `INSERT INTO notification_prefs (user_id, invite_joined, group_link_joined, booking_reminders, work_alerts, work_summary, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, now())
+     ON CONFLICT (user_id) DO UPDATE SET invite_joined = $2, group_link_joined = $3, booking_reminders = $4, work_alerts = $5, work_summary = $6, updated_at = now()`,
+    [userId, prefs.invite_joined, prefs.group_link_joined, prefs.booking_reminders, prefs.work_alerts, prefs.work_summary],
   );
   return prefs;
 }

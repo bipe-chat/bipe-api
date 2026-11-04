@@ -8,6 +8,7 @@ import { z } from "zod";
 import * as agenda from "./agenda.js";
 import type { MatrixAuth } from "./auth.js";
 import { businessOf, requireCompany } from "./business-common.js";
+import type { BusinessPushes } from "./business-pushes.js";
 import * as tools from "./business-tools.js";
 import * as shopWeb from "./shop-web.js";
 import * as catalog from "./catalog.js";
@@ -28,9 +29,13 @@ export type BusinessDeps = {
   clientIp: (c: Context) => string;
   /** Growth events of the setup steps; absent in tests. */
   stepEvents?: tools.StepEvents;
+  /** Reminders and alerts (bipe#320); absent in tests. */
+  pushes?: BusinessPushes;
 };
 
 export const CATALOG_PHOTO_PATH = /^\/v1\/me\/business\/catalog\/items\/[^/]+\/photo$/;
+
+const userIdOf = (customer: { user_id: string } | { name: string }) => ("user_id" in customer ? customer.user_id : undefined);
 
 async function parse<T>(c: Context, schema: z.ZodType<T>): Promise<T> {
   const body = await c.req.json().catch(() => undefined);
@@ -45,7 +50,7 @@ function query<T>(c: Context, schema: z.ZodType<T>): T {
   return parsed.data;
 }
 
-export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp, stepEvents }: BusinessDeps): Hono {
+export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp, stepEvents, pushes }: BusinessDeps): Hono {
   const app = new Hono();
   const limits = {
     ownerWrite: new RateLimiter(600, 3_600_000),
@@ -127,6 +132,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     const businessId = await webWrite(c);
     const body = await parse(c, agenda.WebBookingBody);
     const result = await shopWeb.book(db, businessId, shopToken(c), body);
+    pushes?.owner(businessId, "work_new_booking");
     stepEvents?.record(businessId, "web_booking");
     return c.json(result, 201);
   });
@@ -134,6 +140,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     const businessId = await webWrite(c);
     const body = await parse(c, orders.WebOrderBody);
     const result = await shopWeb.order(db, businessId, shopToken(c), body);
+    pushes?.owner(businessId, "work_new_order");
     stepEvents?.record(businessId, "web_order");
     return c.json(result, 201);
   });
@@ -151,11 +158,15 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   });
   app.post("/v1/businesses/:handle/web/bookings/:bookingId/cancel", async (c) => {
     const businessId = await webWrite(c);
-    return c.json(await shopWeb.cancelBooking(db, businessId, shopToken(c), c.req.param("bookingId")));
+    const booking = await shopWeb.cancelBooking(db, businessId, shopToken(c), c.req.param("bookingId"));
+    pushes?.owner(businessId, "work_cancelled");
+    return c.json(booking);
   });
   app.post("/v1/businesses/:handle/web/orders/:orderId/cancel", async (c) => {
     const businessId = await webWrite(c);
-    return c.json(await shopWeb.cancelOrder(db, businessId, shopToken(c), c.req.param("orderId")));
+    const order = await shopWeb.cancelOrder(db, businessId, shopToken(c), c.req.param("orderId"));
+    pushes?.owner(businessId, "work_cancelled");
+    return c.json(order);
   });
   app.post("/v1/businesses/:handle/web/claim", async (c) => {
     const { userId, businessId } = await customer(c);
@@ -297,11 +308,16 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   });
   app.post("/v1/me/business/agenda/bookings/:bookingId/move", async (c) => {
     const businessId = await owner(c);
-    return c.json(await agenda.ownerMove(db, businessId, c.req.param("bookingId"), await parse(c, agenda.MoveBody)));
+    const booking = await agenda.ownerMove(db, businessId, c.req.param("bookingId"), await parse(c, agenda.MoveBody));
+    pushes?.customer(userIdOf(booking.customer), "booking_changed");
+    return c.json(booking);
   });
   for (const action of ["cancel", "no-show", "accept", "refuse"] as const) {
-    app.post(`/v1/me/business/agenda/bookings/:bookingId/${action}`, async (c) =>
-      c.json(await agenda.ownerAction(db, await owner(c), c.req.param("bookingId"), action)));
+    app.post(`/v1/me/business/agenda/bookings/:bookingId/${action}`, async (c) => {
+      const booking = await agenda.ownerAction(db, await owner(c), c.req.param("bookingId"), action);
+      if (action !== "no-show") pushes?.customer(userIdOf(booking.customer), "booking_changed");
+      return c.json(booking);
+    });
   }
 
   // ---- Agenda, customer ----
@@ -321,11 +337,15 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   });
   app.post("/v1/businesses/:handle/agenda/bookings/:bookingId/confirm", async (c) => {
     const { userId, businessId } = await customer(c);
-    return c.json(await agenda.confirm(db, businessId, userId, c.req.param("bookingId")));
+    const booking = await agenda.confirm(db, businessId, userId, c.req.param("bookingId"));
+    pushes?.owner(businessId, "work_new_booking");
+    return c.json(booking);
   });
   app.post("/v1/businesses/:handle/agenda/bookings/:bookingId/cancel", async (c) => {
     const { userId, businessId } = await customer(c);
-    return c.json(await agenda.customerCancel(db, businessId, userId, c.req.param("bookingId")));
+    const booking = await agenda.customerCancel(db, businessId, userId, c.req.param("bookingId"));
+    pushes?.owner(businessId, "work_cancelled");
+    return c.json(booking);
   });
   app.post("/v1/businesses/:handle/agenda/bookings/:bookingId/move", async (c) => {
     const { userId, businessId } = await customer(c);
@@ -347,10 +367,17 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     const businessId = await owner(c);
     return c.json(await queue.addPlace(db, businessId, await parse(c, queue.OwnerPlaceBody)), 201);
   });
-  app.post("/v1/me/business/queue/call-next", async (c) => c.json(await queue.callNext(db, await owner(c))));
+  app.post("/v1/me/business/queue/call-next", async (c) => {
+    const place = await queue.callNext(db, await owner(c));
+    pushes?.customer(userIdOf(place.customer), "queue_called");
+    return c.json(place);
+  });
   for (const action of ["served", "no-show", "recall"] as const) {
-    app.post(`/v1/me/business/queue/places/:placeId/${action}`, async (c) =>
-      c.json(await queue.placeAction(db, await owner(c), c.req.param("placeId"), action)));
+    app.post(`/v1/me/business/queue/places/:placeId/${action}`, async (c) => {
+      const place = await queue.placeAction(db, await owner(c), c.req.param("placeId"), action);
+      if (action === "recall") pushes?.customer(userIdOf(place.customer), "queue_called");
+      return c.json(place);
+    });
   }
   app.get("/v1/businesses/:handle/queue", async (c) => {
     const businessId = await publicBusiness(c);
@@ -423,13 +450,18 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   });
   app.get("/v1/me/business/orders/:orderId", async (c) => c.json(await orders.ownerGet(db, await owner(c, false), c.req.param("orderId"))));
   for (const action of ["accept", "ready", "done", "cancel"] as const) {
-    app.post(`/v1/me/business/orders/:orderId/${action}`, async (c) =>
-      c.json(await orders.ownerTransition(db, await owner(c), c.req.param("orderId"), action)));
+    app.post(`/v1/me/business/orders/:orderId/${action}`, async (c) => {
+      const order = await orders.ownerTransition(db, await owner(c), c.req.param("orderId"), action);
+      pushes?.customer(userIdOf(order.customer), "order_updated");
+      return c.json(order);
+    });
   }
   app.post("/v1/me/business/orders/:orderId/refuse", async (c) => {
     const businessId = await owner(c);
     const { reason } = await parse(c, orders.RefusalBody);
-    return c.json(await orders.ownerTransition(db, businessId, c.req.param("orderId"), "refuse", reason));
+    const order = await orders.ownerTransition(db, businessId, c.req.param("orderId"), "refuse", reason);
+    pushes?.customer(userIdOf(order.customer), "order_updated");
+    return c.json(order);
   });
   app.post("/v1/me/business/orders/:orderId/pix-charge", async (c) => {
     await orders.ownerGet(db, await owner(c), c.req.param("orderId"));
@@ -439,7 +471,9 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     const { userId, businessId } = await customer(c);
     limits.order.check(userId);
     await tools.requireLive(db, businessId, "orders");
-    return c.json(await orders.placeOrder(db, businessId, userId, await parse(c, orders.OrderBody)), 201);
+    const order = await orders.placeOrder(db, businessId, userId, await parse(c, orders.OrderBody));
+    pushes?.owner(businessId, "work_new_order");
+    return c.json(order, 201);
   });
   app.get("/v1/businesses/:handle/orders/:orderId", async (c) => {
     const userId = await mine(c);
