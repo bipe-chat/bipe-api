@@ -112,6 +112,7 @@ export function ageTreatedAsMinor(band, reg) {
 export function validateMcpTools(mt) {
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (!eq(mt.surfaces, ["bridge", "public", "personal"]) || !eq(mt.classes, ["public", "metadata", "content"]) || !eq(mt.writes, ["none", "draft", "send", "state"])) fail("mcp-tools: unsupported surfaces, classes or writes");
+  if (mt.readerMarker?.eventType !== "chat.bipe.assistant" || mt.readerMarker?.field !== "full_content") fail("mcp-tools: readerMarker must be chat.bipe.assistant full_content (ADR 0130)");
   const ps = mt.personalSend;
   if (!ps || ps.accountDataType !== "chat.bipe.assistant_send" || ps.default !== false || ps.scope !== "content-send" || ps.markerField !== "chat.bipe.assistant") fail("mcp-tools: personalSend must be the ADR 0210 switch, off by default");
   if (!Number.isInteger(ps.clientMaxLength) || ps.clientMaxLength < 8 || ps.clientMaxLength > 256) fail("mcp-tools: personalSend.clientMaxLength must be an integer from 8 to 256");
@@ -154,6 +155,22 @@ export function assistantSender(messageContent, reg) {
   if (!m || typeof m !== "object" || Array.isArray(m)) return null;
   const client = typeof m.client === "string" ? m.client.trim() : "";
   return client && client.length <= ps.clientMaxLength ? client : null;
+}
+
+/**
+ * Members whose assistant reads the whole chat (ADR 0130, bipe-chat/bipe#439): from the room's state events of type
+ * readerMarker.eventType, the state keys whose content has readerMarker.field exactly true and whose sender is the
+ * state key. Sorted, each once. The apps show bipe_app_assistant_reads for each.
+ */
+export function assistantReaders(stateEvents, reg) {
+  const rm = reg.mcpTools.readerMarker;
+  const out = new Set();
+  for (const e of stateEvents ?? []) {
+    if (!e || e.type !== rm.eventType || typeof e.state_key !== "string" || !e.state_key.startsWith("@")) continue;
+    if (e.sender !== e.state_key) continue;
+    if (e.content?.[rm.field] === true) out.add(e.state_key);
+  }
+  return [...out].sort();
 }
 
 // Assistant drafts (bipe ADR 0210, bipe-chat/bipe#866; docs/drafts-room.md).
