@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { exportData } from "../dist/export.js";
-import { linkPhone, lookupContacts, myPhone, PhoneHasher, setDiscovery, unlinkPhone } from "../dist/phones.js";
+import { blockMove, linkPhone, lookupContacts, myPhone, PhoneHasher, recordProof, runPhoneMoves, setDiscovery, unlinkPhone } from "../dist/phones.js";
 import { phoneRules } from "../dist/registry.js";
 import { isolatedDatabase } from "./helpers/database.mjs";
 
@@ -65,4 +65,106 @@ test("a number from another country is not linked and lookup finds nothing", { t
   await assert.rejects(linkPhone(db, hasher, owner, "+351 912 345 678", false), /does not prove/);
   assert.equal((await db.query("SELECT 1 FROM phone_links WHERE user_id = $1", [owner])).rowCount, 0);
   assert.equal((await lookupContacts(db, hasher, "@finder:example.test", ["+351912345678"])).matches.length, 0);
+});
+
+// bipe#469: a number held by another account moves only after the hold, and the holder can block it.
+const HOLDER = "@holder:example.test";
+const NEWCOMER = "@newcomer:example.test";
+const FINDER = "@finder:example.test";
+
+async function heldNumber(t) {
+  const db = await isolatedDatabase(t);
+  await linkPhone(db, hasher, HOLDER, NUMBER, false);
+  return db;
+}
+const holderOf = async (db) => (await lookupContacts(db, hasher, FINDER, [NUMBER])).matches[0]?.user_id;
+const recording = () => {
+  const sent = [];
+  return { sent, notify: async (userId, key) => void sent.push([userId, key]) };
+};
+const due = (db) => db.query("UPDATE phone_moves SET ends_at = now() - interval '1 minute' WHERE state = 'waiting'");
+
+test("a second proof starts a move: the holder stays until it ends and is alerted first", { timeout: 30000 }, async (t) => {
+  const db = await heldNumber(t);
+  await assert.rejects(linkPhone(db, hasher, NEWCOMER, NUMBER, false), /use --force/);
+  assert.equal((await linkPhone(db, hasher, NEWCOMER, NUMBER, true)).outcome, "moving");
+  assert.equal(await holderOf(db), HOLDER);
+  const out = (await myPhone(db, hasher, HOLDER)).move;
+  assert.deepEqual([out.direction, out.state], ["out", "waiting"]);
+  const incoming = (await myPhone(db, hasher, NEWCOMER)).move;
+  assert.deepEqual([incoming.direction, incoming.state], ["in", "waiting"]);
+  assert.ok(!JSON.stringify(out).includes("newcomer") && !JSON.stringify(incoming).includes("holder"), "the other account stays hidden");
+
+  // Past the date with no alert sent: the number stays.
+  await due(db);
+  const failing = async () => { throw new Error("no bot"); };
+  await runPhoneMoves(db, failing);
+  assert.equal(await holderOf(db), HOLDER);
+
+  const { sent, notify } = recording();
+  await runPhoneMoves(db, notify);
+  assert.deepEqual(sent, [[HOLDER, "bipe_phone_move_alert"]]);
+  assert.ok(new Date((await myPhone(db, hasher, HOLDER)).move.ends) > new Date(), "the hold counts from the alert");
+  assert.equal(await holderOf(db), HOLDER);
+
+  await due(db);
+  await runPhoneMoves(db, notify);
+  assert.equal(await holderOf(db), NEWCOMER);
+  assert.equal((await myPhone(db, hasher, HOLDER)).linked, false);
+  assert.equal((await myPhone(db, hasher, NEWCOMER)).number, NUMBER);
+  assert.deepEqual(sent.slice(1), [[HOLDER, "bipe_phone_move_done_out"], [NEWCOMER, "bipe_phone_move_done_in"]]);
+});
+
+test("the holder blocks: the number stays, and the same account cannot start again at once", { timeout: 30000 }, async (t) => {
+  const db = await heldNumber(t);
+  await linkPhone(db, hasher, NEWCOMER, NUMBER, true);
+  const { id } = (await myPhone(db, hasher, HOLDER)).move;
+  await assert.rejects(blockMove(db, NEWCOMER, id));
+  await blockMove(db, HOLDER, id);
+  await assert.rejects(blockMove(db, HOLDER, id));
+
+  const { sent, notify } = recording();
+  await runPhoneMoves(db, notify);
+  assert.deepEqual(sent, [[NEWCOMER, "bipe_phone_move_blocked"]]);
+  assert.equal(await holderOf(db), HOLDER);
+  assert.equal((await myPhone(db, hasher, HOLDER)).move, undefined);
+  assert.equal((await myPhone(db, hasher, NEWCOMER)).move.state, "blocked");
+  assert.deepEqual(await linkPhone(db, hasher, NEWCOMER, NUMBER, true), { outcome: "held", reason: "blocked" });
+});
+
+test("the holder unlinks during a move: the number goes to the new account at once", { timeout: 30000 }, async (t) => {
+  const db = await heldNumber(t);
+  await linkPhone(db, hasher, NEWCOMER, NUMBER, true);
+  await unlinkPhone(db, HOLDER);
+  assert.equal(await holderOf(db), NEWCOMER);
+  assert.equal((await myPhone(db, hasher, NEWCOMER)).move, undefined);
+});
+
+test("the new account unlinks during a move: the move is withdrawn", { timeout: 30000 }, async (t) => {
+  const db = await heldNumber(t);
+  await linkPhone(db, hasher, NEWCOMER, NUMBER, true);
+  await unlinkPhone(db, NEWCOMER);
+  assert.equal((await myPhone(db, hasher, HOLDER)).move, undefined);
+  assert.equal(await holderOf(db), HOLDER);
+});
+
+test("an SMS proof never starts a move on a Pix-proved link, and the holder's own proof only confirms", { timeout: 30000 }, async (t) => {
+  const db = await heldNumber(t);
+  await db.query("UPDATE phone_links SET method = 'pix' WHERE user_id = $1", [HOLDER]);
+  const hash = hasher.hash(NUMBER);
+  const sealed = hasher.seal(NUMBER);
+  assert.deepEqual(await recordProof(db, NEWCOMER, hash, sealed, "sms"), { outcome: "held", reason: "pix_link" });
+  assert.deepEqual(await recordProof(db, HOLDER, hash, sealed, "sms"), { outcome: "confirmed" });
+  assert.equal((await myPhone(db, hasher, HOLDER)).method, "pix");
+  assert.equal((await recordProof(db, NEWCOMER, hash, sealed, "pix")).outcome, "moving");
+  assert.deepEqual(await recordProof(db, FINDER, hash, sealed, "pix"), { outcome: "held", reason: "move_waiting" });
+});
+
+test("staff --now moves the number at once", { timeout: 30000 }, async (t) => {
+  const db = await heldNumber(t);
+  await linkPhone(db, hasher, NEWCOMER, NUMBER, true);
+  assert.deepEqual(await linkPhone(db, hasher, FINDER, NUMBER, false, true), { outcome: "linked" });
+  assert.equal((await myPhone(db, hasher, FINDER)).number, NUMBER);
+  assert.equal((await myPhone(db, hasher, HOLDER)).linked, false);
+  assert.equal((await myPhone(db, hasher, NEWCOMER)).move, undefined);
 });

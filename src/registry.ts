@@ -179,7 +179,7 @@ export function workHoursProblemOf(hours: { days: unknown }): string | null {
 }
 
 /** Phone link rules (registries/phone-numbers.json): the yearly confirmation of a linked number (bipe#470). */
-export const phoneRules = reg.phones as { linkConfirmMonths: number; linkConfirmWarnDays: number };
+export const phoneRules = reg.phones as { linkConfirmMonths: number; linkConfirmWarnDays: number; moveHoldDays: number; moveBlockedRetryDays: number };
 
 /** Linked Apple or Google account for recovery (ADR 0096, registries/accounts.json linkedRecovery). */
 export const linkedRecoveryRules = (reg.accounts as { linkedRecovery: { delayHours: number; flowMinutes: number } }).linkedRecovery;

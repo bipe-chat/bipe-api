@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { coreProvesPhone, normalizePhone, phoneRules } from "./registry.js";
@@ -7,7 +7,7 @@ import { coreProvesPhone, normalizePhone, phoneRules } from "./registry.js";
 // The linked number itself is stored only encrypted (number_enc, ADR 0191) and goes back only to its owner in
 // GET /v1/me/phone and the data export. Numbers are never logged.
 // Linking from the apps needs a proof (Pix phone key or SMS code, phases 1 and 2); until then
-// only the admin CLI links numbers.
+// only the admin CLI links numbers. A proof on a number held by another account starts a move (bipe#469).
 
 // Yearly confirmation (bipe#470): registries/phone-numbers.json linkConfirmMonths, the same value the apps read.
 const CONFIRM_MONTHS = phoneRules.linkConfirmMonths;
@@ -16,6 +16,8 @@ const LOOKUP_DAILY_BUDGET = 2000;
 const LOOKUP_DAILY_BUDGET_NEW_ACCOUNT = 300;
 const NEW_ACCOUNT_DAYS = 7;
 const DAY_MS = 86_400_000;
+const HOLD_DAYS = phoneRules.moveHoldDays;
+const BLOCKED_RETRY_DAYS = phoneRules.moveBlockedRetryDays;
 
 export class PhoneHasher {
   constructor(private readonly secret: string | undefined) {}
@@ -110,8 +112,9 @@ export async function myPhone(db: Db, hasher: PhoneHasher, userId: string) {
     [userId],
   );
   const discoverable = await discoverableByPhone(db, userId);
+  const move = await myMove(db, userId);
   const link = rows[0];
-  if (!link) return { linked: false, discoverable_by_phone: discoverable };
+  if (!link) return { linked: false, discoverable_by_phone: discoverable, ...(move && { move }) };
   const confirmBy = new Date(link.confirmed_at);
   confirmBy.setMonth(confirmBy.getMonth() + CONFIRM_MONTHS);
   return {
@@ -121,11 +124,155 @@ export async function myPhone(db: Db, hasher: PhoneHasher, userId: string) {
     confirm_by: confirmBy.toISOString(),
     number: hasher.open(link.number_enc),
     discoverable_by_phone: discoverable,
+    ...(move && { move }),
   };
 }
 
+/** The move that GET /v1/me/phone shows. It never names the other account. A holder who blocked sees nothing more. */
+async function myMove(db: Db, userId: string) {
+  const { rows } = await db.query<{ id: string; from_user: string; state: "waiting" | "blocked"; ends_at: Date }>(
+    `SELECT id, from_user, state, ends_at FROM phone_moves
+     WHERE (state = 'waiting' AND (from_user = $1 OR to_user = $1))
+        OR (state = 'blocked' AND to_user = $1 AND ended_at > now() - make_interval(days => $2))
+     ORDER BY CASE WHEN state = 'waiting' AND from_user = $1 THEN 0 WHEN state = 'waiting' THEN 1 ELSE 2 END, started_at DESC LIMIT 1`,
+    [userId, BLOCKED_RETRY_DAYS],
+  );
+  const move = rows[0];
+  if (!move) return null;
+  return {
+    id: move.id,
+    direction: move.from_user === userId ? ("out" as const) : ("in" as const),
+    state: move.state,
+    ...(move.state === "waiting" && { ends: move.ends_at.toISOString() }),
+  };
+}
+
+/** The holder unlinks. A waiting move out ends at once in favour of the new account; a waiting move in is withdrawn. */
 export async function unlinkPhone(db: Db, userId: string): Promise<void> {
-  await db.query("DELETE FROM phone_links WHERE user_id = $1", [userId]);
+  await transaction(db, async (client) => {
+    await client.query("DELETE FROM phone_moves WHERE to_user = $1 AND state = 'waiting'", [userId]);
+    const { rows } = await client.query<MoveRow>("SELECT * FROM phone_moves WHERE from_user = $1 AND state = 'waiting' FOR UPDATE", [userId]);
+    for (const move of rows) await finishMove(client, move);
+    await client.query("DELETE FROM phone_links WHERE user_id = $1", [userId]);
+  });
+}
+
+type Client = Pick<Db, "query">;
+type ProofMethod = "admin" | "pix" | "sms";
+type MoveRow = { id: string; phone_hmac: string; number_enc: Buffer; from_user: string; to_user: string; method: ProofMethod };
+
+export type ProofResult =
+  | { outcome: "linked" | "confirmed" }
+  | { outcome: "moving"; ends_at: Date }
+  | { outcome: "held"; reason: "pix_link" | "move_waiting" | "blocked" };
+
+async function transaction<T>(db: Db, work: (client: Client) => Promise<T>): Promise<T> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function setLink(client: Client, userId: string, hash: string, method: ProofMethod, sealed: Buffer): Promise<void> {
+  await client.query(
+    `INSERT INTO phone_links (user_id, phone_hmac, method, number_enc) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id) DO UPDATE SET phone_hmac = EXCLUDED.phone_hmac, method = EXCLUDED.method, number_enc = EXCLUDED.number_enc,
+       linked_at = now(), confirmed_at = now()`,
+    [userId, hash, method, sealed],
+  );
+}
+
+/** The old holder loses the number and the new account gets it. The job sends the notices. */
+async function finishMove(client: Client, move: MoveRow): Promise<void> {
+  await client.query("DELETE FROM phone_links WHERE phone_hmac = $1", [move.phone_hmac]);
+  await setLink(client, move.to_user, move.phone_hmac, move.method, move.number_enc);
+  await client.query("UPDATE phone_moves SET state = 'done', ended_at = now() WHERE id = $1", [move.id]);
+}
+
+/**
+ * A proof of a number succeeded for `userId`. A free number links now, the holder's own number confirms, and a number
+ * held by another account starts a move and never moves at once (bipe#469). The staff CLI comes here too.
+ */
+export async function recordProof(client: Client, userId: string, hash: string, sealed: Buffer, method: ProofMethod): Promise<ProofResult> {
+  const { rows } = await client.query<{ user_id: string; method: ProofMethod }>("SELECT user_id, method FROM phone_links WHERE phone_hmac = $1 FOR UPDATE", [hash]);
+  const holder = rows[0];
+  if (holder?.user_id === userId) {
+    // A confirmation of the same number never starts a move.
+    await client.query("UPDATE phone_links SET confirmed_at = now(), number_enc = $2 WHERE user_id = $1", [userId, sealed]);
+    return { outcome: "confirmed" };
+  }
+  const waiting = await client.query<{ to_user: string; ends_at: Date }>("SELECT to_user, ends_at FROM phone_moves WHERE phone_hmac = $1 AND state = 'waiting' FOR UPDATE", [hash]);
+  if (waiting.rows[0]) {
+    return waiting.rows[0].to_user === userId ? { outcome: "moving", ends_at: waiting.rows[0].ends_at } : { outcome: "held", reason: "move_waiting" };
+  }
+  if (!holder) {
+    await setLink(client, userId, hash, method, sealed);
+    return { outcome: "linked" };
+  }
+  // An SMS proof never takes a Pix-proved number: a SIM swap must not reach it.
+  if (holder.method === "pix" && method === "sms") return { outcome: "held", reason: "pix_link" };
+  const blocked = await client.query(
+    "SELECT 1 FROM phone_moves WHERE phone_hmac = $1 AND to_user = $2 AND state = 'blocked' AND ended_at > now() - make_interval(days => $3)",
+    [hash, userId, BLOCKED_RETRY_DAYS],
+  );
+  if (blocked.rowCount) return { outcome: "held", reason: "blocked" };
+  const started = await client.query<{ ends_at: Date }>(
+    `INSERT INTO phone_moves (id, phone_hmac, number_enc, from_user, to_user, method, ends_at, state)
+     VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(days => $7), 'waiting') RETURNING ends_at`,
+    [randomUUID(), hash, sealed, holder.user_id, userId, method, HOLD_DAYS],
+  );
+  return { outcome: "moving", ends_at: started.rows[0]!.ends_at };
+}
+
+/** POST /v1/me/phone/moves/{id}/block: only the holder of a waiting move. */
+export async function blockMove(db: Db, userId: string, id: string): Promise<void> {
+  const { rowCount } = await db.query("UPDATE phone_moves SET state = 'blocked', ended_at = now() WHERE id = $1 AND from_user = $2 AND state = 'waiting'", [id, userId]);
+  if (!rowCount) throw new ApiError("not_found");
+}
+
+export type MoveNotify = (userId: string, key: string, ...args: string[]) => Promise<void>;
+
+/**
+ * The job of bipe#469. It alerts holders, ends due moves, sends the end notices and prunes. A move ends only after its
+ * alert went out, and the hold counts from the alert: with no way to alert the holder, the number does not move.
+ */
+export async function runPhoneMoves(db: Db, notify: MoveNotify): Promise<void> {
+  const alerts = await db.query<{ id: string; from_user: string }>("SELECT id, from_user FROM phone_moves WHERE state = 'waiting' AND alerted_at IS NULL");
+  for (const move of alerts.rows) {
+    try {
+      await notify(move.from_user, "bipe_phone_move_alert", String(HOLD_DAYS));
+      await db.query("UPDATE phone_moves SET alerted_at = now(), ends_at = now() + make_interval(days => $2) WHERE id = $1 AND state = 'waiting'", [move.id, HOLD_DAYS]);
+    } catch (e) {
+      console.error(`phones: alert for move ${move.id} failed: ${(e as Error).message}`);
+    }
+  }
+  await transaction(db, async (client) => {
+    const { rows } = await client.query<MoveRow>("SELECT * FROM phone_moves WHERE state = 'waiting' AND alerted_at IS NOT NULL AND ends_at <= now() FOR UPDATE SKIP LOCKED");
+    for (const move of rows) await finishMove(client, move);
+  });
+  const ended = await db.query<{ id: string; from_user: string; to_user: string; state: string }>("SELECT id, from_user, to_user, state FROM phone_moves WHERE state <> 'waiting' AND notified_at IS NULL");
+  for (const move of ended.rows) {
+    try {
+      if (move.state === "done") {
+        await notify(move.from_user, "bipe_phone_move_done_out");
+        await notify(move.to_user, "bipe_phone_move_done_in");
+      } else {
+        await notify(move.to_user, "bipe_phone_move_blocked");
+      }
+      await db.query("UPDATE phone_moves SET notified_at = now() WHERE id = $1", [move.id]);
+    } catch (e) {
+      console.error(`phones: notice for move ${move.id} failed: ${(e as Error).message}`);
+    }
+  }
+  await db.query("DELETE FROM phone_moves WHERE state <> 'waiting' AND notified_at IS NOT NULL AND ended_at < now() - make_interval(days => $1)", [BLOCKED_RETRY_DAYS]);
 }
 
 async function discoverableByPhone(db: Db, userId: string): Promise<boolean> {
@@ -147,37 +294,29 @@ export async function getDiscovery(db: Db, userId: string) {
 }
 
 /**
- * Links a number to an account (admin CLI only in phase 0). A number held by another account is refused
- * unless `force`: the 7-day re-link hold with alerts comes with the proofs in phases 1 and 2.
+ * Links a number to an account (admin CLI only in phase 0). A number held by another account is refused unless `force`,
+ * which starts the same move as a proof. `now` is for staff fixes: the number moves at once, and the log says so.
  */
-export async function linkPhone(db: Db, hasher: PhoneHasher, userId: string, raw: string, force: boolean): Promise<string> {
+export async function linkPhone(db: Db, hasher: PhoneHasher, userId: string, raw: string, force: boolean, now = false): Promise<ProofResult> {
   const e164 = normalizePhone(raw);
   if (!e164) throw new Error("not a valid mobile number");
   // ADR 0197: a number is proved or absent. A person with another number is found by handle, QR or invite.
   if (!coreProvesPhone(e164)) throw new Error("this region does not prove numbers of this country");
   const hash = hasher.hash(e164);
   const sealed = hasher.seal(e164);
-  const client = await db.connect();
-  try {
-    await client.query("BEGIN");
+  return transaction<ProofResult>(db, async (client) => {
     const { rows } = await client.query<{ user_id: string }>("SELECT user_id FROM phone_links WHERE phone_hmac = $1 FOR UPDATE", [hash]);
     const holder = rows[0]?.user_id;
     if (holder && holder !== userId) {
-      if (!force) throw new Error(`number is linked to ${holder}; use --force to move it`);
-      await client.query("DELETE FROM phone_links WHERE phone_hmac = $1", [hash]);
+      if (now) {
+        await client.query("DELETE FROM phone_moves WHERE phone_hmac = $1 AND state = 'waiting'", [hash]);
+        await client.query("DELETE FROM phone_links WHERE phone_hmac = $1", [hash]);
+        await setLink(client, userId, hash, "admin", sealed);
+        console.log(`phones: staff moved a number from ${holder} to ${userId}`);
+        return { outcome: "linked" };
+      }
+      if (!force) throw new Error(`number is linked to ${holder}; use --force to start a move or --now to move it at once`);
     }
-    await client.query(
-      `INSERT INTO phone_links (user_id, phone_hmac, method, number_enc) VALUES ($1, $2, 'admin', $3)
-       ON CONFLICT (user_id) DO UPDATE SET phone_hmac = EXCLUDED.phone_hmac, method = 'admin', number_enc = EXCLUDED.number_enc,
-         linked_at = now(), confirmed_at = now()`,
-      [userId, hash, sealed],
-    );
-    await client.query("COMMIT");
-    return e164;
-  } catch (e) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw e;
-  } finally {
-    client.release();
-  }
+    return recordProof(client, userId, hash, sealed, "admin");
+  });
 }

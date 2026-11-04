@@ -78,6 +78,8 @@
   "internationalMaxDigits": 15,
   "linkConfirmMonths": 12,
   "linkConfirmWarnDays": 30,
+  "moveHoldDays": 7,
+  "moveBlockedRetryDays": 30,
   "display": [
     { "countryCode": "55", "prefix": "", "pattern": "## #####-####" },
     { "countryCode": "1", "prefix": "", "pattern": "### ###-####" },
