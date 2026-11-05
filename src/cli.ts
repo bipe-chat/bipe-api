@@ -5,7 +5,7 @@
 //   node dist/cli.js invite grant <user_id> <n>      (n extra personal invites)
 //   node dist/cli.js invite revoke-user <user_id>    (all pending invites of a user)
 //   node dist/cli.js invite top [--limit 50]         (inviters: sent, joined, rate, downstream tree)
-//   node dist/cli.js phone link <user_id|@handle> <number> [--force]   (phase 0: no proof yet; never prints the number; refuses an ID with no account)
+//   node dist/cli.js phone link <user_id|@handle> <number> [--force|--now]   (phase 0: no proof yet; --force starts the 7-day move, --now moves at once and logs it; never prints the number; refuses an ID with no account)
 //   node dist/cli.js phone unlink <user_id>
 //   node dist/cli.js waitlist count
 //   node dist/cli.js waitlist export <platform>      (CSV email,lang for the launch email)
@@ -88,7 +88,7 @@ await migrate(db);
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" }, since: { type: "string", default: "2026-01-01" }, "password-stdin": { type: "boolean", default: false } },
+  options: { now: { type: "boolean" }, uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" }, since: { type: "string", default: "2026-01-01" }, "password-stdin": { type: "boolean", default: false } },
 });
 const [group, command, arg, arg2] = positionals;
 
@@ -319,8 +319,8 @@ try {
   } else if (group === "phone" && command === "link" && arg?.startsWith("@") && arg2) {
     const config = loadConfig();
     const userId = await existingAccount(db, new Mas(config), config.SERVER_NAME, arg);
-    await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), userId, arg2, values.force === true);
-    console.log(`linked a number to ${userId}`);
+    const result = await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), userId, arg2, values.force === true, values.now === true);
+    console.log(`${result.outcome}${result.outcome === "held" ? ` (${result.reason})` : ""}: ${userId}`);
   } else if (group === "assistant" && command === "add" && arg?.startsWith("@") && arg2?.startsWith("@") && positionals[4]) {
     // Only the seal check of Badges is used: no signing key, no Synapse.
     const badges = new Badges(db, {});

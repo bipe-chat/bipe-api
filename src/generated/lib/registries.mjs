@@ -440,6 +440,7 @@ export function validateRegions(reg) {
     if (typeof r.name !== "string" || !r.name) throw new Error(`regions: ${r.id} needs a name`);
     if (typeof r.coreApi !== "string" || !r.coreApi.startsWith("https://")) throw new Error(`regions: ${r.id} coreApi must be https`);
     if (!["e2ee", "none"].includes(r.floor)) throw new Error(`regions: ${r.id} floor must be e2ee or none`);
+    if (!(Array.isArray(r.phoneProofCountryCodes) && r.phoneProofCountryCodes.length > 0 && r.phoneProofCountryCodes.every((c) => /^[1-9][0-9]{0,2}$/.test(c)))) throw new Error(`regions: ${r.id} phoneProofCountryCodes must be country codes`);
     for (const server of r.servers) {
       if (owned.has(server)) throw new Error(`regions: ${server} is in two regions`);
       if (!reg.bipeServers.servers.includes(server)) throw new Error(`regions: ${server} is not in bipe-servers.json`);
@@ -689,6 +690,7 @@ function validate(reg, phosphor) {
     const n = d.countryCode.length + [...d.pattern].filter((c) => c === "#").length;
     if (n < ph.internationalMinDigits || n > ph.internationalMaxDigits) fail(`phones: display pattern length ${d.countryCode}`);
   }
+  if (!(Number.isInteger(ph.moveHoldDays) && ph.moveHoldDays >= 1 && Number.isInteger(ph.moveBlockedRetryDays) && ph.moveBlockedRetryDays >= ph.moveHoldDays)) fail("phones: moveHoldDays and moveBlockedRetryDays");
   if (!(Number.isInteger(ph.linkConfirmWarnDays) && ph.linkConfirmWarnDays >= 1 && ph.linkConfirmWarnDays < ph.linkConfirmMonths * 28)) fail("phones: linkConfirmWarnDays");
   validateBadgeKeys(reg.badgeKeys);
   const ac = reg.accounts;
@@ -848,6 +850,13 @@ export function extractInviteCode(text, reg) {
   const ic = reg.inviteCodes;
   const m = new RegExp(ic.pattern).exec(text.slice(0, ic.maxInputLength).toUpperCase());
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+// ADR 0197: a region's core proves a number only when its country code is in the region's phoneProofCountryCodes.
+// e164 is the result of normalizePhone. Country codes are prefix-free, so a prefix check is exact.
+export function canProvePhone(e164, regionId, reg) {
+  const region = reg.regions.regions.find((r) => r.id === regionId);
+  return !!region && typeof e164 === "string" && region.phoneProofCountryCodes.some((code) => e164.startsWith(`+${code}`));
 }
 
 // ADR 0168, bipe-chat/bipe#680: a Bipe user is a user ID whose server name (everything after the first ':') is in

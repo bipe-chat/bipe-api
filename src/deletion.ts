@@ -351,6 +351,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     // Group links the user made stop working and lose their maker (ADR 0184). The user's own joins go.
     await q("UPDATE group_links SET created_by = NULL, revoked_at = COALESCE(revoked_at, now()) WHERE created_by = $1");
     await q("DELETE FROM group_link_joins WHERE user_id = $1");
+    await q("DELETE FROM phone_moves WHERE from_user = $1 OR to_user = $1");
     for (const table of [
       "signups",
       "account_secrets",

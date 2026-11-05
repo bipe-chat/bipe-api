@@ -1,10 +1,14 @@
 import { fileURLToPath } from "node:url";
 // Reference implementation copied from bipe-shared by `pnpm gen`. Never edit generated/.
-import { ageBand, cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, isBipeUserID, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, socialHandleClean, socialHandleProblem, workHoursProblem } from "./generated/lib/registries.mjs";
+import { ageBand, canProvePhone, cnpjRoot, extractInviteCode as extractInviteCodeWith, formatCnpj, handleProblem, handleSkeleton, isBipeUserID, loadRegistries, normalize, normalizeCnpj, normalizePhone as normalizePhoneWith, pinProblem, profileProblem, socialHandleClean, socialHandleProblem, workHoursProblem } from "./generated/lib/registries.mjs";
 
 // The JSON registries are read from src/generated at runtime (tsc does not copy JSON).
 const root = fileURLToPath(new URL("../src/generated/", import.meta.url));
 const reg = loadRegistries(root);
+
+/** The region this core serves (ADR 0197, registries/regions.json). A core serves one region. An unknown id stops the start. */
+export const coreRegionId = process.env.REGION_ID ?? "br";
+if (!(reg.regions.regions as { id: string }[]).some((r) => r.id === coreRegionId)) throw new Error("invalid environment: REGION_ID");
 
 /** Server-side growth events (ADR 0098, registries/growth-events.json). */
 export const growthRules = reg.growth as {
@@ -80,9 +84,14 @@ export function isBipeServer(serverName: string): boolean {
   return isBipeUserID(`@x:${serverName}`, reg) as boolean;
 }
 
-/** A Brazilian mobile number in E.164 from an address-book entry, or null (registries/phone-numbers.json). */
+/** A number in E.164 from an address-book entry, or null: a Brazilian mobile, or another country written with + (registries/phone-numbers.json). */
 export function normalizePhone(text: string): string | null {
   return normalizePhoneWith(text, reg) as string | null;
+}
+
+/** True when this core may prove the number (ADR 0197, registries/regions.json phoneProofCountryCodes). */
+export function coreProvesPhone(e164: string): boolean {
+  return canProvePhone(e164, coreRegionId, reg) as boolean;
 }
 
 // --- CNPJ (ADR 0042) -----------------------------------------------------------------------------------
@@ -170,7 +179,7 @@ export function workHoursProblemOf(hours: { days: unknown }): string | null {
 }
 
 /** Phone link rules (registries/phone-numbers.json): the yearly confirmation of a linked number (bipe#470). */
-export const phoneRules = reg.phones as { linkConfirmMonths: number; linkConfirmWarnDays: number };
+export const phoneRules = reg.phones as { linkConfirmMonths: number; linkConfirmWarnDays: number; moveHoldDays: number; moveBlockedRetryDays: number };
 
 /** Linked Apple or Google account for recovery (ADR 0096, registries/accounts.json linkedRecovery). */
 export const linkedRecoveryRules = (reg.accounts as { linkedRecovery: { delayHours: number; flowMinutes: number } }).linkedRecovery;

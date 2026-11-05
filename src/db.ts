@@ -973,6 +973,26 @@ export const MIGRATIONS: readonly string[] = [
      stopped_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (customer_id, business_id)
    );`,
+  // Regions (ADR 0197): the region whose terms the account accepted. Every earlier row is Brazil.
+  `ALTER TABLE terms_acceptances ADD COLUMN region text NOT NULL DEFAULT 'br';`,
+  // Moves of a number between accounts (bipe#469). alerted_at: the holder got the notice; the 7 days count from then.
+  `CREATE TABLE phone_moves (
+     id text PRIMARY KEY,
+     phone_hmac text NOT NULL,
+     number_enc bytea NOT NULL,
+     from_user text NOT NULL,
+     to_user text NOT NULL,
+     method text NOT NULL CHECK (method IN ('admin', 'pix', 'sms')),
+     started_at timestamptz NOT NULL DEFAULT now(),
+     ends_at timestamptz NOT NULL,
+     alerted_at timestamptz,
+     state text NOT NULL CHECK (state IN ('waiting', 'blocked', 'done')),
+     ended_at timestamptz,
+     notified_at timestamptz
+   );
+   CREATE UNIQUE INDEX phone_moves_one_waiting ON phone_moves (phone_hmac) WHERE state = 'waiting';
+   CREATE INDEX phone_moves_from_user ON phone_moves (from_user);
+   CREATE INDEX phone_moves_to_user ON phone_moves (to_user);`,
   // External calendars of an agenda (ADR 0101, bipe#319). The feed token only as a hash; busy blocks hold start and end.
   `CREATE TABLE agenda_feeds (
      agenda_id text PRIMARY KEY REFERENCES agendas(id) ON DELETE CASCADE,
