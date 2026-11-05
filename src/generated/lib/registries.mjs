@@ -1302,6 +1302,9 @@ export function chatListPrompt(eligible, slot, nowMs, reg) {
 // [iso] } as POST /v1/profile-facts returns them; nowMs: Unix ms. Returns { lines, notice }: lines in the order created,
 // photo, name; each { fact, at } (created: the creation time) or { fact, count, at } (at: the newest change in the
 // window). notice: a name change and a photo change at most noticePairHours apart, the later one younger than noticeDays.
+// number_moved_out and number_moved_in (bipe#161): the account's number went to, or came from, another account. Each
+// gives a line after the name line, { fact: "numberOut" | "numberIn", at }. numberNotice names the newest of them in the
+// window and is absent without one.
 export function profileFactLines(facts, nowMs, reg) {
   const r = reg.profileFacts;
   const day = 86_400_000;
@@ -1315,13 +1318,18 @@ export function profileFactLines(facts, nowMs, reg) {
   }
   if (photos.length) lines.push({ fact: "photo", count: photos.length, at: new Date(photos.at(-1)).toISOString() });
   if (names.length) lines.push({ fact: "name", count: names.length, at: new Date(names.at(-1)).toISOString() });
+  const movedOut = inWindow(facts.number_moved_out).at(-1);
+  const movedIn = inWindow(facts.number_moved_in).at(-1);
+  if (movedOut !== undefined) lines.push({ fact: "numberOut", at: new Date(movedOut).toISOString() });
+  if (movedIn !== undefined) lines.push({ fact: "numberIn", at: new Date(movedIn).toISOString() });
   let notice = false;
   for (const n of names) {
     for (const p of photos) {
       if (Math.abs(n - p) <= r.noticePairHours * 3_600_000 && nowMs - Math.max(n, p) < r.noticeDays * day) notice = true;
     }
   }
-  return { lines, notice };
+  if (movedOut === undefined && movedIn === undefined) return { lines, notice };
+  return { lines, notice, numberNotice: (movedIn ?? -1) > (movedOut ?? -1) ? "in" : "out" };
 }
 
 

@@ -993,6 +993,10 @@ export const MIGRATIONS: readonly string[] = [
    CREATE UNIQUE INDEX phone_moves_one_waiting ON phone_moves (phone_hmac) WHERE state = 'waiting';
    CREATE INDEX phone_moves_from_user ON phone_moves (from_user);
    CREATE INDEX phone_moves_to_user ON phone_moves (to_user);`,
+  // Number moves as profile facts (bipe#161): dates only, for windowDays.
+  `ALTER TABLE profile_changes DROP CONSTRAINT profile_changes_kind_check, DROP CONSTRAINT profile_changes_source_check,
+     ADD CONSTRAINT profile_changes_kind_check CHECK (kind IN ('name', 'photo', 'number_out', 'number_in')),
+     ADD CONSTRAINT profile_changes_source_check CHECK (source IN ('matrix', 'public', 'phone'));`,
   // External calendars of an agenda (ADR 0101, bipe#319). The feed token only as a hash; busy blocks hold start and end.
   `CREATE TABLE agenda_feeds (
      agenda_id text PRIMARY KEY REFERENCES agendas(id) ON DELETE CASCADE,
