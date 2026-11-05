@@ -179,6 +179,17 @@ export async function setSector(db: Queryable, businessId: string, body: z.infer
   return tools(db, businessId);
 }
 
+const SECOND_SEAT_LIVE = false;
+
+/** POST /v1/me/business/setup/second-seat-skip: only the owner answers. One person is a complete state (ADR 0252). */
+export async function skipSecondSeat(db: Queryable, businessId: string): Promise<void> {
+  await db.query(
+    `INSERT INTO business_work_settings (business_id, second_seat_skipped) VALUES ($1, true)
+     ON CONFLICT (business_id) DO UPDATE SET second_seat_skipped = true`,
+    [businessId],
+  );
+}
+
 export async function markLinkOpened(db: Queryable, businessId: string): Promise<void> {
   await db.query(
     `INSERT INTO business_work_settings (business_id, link_opened_at) VALUES ($1, now())
@@ -192,14 +203,16 @@ function pathOf(sector: string | undefined) {
 }
 
 export async function setup(db: Queryable, businessId: string, events?: StepEvents): Promise<WorkSetup> {
-  const { rows } = await db.query<{ profile: boolean; handle: boolean; seal: boolean; link_opened: boolean; steps_done: string[] | null; sector: string | null }>(
+  const { rows } = await db.query<{ profile: boolean; handle: boolean; seal: boolean; link_opened: boolean; steps_done: string[] | null; sector: string | null ; second_seat_skipped: boolean; people: number }>(
     `SELECT EXISTS (SELECT 1 FROM public_profiles p JOIN work_hours w ON w.user_id = p.user_id
                      WHERE p.user_id = $1 AND p.photo_version IS NOT NULL AND btrim(p.bio) <> '') AS profile,
             EXISTS (SELECT 1 FROM handles WHERE user_id = $1) AS handle,
             EXISTS (SELECT 1 FROM business_claims WHERE user_id = $1 AND status = 'verified') AS seal,
             COALESCE((SELECT link_opened_at IS NOT NULL FROM business_work_settings WHERE business_id = $1), false) AS link_opened,
             (SELECT steps_done FROM business_work_settings WHERE business_id = $1) AS steps_done,
-            (SELECT sector FROM business_work_settings WHERE business_id = $1) AS sector`,
+            (SELECT sector FROM business_work_settings WHERE business_id = $1) AS sector,
+            COALESCE((SELECT second_seat_skipped FROM business_work_settings WHERE business_id = $1), false) AS second_seat_skipped,
+            (SELECT count(*)::int FROM business_seats WHERE business_id = $1 AND status = 'active') AS people`,
     [businessId],
   );
   const row = rows[0]!;
@@ -210,10 +223,11 @@ export async function setup(db: Queryable, businessId: string, events?: StepEven
     catalog: facts.items >= registry.catalogMinItems,
     first_tool: live.tools.length > 0,
     seal: row.seal,
+    second_seat: row.people >= 2 || row.second_seat_skipped,
   };
   const path = pathOf(row.sector ?? undefined);
-  // Seats do not exist yet (ADR 0087 owner case): second_seat stays out until the owner can add one.
-  const steps: WorkSetupStep[] = path.step_order.filter((id) => id !== "second_seat").map((id) => ({ id, done: done[id] === true }));
+  // second_seat stays out until the apps can add a person (phase 2 of bipe/docs/work-accounts.md, bipe#1056).
+  const steps: WorkSetupStep[] = path.step_order.filter((id) => SECOND_SEAT_LIVE || id !== "second_seat").map((id) => ({ id, done: done[id] === true }));
   const doneNow = steps.filter((s) => s.done).map((s) => s.id as string);
   const known = row.steps_done ?? [];
   const fresh = doneNow.filter((id) => !known.includes(id));

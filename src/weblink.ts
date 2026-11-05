@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { isIP } from "node:net";
 import { Reader, type CityResponse } from "mmdb-lib";
+import { afterPhoneApproved, afterWebApproved } from "./business-seats.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import type { Mas, MasSession } from "./mas.js";
@@ -14,7 +15,7 @@ const SINCE_SLACK_MS = 60_000;
 export type WebLinkKind = "computer" | "phone";
 
 /** The caller's device and the kind of approval, for the web session record (bipe#398). */
-export type WebLinkCaller = { db: Db; deviceId: string | null; kind?: WebLinkKind };
+export type WebLinkCaller = { db: Db; deviceId: string | null; kind?: WebLinkKind; seatId?: string };
 
 /**
  * Finishes the MAS browser sessions of the caller that started at or after `since` minus 60 s: the
@@ -31,14 +32,17 @@ export async function finishWebLink(mas: Mas, userId: string, since: string, cal
   const ids = await mas.activeBrowserSessionsSince(user.id, new Date(start - SINCE_SLACK_MS));
   // A failed record must not keep the phone's browser session open: log it and finish the sessions.
   if (caller?.kind === "computer" && caller.deviceId) {
-    await recordWebLinks(mas, caller.db, userId, caller.deviceId, ids).catch(() => console.error("web-link: the web session record failed"));
+    await recordWebLinks(mas, caller.db, userId, caller.deviceId, ids, caller.seatId).catch(() => console.error("web-link: the web session record failed"));
+  }
+  if (caller?.kind === "phone" && caller.deviceId) {
+    await afterPhoneApproved(caller.db, userId, caller.deviceId, caller.seatId).catch(() => console.error("web-link: the owner window failed"));
   }
   for (const id of ids) await mas.finishBrowserSession(id);
   return ids.length;
 }
 
 /** Records each Matrix device that one of the browser sessions approved, other than the approver's own device. */
-async function recordWebLinks(mas: Mas, db: Db, userId: string, approverDeviceId: string, browserSessions: string[]): Promise<void> {
+async function recordWebLinks(mas: Mas, db: Db, userId: string, approverDeviceId: string, browserSessions: string[], seatId?: string): Promise<void> {
   for (const id of browserSessions) {
     for (const session of await mas.oauthSessionsApprovedBy(id)) {
       if (!session.deviceId || session.deviceId === approverDeviceId) continue;
@@ -47,6 +51,7 @@ async function recordWebLinks(mas: Mas, db: Db, userId: string, approverDeviceId
          ON CONFLICT (user_id, web_device_id) DO UPDATE SET approver_device_id = EXCLUDED.approver_device_id, linked_at = now()`,
         [userId, session.deviceId, approverDeviceId],
       );
+      await afterWebApproved(db, userId, approverDeviceId, session.deviceId, seatId);
     }
   }
 }
@@ -57,10 +62,13 @@ export interface WebLinkMas {
   finishSession(session: MasSession): Promise<void>;
 }
 
-/** The web devices that a phone device of the account approved. */
+/** The web devices that a phone device of the account approved, except those of another person (ADR 0251 point 15). */
 export async function webDevicesApprovedBy(db: Db, userId: string, approverDeviceId: string): Promise<Set<string>> {
   const { rows } = await db.query<{ web_device_id: string }>(
-    "SELECT web_device_id FROM web_links WHERE user_id = $1 AND approver_device_id = $2",
+    `SELECT w.web_device_id FROM web_links w
+     LEFT JOIN business_seat_devices a ON a.business_id = w.user_id AND a.device_id = w.approver_device_id
+     LEFT JOIN business_seat_devices d ON d.business_id = w.user_id AND d.device_id = w.web_device_id
+     WHERE w.user_id = $1 AND w.approver_device_id = $2 AND (a.seat_id IS NULL OR d.seat_id IS NULL OR a.seat_id = d.seat_id)`,
     [userId, approverDeviceId],
   );
   return new Set(rows.map((r) => r.web_device_id));

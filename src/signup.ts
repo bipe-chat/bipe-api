@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomInt } from "node:crypto";
+import { z } from "zod";
 import type { Db } from "./db.js";
 import { type AccountDeps, checkNewEmail, checkPinRule, normalizeEmail, startEmailVerification } from "./accounts.js";
 import { type Attestation, verifyAttestation } from "./attest.js";
@@ -132,8 +133,24 @@ function openSealed(key: string, sealed: Buffer): { password: string; recovery_t
   }
 }
 
+/** One form: Apple App Attest or Android Key Attestation (bipe#92). Both fields at once are a bad request. */
+export const AttestationBody = z.union([
+  z.object({
+    key_attestation_chain: z.array(z.string().min(1).max(8192)).min(2).max(8),
+    challenge: z.string().min(1).max(128),
+    key_id: z.never().optional(),
+    attestation_object: z.never().optional(),
+  }),
+  z.object({
+    key_id: z.string().min(1).max(128),
+    attestation_object: z.string().min(1).max(16_384),
+    challenge: z.string().min(1).max(128),
+    key_attestation_chain: z.never().optional(),
+  }),
+]);
+
 /** True when the device is attested. Throws attestation_invalid for a proof that does not verify. */
-function checkAttestation({ config, verifyKeyAttestation: verifyKey = verifyKeyAttestation }: AccountDeps, att: SignupInput["attestation"]): boolean {
+export function checkAttestation({ config, verifyKeyAttestation: verifyKey = verifyKeyAttestation }: AccountDeps, att: SignupInput["attestation"]): boolean {
   if (!att) return false;
   if ("key_attestation_chain" in att) {
     const result = verifyKey(att, {

@@ -1021,6 +1021,40 @@ export const MIGRATIONS: readonly string[] = [
      end_at timestamptz NOT NULL
    );
    CREATE INDEX busy_blocks_agenda ON busy_blocks (agenda_id, start_at);`,
+  // People on a work account (ADR 0251, ADR 0252, bipe#1055). Each company account that exists gets its owner seat here:
+  // a device whose session is older than the seat joins it on the first look, so no owner loses rights at deploy.
+  `CREATE TABLE business_seats (
+     id uuid PRIMARY KEY,
+     business_id text NOT NULL,
+     name text NOT NULL,
+     role text NOT NULL CHECK (role IN ('owner', 'attendant')),
+     status text NOT NULL CHECK (status IN ('waiting', 'active')),
+     window_expires_at timestamptz,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE UNIQUE INDEX business_seats_owner ON business_seats (business_id) WHERE role = 'owner';
+   CREATE INDEX business_seats_business ON business_seats (business_id);
+   CREATE TABLE business_seat_devices (
+     business_id text NOT NULL,
+     device_id text NOT NULL,
+     seat_id uuid NOT NULL REFERENCES business_seats (id) ON DELETE CASCADE,
+     kind text NOT NULL CHECK (kind IN ('phone', 'web')),
+     added_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (business_id, device_id)
+   );
+   CREATE INDEX business_seat_devices_seat ON business_seat_devices (seat_id);
+   CREATE TABLE business_seat_events (
+     business_id text NOT NULL,
+     action text NOT NULL,
+     seat_id uuid,
+     at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX business_seat_events_business ON business_seat_events (business_id, at);
+   ALTER TABLE business_work_settings
+     ADD COLUMN backup_rotation_pending boolean NOT NULL DEFAULT false,
+     ADD COLUMN second_seat_skipped boolean NOT NULL DEFAULT false;
+   INSERT INTO business_seats (id, business_id, name, role, status)
+     SELECT gen_random_uuid(), user_id, 'Responsável', 'owner', 'active' FROM signups WHERE account_type = 'company';`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

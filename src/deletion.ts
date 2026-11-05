@@ -335,6 +335,10 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q("DELETE FROM guardians WHERE owner_id = $1 OR guardian_id = $1");
     await q("DELETE FROM account_phones WHERE user_id = $1");
     await q("DELETE FROM web_links WHERE user_id = $1");
+    // People on a work account (ADR 0251): their names, devices and the change log end with the account.
+    await q("DELETE FROM business_seat_devices WHERE business_id = $1");
+    await q("DELETE FROM business_seats WHERE business_id = $1");
+    await q("DELETE FROM business_seat_events WHERE business_id = $1");
     await q("UPDATE theft_marks SET root_id = NULL WHERE root_id IN (SELECT id FROM theft_marks WHERE user_id = $1)");
     await q("DELETE FROM theft_marks WHERE user_id = $1");
     // ADR 0164: the voice uploads stay registered without their owner, so the purge still deletes the files.

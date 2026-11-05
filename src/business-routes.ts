@@ -13,6 +13,7 @@ import { isStopped, setStopped } from "./business-stops.js";
 import * as calendars from "./agenda-calendars.js";
 import * as tools from "./business-tools.js";
 import * as shopWeb from "./shop-web.js";
+import * as seats from "./business-seats.js";
 import * as catalog from "./catalog.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
@@ -20,6 +21,7 @@ import * as orders from "./orders.js";
 import * as queue from "./queue.js";
 import * as quotes from "./quotes.js";
 import { RateLimiter } from "./ratelimit.js";
+import { AttestationBody } from "./signup.js";
 
 export type BusinessDeps = {
   db: Db;
@@ -33,6 +35,8 @@ export type BusinessDeps = {
   stepEvents?: tools.StepEvents;
   /** Reminders and alerts (bipe#320); absent in tests. */
   pushes?: BusinessPushes;
+  /** People on a work account (ADR 0251); absent in tests of other routes. */
+  people?: { mas: seats.SeatMas; attest: (attestation: z.infer<typeof AttestationBody>) => boolean };
 };
 
 export const CATALOG_PHOTO_PATH = /^\/v1\/me\/business\/catalog\/items\/[^/]+\/photo$/;
@@ -52,7 +56,7 @@ function query<T>(c: Context, schema: z.ZodType<T>): T {
   return parsed.data;
 }
 
-export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp, stepEvents, pushes }: BusinessDeps): Hono {
+export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp, stepEvents, pushes, people }: BusinessDeps): Hono {
   const app = new Hono();
   const limits = {
     ownerWrite: new RateLimiter(600, 3_600_000),
@@ -94,6 +98,67 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   const origin = [siteUrl, ...(webOrigin ? [webOrigin] : [])].map((o) => o.replace(/\/$/, ""));
   app.use("/v1/businesses/*", cors({ origin, allowMethods: ["GET", "POST"], allowHeaders: ["authorization", "content-type", shopWeb.TOKEN_HEADER] }));
 
+  // ---- People on a work account (ADR 0251, ADR 0252) ----
+  const seatCaller = async (c: Context) => {
+    const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+    await requireCompany(db, userId);
+    limits.ownerWrite.check(userId);
+    c.header("cache-control", "no-store");
+    return { businessId: userId, deviceId };
+  };
+  const seatOwner = async (c: Context) => {
+    const caller = await seatCaller(c);
+    await seats.requireOwnerDevice({ db, mas: people!.mas }, caller.businessId, caller.deviceId);
+    return caller;
+  };
+  if (people) {
+    const deps = { db, mas: people.mas };
+    const SeatName = z.object({ name: z.string().trim().min(1).max(60) });
+    app.get("/v1/me/business/seats", async (c) => {
+      const { businessId, deviceId } = await seatCaller(c);
+      return c.json(await seats.seatList(deps, businessId, deviceId));
+    });
+    app.post("/v1/me/business/seats", async (c) => {
+      const { businessId } = await seatOwner(c);
+      return c.json(await seats.createSeat(deps, businessId, (await parse(c, SeatName)).name));
+    });
+    app.post("/v1/me/business/seats/claim", async (c) => {
+      const { businessId, deviceId } = await seatCaller(c);
+      const { attestation } = await parse(c, z.object({ attestation: AttestationBody }));
+      if (!people.attest(attestation)) throw new ApiError("attestation_invalid");
+      return c.json(await seats.claimSeat(deps, businessId, deviceId));
+    });
+    app.post("/v1/me/business/seats/leave", async (c) => {
+      const { businessId, deviceId } = await seatCaller(c);
+      return c.json(await seats.leaveSeat(deps, businessId, deviceId));
+    });
+    app.post("/v1/me/business/seats/backup-rotated", async (c) => {
+      const { businessId, deviceId } = await seatOwner(c);
+      return c.json(await seats.backupRotated(deps, businessId, deviceId));
+    });
+    app.patch("/v1/me/business/seats/:seatId", async (c) => {
+      const { businessId } = await seatOwner(c);
+      return c.json(await seats.renameSeat(deps, businessId, c.req.param("seatId"), (await parse(c, SeatName)).name));
+    });
+    app.delete("/v1/me/business/seats/:seatId", async (c) => {
+      const { businessId, deviceId } = await seatOwner(c);
+      return c.json(await seats.removeSeat(deps, businessId, deviceId, c.req.param("seatId")));
+    });
+    app.post("/v1/me/business/seats/:seatId/window", async (c) => {
+      const { businessId } = await seatOwner(c);
+      return c.json(await seats.openOwnerWindow(deps, businessId, c.req.param("seatId")));
+    });
+    app.put("/v1/me/business/seats/devices/:deviceId", async (c) => {
+      const { businessId, deviceId } = await seatOwner(c);
+      const { seat_id } = await parse(c, z.object({ seat_id: z.string().min(1).max(64) }));
+      return c.json(await seats.assignDevice(deps, businessId, deviceId, c.req.param("deviceId"), seat_id));
+    });
+    app.delete("/v1/me/business/seats/devices/:deviceId", async (c) => {
+      const { businessId, deviceId } = await seatOwner(c);
+      return c.json(await seats.removeDevice(deps, businessId, deviceId, c.req.param("deviceId")));
+    });
+  }
+
   // ---- Tool state, sector, steps, suggestions, Hoje (ADR 0194) ----
   app.get("/v1/me/business/tools", async (c) => c.json(await tools.tools(db, await owner(c, false))));
   app.put("/v1/me/business/tools/:toolId", async (c) => {
@@ -111,6 +176,12 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   app.post("/v1/me/business/setup/link-opened", async (c) => {
     const businessId = await owner(c);
     await tools.markLinkOpened(db, businessId);
+    return c.json(await tools.setup(db, businessId, stepEvents));
+  });
+  app.post("/v1/me/business/setup/second-seat-skip", async (c) => {
+    if (!people) throw new ApiError("not_found");
+    const { businessId } = await seatOwner(c);
+    await tools.skipSecondSeat(db, businessId);
     return c.json(await tools.setup(db, businessId, stepEvents));
   });
   app.get("/v1/me/business/suggestions", async (c) => c.json(await tools.suggestions(db, await owner(c, false))));

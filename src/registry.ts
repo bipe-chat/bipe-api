@@ -161,6 +161,8 @@ export const accountRules = reg.accounts as {
   emailVerifyLinkHours: number;
   recoveryClaimDays: number;
   maxPersonalAccounts: number;
+  workAccountMaxPeople: number;
+  workAccountSeatWindowMinutes: number;
   deletionCooldownHours: number;
   deletionVerificationKeepDays: number;
   approvalNudgeMaxPerHour: number;
