@@ -67,12 +67,20 @@ export const syntheticRoot = new X509Certificate(root.der);
 export async function keyAttestation({
   challenge = newChallenge(), boundChallenge = challenge, security = 1, packageName = PACKAGE, digest = SIGNING_DIGEST,
   locked = true, bootState = 0, bootKey = createHash("sha256").update("stock boot key").digest("hex"), rootOfTrust = true,
-  trustRoot = root, breakChain = false,
+  trustRoot = root, breakChain = false, forgeWithLeafKey = false,
 } = {}) {
   const intermediate = await certificate("Synthetic attestation issuer", await key(), trustRoot, true);
   const leafIssuer = breakChain ? await certificate("Synthetic stranger", await key(), trustRoot, true) : intermediate;
   const extension = keyDescription({ challenge: boundChallenge, security, packageName, digest, locked, bootState, bootKey, rootOfTrust });
   const leaf = await certificate("Android Keystore Key", await key(), leafIssuer, false, extension);
+  if (forgeWithLeafKey) {
+    // A rooted phone's real keystore key signs a leaf that says what the attacker wants. The real leaf says otherwise.
+    const real = await certificate("Android Keystore Key", await key(), leafIssuer, false, keyDescription({
+      challenge: boundChallenge, security, packageName, digest, locked: false, bootState: 2, bootKey, rootOfTrust,
+    }));
+    const forgedByReal = await certificate("Forged leaf", await key(), real, false, extension);
+    return { proof: { challenge, key_attestation_chain: [forgedByReal.der, real.der, intermediate.der, trustRoot.der].map((d) => d.toString("base64")) }, serials: { leaf: forgedByReal.serial, intermediate: intermediate.serial } };
+  }
   return {
     proof: { challenge, key_attestation_chain: [leaf.der, intermediate.der, trustRoot.der].map((d) => d.toString("base64")) },
     serials: { leaf: leaf.serial, intermediate: intermediate.serial },

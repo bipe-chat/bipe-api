@@ -58,6 +58,11 @@ test("a broken chain is refused", async () => {
   assert.throws(() => verify({ ...swapped.proof, key_attestation_chain: [inter, leaf, root] }, policy), refused);
 });
 
+test("a leaf forged with the key of a real leaf is refused", async () => {
+  const { proof } = await keyAttestation({ forgeWithLeafKey: true });
+  assert.throws(() => verify(proof, policy), refused);
+});
+
 test("garbage certificates are refused", async () => {
   const { proof } = await keyAttestation();
   assert.throws(() => verify({ ...proof, key_attestation_chain: ["AAAA", "AAAA"] }, policy), refused);
