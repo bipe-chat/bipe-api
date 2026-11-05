@@ -435,7 +435,8 @@ const HandleBody = z.object({ handle: z.string().max(64) });
 const PinBody = z.object({ pin: PinField });
 // bipe-chat/bipe#908: changing the PIN needs the current one when the account has a PIN.
 const PinChangeBody = z.object({ pin: PinField, old_pin: PinField.nullish() });
-const EmailBody = z.object({ email: z.email().max(254), lang: Lang.default("pt") });
+const EmailBody = z.object({ email: z.email().max(254), lang: Lang.default("pt"), pin: PinField.optional() });
+const EmailRemoveBody = z.object({ pin: PinField.optional() });
 const TokenBody = z.object({ token: SecretField });
 const RedeemBody = z.object({ recovery_token: SecretField, pin: PinField });
 const RecoveryEmailBody = z.object({ email: z.email().max(254) });
@@ -702,14 +703,15 @@ app.post("/v1/me/approval-nudge", async (c) => {
 app.put("/v1/me/email", async (c) => {
   const userId = await ownerOf(c);
   limits.emailSet.check(userId);
-  const { email, lang } = await parse(c, EmailBody);
-  await setEmail(accounts, userId, email, lang);
+  const { email, lang, pin } = await parse(c, EmailBody);
+  await setEmail(accounts, userId, email, lang, pin);
   return c.body(null, 202);
 });
 
 app.delete("/v1/me/email", async (c) => {
   const userId = await ownerOf(c);
-  await removeEmail(accounts, userId);
+  const body = await parse(c, EmailRemoveBody.optional());
+  await removeEmail(accounts, userId, body?.pin);
   return c.body(null, 204);
 });
 

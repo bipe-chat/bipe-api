@@ -387,8 +387,17 @@ export async function checkNewEmail(deps: AccountDeps, email: string, userId: st
   if (await emailTaken(deps, email, userId)) throw new ApiError("email_taken");
 }
 
-export async function setEmail(deps: AccountDeps, userId: string, raw: string, lang: Lang): Promise<void> {
+/** The recovery email can reset the PIN, so a session alone cannot change it. An account with no PIN has nothing to check. */
+async function requirePinIfSet(deps: AccountDeps, userId: string, pin: string | undefined): Promise<void> {
+  const { rows } = await deps.db.query("SELECT 1 FROM account_secrets WHERE user_id = $1 AND pin_hash IS NOT NULL", [userId]);
+  if (rows.length === 0) return;
+  if (pin === undefined) throw new ApiError("bad_request", "pin");
+  await verifyPin(deps, userId, pin, "session");
+}
+
+export async function setEmail(deps: AccountDeps, userId: string, raw: string, lang: Lang, pin?: string): Promise<void> {
   if (!deps.mailer.enabled) throw new ApiError("email_unavailable");
+  await requirePinIfSet(deps, userId, pin);
   const email = normalizeEmail(raw);
   const { rows } = await deps.db.query<{ email: string | null }>("SELECT email FROM recovery_emails WHERE user_id = $1", [userId]);
   if (rows[0]?.email === email) return;
@@ -425,7 +434,8 @@ export async function verifyEmail(deps: AccountDeps, token: string): Promise<voi
   if (old) sendNotice(deps, old.email, old.lang, "bipe_mail_notice_email_removed");
 }
 
-export async function removeEmail(deps: AccountDeps, userId: string): Promise<void> {
+export async function removeEmail(deps: AccountDeps, userId: string, pin?: string): Promise<void> {
+  await requirePinIfSet(deps, userId, pin);
   const { rows } = await deps.db.query<{ email: string | null; lang: Lang }>(
     "DELETE FROM recovery_emails WHERE user_id = $1 RETURNING email, lang",
     [userId],
