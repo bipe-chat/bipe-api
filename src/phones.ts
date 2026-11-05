@@ -1,4 +1,6 @@
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { recordProfileChange } from "./profile-facts.js";
@@ -20,22 +22,43 @@ const DAY_MS = 86_400_000;
 const HOLD_DAYS = phoneRules.moveHoldDays;
 const BLOCKED_RETRY_DAYS = phoneRules.moveBlockedRetryDays;
 
+function readKey(dir: string, name: string): string | undefined {
+  try {
+    const key = readFileSync(join(dir, name), "utf8").trim();
+    if (key.length >= 32) return key;
+    console.error(`phones: key file ${name} is too short`);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") console.error(`phones: key file ${name} did not open`);
+  }
+  return undefined;
+}
+
+/**
+ * The phone key (ADR 0260): the file hmac-key in BIPE_PHONE_KEY_DIR, else PHONE_HMAC_SECRET for the dev stack.
+ * The file hmac-key-previous exists only during a rotation.
+ */
+export function loadPhoneKeys(dir: string | undefined, envSecret: string | undefined): { current?: string; previous?: string } {
+  const current = (dir ? readKey(dir, "hmac-key") : undefined) ?? envSecret;
+  const previous = dir ? readKey(dir, "hmac-key-previous") : undefined;
+  return { ...(current && { current }), ...(previous && { previous }) };
+}
+
 export class PhoneHasher {
   constructor(private readonly secret: string | undefined) {}
 
   hash(e164: string): string {
     if (!this.secret) {
-      console.error("phones: PHONE_HMAC_SECRET is not set");
+      console.error("phones: no phone key");
       throw new ApiError("internal");
     }
     return createHmac("sha256", this.secret).update(e164).digest("hex");
   }
 
-  // ADR 0191: AES-256-GCM under HKDF-SHA256(PHONE_HMAC_SECRET, info "bipe phone number at rest v1").
+  // ADR 0191: AES-256-GCM under HKDF-SHA256(the phone key, info "bipe phone number at rest v1").
   // Layout: 12-byte IV, 16-byte tag, ciphertext. A rotation of the secret must re-encrypt number_enc with the HMACs.
   private sealKey(): Buffer {
     if (!this.secret) {
-      console.error("phones: PHONE_HMAC_SECRET is not set");
+      console.error("phones: no phone key");
       throw new ApiError("internal");
     }
     return Buffer.from(hkdfSync("sha256", Buffer.from(this.secret, "utf8"), Buffer.alloc(0), "bipe phone number at rest v1", 32));
@@ -49,7 +72,7 @@ export class PhoneHasher {
   }
 
   /** The E.164 number, or null when there is none, no secret, or the value does not open. Never throws. */
-  open(sealed: Buffer | null | undefined): string | null {
+  open(sealed: Buffer | null | undefined, quiet = false): string | null {
     if (!sealed || sealed.length < 29 || !this.secret) return null;
     try {
       const decipher = createDecipheriv("aes-256-gcm", this.sealKey(), sealed.subarray(0, 12));
@@ -57,7 +80,7 @@ export class PhoneHasher {
       const e164 = Buffer.concat([decipher.update(sealed.subarray(28)), decipher.final()]).toString("utf8");
       return /^\+[0-9]{8,15}$/.test(e164) ? e164 : null;
     } catch {
-      console.error("phones: a stored number did not open");
+      if (!quiet) console.error("phones: a stored number did not open");
       return null;
     }
   }
@@ -305,6 +328,33 @@ export async function setDiscovery(db: Db, userId: string, byPhone: boolean) {
 
 export async function getDiscovery(db: Db, userId: string) {
   return { by_phone: await discoverableByPhone(db, userId) };
+}
+
+/**
+ * A key rotation, at start while hmac-key-previous exists (ADR 0260). A row under the previous key gets a new HMAC and
+ * a new seal. A row that opens under neither key has no number to re-key: it goes, and that person proves the number
+ * again. A row under the current key stays, so a second start changes nothing.
+ */
+export async function rekeyPhones(db: Db, current: PhoneHasher, previous: PhoneHasher): Promise<{ rekeyed: number; dropped: number }> {
+  return transaction(db, async (client) => {
+    let rekeyed = 0;
+    let dropped = 0;
+    for (const [table, key] of [["phone_links", "user_id"], ["phone_moves", "id"]] as const) {
+      const { rows } = await client.query<{ row_key: string; number_enc: Buffer | null }>(`SELECT ${key} AS row_key, number_enc FROM ${table} FOR UPDATE`);
+      for (const row of rows) {
+        if (current.open(row.number_enc, true)) continue;
+        const e164 = previous.open(row.number_enc, true);
+        if (e164) {
+          await client.query(`UPDATE ${table} SET phone_hmac = $2, number_enc = $3 WHERE ${key} = $1`, [row.row_key, current.hash(e164), current.seal(e164)]);
+          rekeyed++;
+        } else {
+          await client.query(`DELETE FROM ${table} WHERE ${key} = $1`, [row.row_key]);
+          dropped++;
+        }
+      }
+    }
+    return { rekeyed, dropped };
+  });
 }
 
 /**

@@ -54,7 +54,7 @@ import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
 import { Mailer } from "./mailer.js";
 import { releaseWaitlist, WaitlistBody } from "./waitlist.js";
-import { linkPhone, PhoneHasher, unlinkPhone } from "./phones.js";
+import { linkPhone, loadPhoneKeys, PhoneHasher, unlinkPhone } from "./phones.js";
 import { experimentReport } from "./experiments.js";
 import { Growth, growthReport } from "./growth.js";
 import { ApiError } from "./errors.js";
@@ -319,7 +319,7 @@ try {
   } else if (group === "phone" && command === "link" && arg?.startsWith("@") && arg2) {
     const config = loadConfig();
     const userId = await existingAccount(db, new Mas(config), config.SERVER_NAME, arg);
-    const result = await linkPhone(db, new PhoneHasher(process.env.PHONE_HMAC_SECRET), userId, arg2, values.force === true, values.now === true);
+    const result = await linkPhone(db, new PhoneHasher(loadPhoneKeys(process.env.BIPE_PHONE_KEY_DIR, process.env.PHONE_HMAC_SECRET).current), userId, arg2, values.force === true, values.now === true);
     console.log(`${result.outcome}${result.outcome === "held" ? ` (${result.reason})` : ""}: ${userId}`);
   } else if (group === "assistant" && command === "add" && arg?.startsWith("@") && arg2?.startsWith("@") && positionals[4]) {
     // Only the seal check of Badges is used: no signing key, no Synapse.
