@@ -66,6 +66,13 @@ export function createKeyAttestationVerifier(roots: readonly X509Certificate[], 
     }
     if (chain.length < 2) fail("structure");
     for (let i = 0; i < chain.length - 1; i++) if (!chain[i]!.verify(chain[i + 1]!.publicKey)) fail("chain");
+    // Only a CA may issue, and only the leaf carries a key description. Without this, the key of a real leaf, which
+    // any phone can use, signs a forged leaf with any package, challenge and boot state.
+    if (chain[0]!.ca) fail("leaf-ca");
+    for (const issuer of chain.slice(1)) {
+      if (!issuer.ca) fail("issuer-not-ca");
+      if (hasKeyDescription(issuer)) fail("issuer-key-description");
+    }
     const last = chain.at(-1)!;
     const lastKey = last.publicKey.export({ type: "spki", format: "der" });
     if (!last.verify(last.publicKey) || !rootKeys.some((key) => key.equals(lastKey))) fail("root");
@@ -104,6 +111,14 @@ interface KeyDescription {
   challenge: Buffer;
   rootOfTrust: { verifiedBootKey: string; deviceLocked: boolean; verifiedBootState: number } | null;
   applicationId: { packages: string[]; digests: string[] } | null;
+}
+
+function hasKeyDescription(cert: X509Certificate): boolean {
+  try {
+    return extensionValue(cert.raw, KEY_DESCRIPTION_OID) !== null;
+  } catch {
+    return true;
+  }
 }
 
 // KeyDescription ::= SEQUENCE { attestationVersion, attestationSecurityLevel, keyMintVersion, keyMintSecurityLevel,
