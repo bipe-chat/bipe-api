@@ -2005,7 +2005,7 @@
     "bipe_quote_link_refused": "Quote declined.",
     "bipe_business_stop": "Stop receiving",
     "bipe_business_stop_undo": "Receive again",
-    "bipe_business_stopped": "This business can no longer start a chat with you. Replies and booking and order updates continue.",
+    "bipe_business_stopped": "This business can no longer write to you on its own. Replies and booking and order updates continue.",
     "bipe_business_tools_title": "Business tools",
     "bipe_business_tools_footer": "Customers find these on your profile and in their chat with you.",
     "bipe_business_tools_a11y": "Business tools",

@@ -2005,7 +2005,7 @@
     "bipe_quote_link_refused": "Orçamento recusado.",
     "bipe_business_stop": "Parar de receber",
     "bipe_business_stop_undo": "Voltar a receber",
-    "bipe_business_stopped": "Esta empresa não pode mais começar uma conversa com você. Respostas e avisos de horários e pedidos continuam.",
+    "bipe_business_stopped": "Esta empresa não pode mais escrever para você por conta própria. Respostas e avisos de horários e pedidos continuam.",
     "bipe_business_tools_title": "Ferramentas do negócio",
     "bipe_business_tools_footer": "Seus clientes encontram estas ferramentas no seu perfil e na conversa com você.",
     "bipe_business_tools_a11y": "Ferramentas do negócio",
