@@ -307,3 +307,23 @@ test("parar de receber: a stopped work account cannot invite, even in a shared r
   assert.equal((await mayInvite(db, shop, ana, true)).allow, true);
   await rejects(stops.setStopped(db, ana, bia, true), "not_found");
 });
+
+test("parar de receber: a stopped work account may reply within 24 hours or with an open record, and not otherwise", async (t) => {
+  const db = await setup(t);
+  const stops = await import("../dist/business-stops.js");
+  const HOUR = 3_600_000;
+  const now = Date.now();
+  assert.equal(await stops.mayMessage(db, shop, ana, null, now), true, "not stopped");
+  assert.deepEqual(await stops.stoppedBusinesses(db), []);
+  await stops.setStopped(db, ana, shop, true);
+  assert.deepEqual(await stops.stoppedBusinesses(db), [shop]);
+  assert.equal(await stops.mayMessage(db, shop, ana, null, now), false, "no message from the customer");
+  assert.equal(await stops.mayMessage(db, shop, ana, now - 25 * HOUR, now), false, "outside the window");
+  assert.equal(await stops.mayMessage(db, shop, ana, now - 23 * HOUR, now), true, "a reply");
+  assert.equal(await stops.mayMessage(db, shop, bia, null, now), true, "another customer did not stop it");
+  await queue.setOpen(db, shop, true);
+  const place = await queue.join(db, shop, ana, {});
+  assert.equal(await stops.mayMessage(db, shop, ana, null, now), true, "a queue place is open");
+  await queue.leave(db, shop, ana, place.place.id);
+  assert.equal(await stops.mayMessage(db, shop, ana, null, now), false);
+});

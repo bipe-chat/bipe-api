@@ -993,6 +993,10 @@ export const MIGRATIONS: readonly string[] = [
    CREATE UNIQUE INDEX phone_moves_one_waiting ON phone_moves (phone_hmac) WHERE state = 'waiting';
    CREATE INDEX phone_moves_from_user ON phone_moves (from_user);
    CREATE INDEX phone_moves_to_user ON phone_moves (to_user);`,
+  // Number moves as profile facts (bipe#161): dates only, for windowDays.
+  `ALTER TABLE profile_changes DROP CONSTRAINT profile_changes_kind_check, DROP CONSTRAINT profile_changes_source_check,
+     ADD CONSTRAINT profile_changes_kind_check CHECK (kind IN ('name', 'photo', 'number_out', 'number_in')),
+     ADD CONSTRAINT profile_changes_source_check CHECK (source IN ('matrix', 'public', 'phone'));`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
