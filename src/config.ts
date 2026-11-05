@@ -70,7 +70,9 @@ const Env = z.object({
   BIPE_BADGE_KEY_DIR: emptyAsUnset(z.string()),
   // Base of absolute URLs the API hands out (profile photos).
   PUBLIC_API_URL: z.url().default("https://api.bipe.net.br"),
-  // HMAC key for stored phone numbers. Without it the phone endpoints answer "internal".
+  // HMAC key for stored phone numbers (ADR 0260): the file hmac-key in BIPE_PHONE_KEY_DIR, else this variable for the
+  // dev stack. Without a key the phone endpoints answer "internal".
+  BIPE_PHONE_KEY_DIR: emptyAsUnset(z.string()),
   PHONE_HMAC_SECRET: z.string().min(32).optional(),
   // Growth events (ADR 0098): HMAC key for the pseudonymous user ID. Without it no growth event is kept.
   BIPE_GROWTH_HMAC_SECRET: emptyAsUnset(z.string().min(32)),

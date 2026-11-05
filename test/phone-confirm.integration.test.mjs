@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { exportData } from "../dist/export.js";
-import { blockMove, linkPhone, lookupContacts, myPhone, PhoneHasher, recordProof, runPhoneMoves, setDiscovery, unlinkPhone } from "../dist/phones.js";
+import { blockMove, linkPhone, loadPhoneKeys, lookupContacts, myPhone, PhoneHasher, recordProof, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "../dist/phones.js";
 import { ProfileFacts } from "../dist/profile-facts.js";
 import { phoneRules } from "../dist/registry.js";
 import { isolatedDatabase } from "./helpers/database.mjs";
@@ -191,4 +194,45 @@ test("a finished move shows in the facts and in the lookup, and no match list ex
   assert.equal(of(HOLDER).number_moved_in.length, 0);
   assert.equal(of(NEWCOMER).number_moved_in.length, 1);
   assert.equal(of(NEWCOMER).number_moved_out.length, 0);
+});
+
+// ADR 0260: the phone key lives in a file, and a rotation re-keys at start.
+test("the key file wins over the variable, and a short file falls back", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "phone-key-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const env = "e".repeat(32);
+  assert.deepEqual(loadPhoneKeys(undefined, env), { current: env });
+  assert.deepEqual(loadPhoneKeys(dir, env), { current: env });
+  assert.deepEqual(loadPhoneKeys(dir, undefined), {});
+  writeFileSync(join(dir, "hmac-key"), `${"a".repeat(32)}\n`);
+  assert.deepEqual(loadPhoneKeys(dir, env), { current: "a".repeat(32) });
+  writeFileSync(join(dir, "hmac-key-previous"), "b".repeat(32));
+  assert.deepEqual(loadPhoneKeys(dir, env), { current: "a".repeat(32), previous: "b".repeat(32) });
+  writeFileSync(join(dir, "hmac-key"), "short");
+  assert.equal(loadPhoneKeys(dir, undefined).current, undefined);
+});
+
+test("a rotation re-keys links and moves, drops what cannot open, and a second run changes nothing", { timeout: 30000 }, async (t) => {
+  const db = await heldNumber(t);
+  await linkPhone(db, hasher, NEWCOMER, NUMBER, true);
+  const other = "@other:example.test";
+  await linkPhone(db, hasher, other, "+5511912345678", false);
+  await db.query("UPDATE phone_links SET number_enc = NULL WHERE user_id = $1", [other]);
+
+  const next = new PhoneHasher("66".repeat(32));
+  assert.deepEqual(await rekeyPhones(db, next, hasher), { rekeyed: 2, dropped: 1 });
+  assert.deepEqual(await rekeyPhones(db, next, hasher), { rekeyed: 0, dropped: 0 });
+
+  assert.equal((await lookupContacts(db, next, FINDER, [NUMBER])).matches[0].user_id, HOLDER);
+  assert.equal((await lookupContacts(db, hasher, FINDER, [NUMBER])).matches.length, 0);
+  assert.equal((await myPhone(db, next, HOLDER)).number, NUMBER);
+  assert.equal((await myPhone(db, next, other)).linked, false);
+
+  // The waiting move survives and ends with a link that the new key opens.
+  const { notify } = recording();
+  await runPhoneMoves(db, notify);
+  await due(db);
+  await runPhoneMoves(db, notify);
+  assert.equal((await myPhone(db, next, NEWCOMER)).number, NUMBER);
+  assert.equal((await lookupContacts(db, next, FINDER, [NUMBER])).matches[0].user_id, NEWCOMER);
 });

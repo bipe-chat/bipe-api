@@ -22,7 +22,7 @@ import { ReachTiers, reachSettings } from "./reach-tiers.js";
 import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { recordAgeSignal } from "./age.js";
-import { blockMove, getDiscovery, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
+import { blockMove, getDiscovery, loadPhoneKeys, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
@@ -80,7 +80,12 @@ await migrate(db);
 const mas = new Mas(config);
 const auth = new MatrixAuth(config);
 const staff = new StaffGate(auth, mas);
-const phoneHasher = new PhoneHasher(config.PHONE_HMAC_SECRET);
+const phoneKeys = loadPhoneKeys(config.BIPE_PHONE_KEY_DIR, config.PHONE_HMAC_SECRET);
+const phoneHasher = new PhoneHasher(phoneKeys.current);
+if (phoneKeys.current && phoneKeys.previous && phoneKeys.current !== phoneKeys.previous) {
+  const { rekeyed, dropped } = await rekeyPhones(db, phoneHasher, new PhoneHasher(phoneKeys.previous));
+  console.log(`phone keys: ${rekeyed} rekeyed, ${dropped} dropped`);
+}
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
 const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID, config.GROUPS_USER_ID] });
 const news = new NewsBot(db, config);
