@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { exportData } from "../dist/export.js";
 import { blockMove, linkPhone, lookupContacts, myPhone, PhoneHasher, recordProof, runPhoneMoves, setDiscovery, unlinkPhone } from "../dist/phones.js";
+import { ProfileFacts } from "../dist/profile-facts.js";
 import { phoneRules } from "../dist/registry.js";
 import { isolatedDatabase } from "./helpers/database.mjs";
 
@@ -167,4 +168,27 @@ test("staff --now moves the number at once", { timeout: 30000 }, async (t) => {
   assert.equal((await myPhone(db, hasher, FINDER)).number, NUMBER);
   assert.equal((await myPhone(db, hasher, HOLDER)).linked, false);
   assert.equal((await myPhone(db, hasher, NEWCOMER)).move, undefined);
+});
+
+// bipe#161: contacts learn of a move from the facts and the lookup. Nobody's matches are stored.
+test("a finished move shows in the facts and in the lookup, and no match list exists", { timeout: 30000 }, async (t) => {
+  const db = await heldNumber(t);
+  await setDiscovery(db, HOLDER, true);
+  assert.equal((await lookupContacts(db, hasher, FINDER, [NUMBER])).matches[0].moved_at, undefined);
+  await linkPhone(db, hasher, NEWCOMER, NUMBER, true);
+  const { notify } = recording();
+  await runPhoneMoves(db, notify);
+  await due(db);
+  await runPhoneMoves(db, notify);
+
+  const [match] = (await lookupContacts(db, hasher, FINDER, [NUMBER])).matches;
+  assert.equal(match.user_id, NEWCOMER);
+  assert.ok(Date.parse(match.moved_at) > 0);
+
+  const { facts } = await new ProfileFacts(db, { serverName: "example.test" }).facts([HOLDER, NEWCOMER]);
+  const of = (id) => facts.find((f) => f.user_id === id);
+  assert.equal(of(HOLDER).number_moved_out.length, 1);
+  assert.equal(of(HOLDER).number_moved_in.length, 0);
+  assert.equal(of(NEWCOMER).number_moved_in.length, 1);
+  assert.equal(of(NEWCOMER).number_moved_out.length, 0);
 });

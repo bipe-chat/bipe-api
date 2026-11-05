@@ -15,14 +15,14 @@ const BATCH = 5000;
 const SYNC_MS = 15 * 60_000;
 const PRUNE_MS = 24 * 3_600_000;
 
-export type ProfileChangeKind = "name" | "photo";
+export type ProfileChangeKind = "name" | "photo" | "number_out" | "number_in";
 
 /** Writes one change row. `q` may be a transaction client. */
 export async function recordProfileChange(
   q: Pick<pg.PoolClient, "query">,
   userId: string,
   kind: ProfileChangeKind,
-  source: "matrix" | "public",
+  source: "matrix" | "public" | "phone",
 ): Promise<void> {
   await q.query("INSERT INTO profile_changes (user_id, kind, source) VALUES ($1, $2, $3)", [userId, kind, source]);
 }
@@ -50,7 +50,7 @@ export class ProfileFacts {
 
   /**
    * POST /v1/profile-facts: per Matrix ID, the creation time (Synapse users.creation_ts, in seconds) and the change
-   * dates in the window, oldest first. IDs without a creation time and without changes are absent.
+   * dates in the window, oldest first, number moves included. IDs without a creation time and without changes are absent.
    */
   async facts(userIds: string[]) {
     const ids = [...new Set(userIds)];
@@ -75,17 +75,18 @@ export class ProfileFacts {
         }
       }
     }
-    const facts = new Map<string, { user_id: string; created_at?: string; name_changes: string[]; photo_changes: string[] }>();
+    const facts = new Map<string, { user_id: string; created_at?: string; name_changes: string[]; photo_changes: string[]; number_moved_out: string[]; number_moved_in: string[] }>();
     const entry = (id: string) => {
       let f = facts.get(id);
-      if (!f) facts.set(id, (f = { user_id: id, name_changes: [], photo_changes: [] }));
+      if (!f) facts.set(id, (f = { user_id: id, name_changes: [], photo_changes: [], number_moved_out: [], number_moved_in: [] }));
       return f;
     };
     for (const id of ids) {
       const at = created.get(id);
       if (at) entry(id).created_at = at.toISOString();
     }
-    for (const r of rows) (r.kind === "name" ? entry(r.user_id).name_changes : entry(r.user_id).photo_changes).push(r.changed_at.toISOString());
+    const listOf = { name: "name_changes", photo: "photo_changes", number_out: "number_moved_out", number_in: "number_moved_in" } as const;
+    for (const r of rows) entry(r.user_id)[listOf[r.kind]].push(r.changed_at.toISOString());
     return { facts: [...facts.values()] };
   }
 

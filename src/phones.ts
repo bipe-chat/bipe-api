@@ -1,7 +1,8 @@
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, randomUUID } from "node:crypto";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import { coreProvesPhone, normalizePhone, phoneRules } from "./registry.js";
+import { recordProfileChange } from "./profile-facts.js";
+import { coreProvesPhone, normalizePhone, phoneRules, profileFactRules } from "./registry.js";
 
 // Phone-number discovery, phase 0 (bipe/docs/phone-link.md). Lookup compares HMAC-SHA256 with a server secret.
 // The linked number itself is stored only encrypted (number_enc, ADR 0191) and goes back only to its owner in
@@ -94,15 +95,20 @@ export async function lookupContacts(db: Db, hasher: PhoneHasher, userId: string
   spend(userId, byHash.size, await dailyBudget(db, userId));
   if (byHash.size === 0) return { matches: [] };
 
-  const { rows } = await db.query<{ phone_hmac: string; user_id: string }>(
-    `SELECT p.phone_hmac, p.user_id FROM phone_links p
+  const { rows } = await db.query<{ phone_hmac: string; user_id: string; moved_at: Date | null }>(
+    `SELECT p.phone_hmac, p.user_id,
+       (SELECT max(c.changed_at) FROM profile_changes c
+        WHERE c.user_id = p.user_id AND c.kind = 'number_in' AND c.changed_at > now() - make_interval(days => $4)) AS moved_at
+     FROM phone_links p
      LEFT JOIN discovery_settings d ON d.user_id = p.user_id
      WHERE p.phone_hmac = ANY($1) AND p.user_id <> $2
        AND p.confirmed_at > now() - make_interval(months => $3)
        AND COALESCE(d.by_phone, true)`,
-    [[...byHash.keys()], userId, CONFIRM_MONTHS],
+    [[...byHash.keys()], userId, CONFIRM_MONTHS, profileFactRules.windowDays],
   );
-  return { matches: rows.map((r) => ({ phone: byHash.get(r.phone_hmac)!, user_id: r.user_id })) };
+  return {
+    matches: rows.map((r) => ({ phone: byHash.get(r.phone_hmac)!, user_id: r.user_id, ...(r.moved_at && { moved_at: r.moved_at.toISOString() }) })),
+  };
 }
 
 /** GET /v1/me/phone: the caller's own link. `number` is the caller's own number only (ADR 0191); null for older links. */
@@ -190,11 +196,19 @@ async function setLink(client: Client, userId: string, hash: string, method: Pro
   );
 }
 
+// bipe#161: contacts learn of a move from these facts and from moved_at in the lookup. The server keeps no list of who
+// matched a number, and an old chat stays with the old account.
+async function recordMoveFacts(client: Client, fromUser: string, toUser: string): Promise<void> {
+  await recordProfileChange(client, fromUser, "number_out", "phone");
+  await recordProfileChange(client, toUser, "number_in", "phone");
+}
+
 /** The old holder loses the number and the new account gets it. The job sends the notices. */
 async function finishMove(client: Client, move: MoveRow): Promise<void> {
   await client.query("DELETE FROM phone_links WHERE phone_hmac = $1", [move.phone_hmac]);
   await setLink(client, move.to_user, move.phone_hmac, move.method, move.number_enc);
   await client.query("UPDATE phone_moves SET state = 'done', ended_at = now() WHERE id = $1", [move.id]);
+  await recordMoveFacts(client, move.from_user, move.to_user);
 }
 
 /**
@@ -312,6 +326,7 @@ export async function linkPhone(db: Db, hasher: PhoneHasher, userId: string, raw
         await client.query("DELETE FROM phone_moves WHERE phone_hmac = $1 AND state = 'waiting'", [hash]);
         await client.query("DELETE FROM phone_links WHERE phone_hmac = $1", [hash]);
         await setLink(client, userId, hash, "admin", sealed);
+        await recordMoveFacts(client, holder, userId);
         console.log(`phones: staff moved a number from ${holder} to ${userId}`);
         return { outcome: "linked" };
       }
