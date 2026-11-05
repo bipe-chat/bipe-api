@@ -62,6 +62,7 @@ import { getWorkHours, setWorkHours } from "./work-hours.js";
 import { getNotificationPrefs, pushJoin, setNotificationPrefs } from "./notification-prefs.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
 import { agendaHousekeeping } from "./agenda.js";
+import { mayMessage, stoppedBusinesses } from "./business-stops.js";
 import { businessPushes, runBusinessPushes } from "./business-pushes.js";
 import { orderHousekeeping } from "./orders.js";
 import { assistantFacts, oneAssistant } from "./assistants.js";
@@ -1031,6 +1032,22 @@ app.post("/internal/v1/may-invite", async (c) => {
   }
   // bipe#851: reason reach_limit when the inviter's first-contact budget is used; the module answers M_LIMIT_EXCEEDED.
   return c.json(await mayInvite(db, inviter, invitee, shares_room, { reach, tiers: reachTiers, roomId: room_id ?? null }));
+});
+
+// Parar de receber in a chat that exists (ADR 0237, bipe#1013), from bipe_messaging. Never log the user IDs.
+const MaySendBody = z.object({
+  business: z.string().min(1).max(320),
+  customer: z.string().min(1).max(320),
+  customer_last_ms: z.number().int().nonnegative().nullable(),
+}).strict();
+app.post("/internal/v1/business-stops/list", async (c) => {
+  checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
+  return c.json({ businesses: await stoppedBusinesses(db) });
+});
+app.post("/internal/v1/business-stops/may-send", async (c) => {
+  checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
+  const { business, customer, customer_last_ms } = await parse(c, MaySendBody);
+  return c.json({ allow: await mayMessage(db, business, customer, customer_last_ms) });
 });
 
 // First-contact outcomes (bipe#845), from bipe_messaging: the invitee's join or own leave, and ignore-list changes.
