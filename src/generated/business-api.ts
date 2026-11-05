@@ -87,7 +87,7 @@ export type BusyImport = { "id": string; "agenda_id": string; /** UTC, with a tr
 
 export type AgendaError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed"); "reason"?: string };
 
-export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live" | "web_off" | "shop_token_invalid"); "reason"?: string };
+export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live" | "web_off" | "shop_token_invalid" | "owner_only" | "seat_limit" | "seat_window_open" | "seat_window_closed" | "attestation_invalid"); "reason"?: string };
 
 export type EmptyBusinessRequest = Record<string, never>;
 
@@ -231,3 +231,22 @@ export type WebQuote = { "business_name": string; "customer_name": string; "stat
 
 /** Whether the caller stopped this work account (ADR 0237). */
 export type BusinessStop = { "stopped": boolean };
+
+/** owner shows as Responsável, attendant as Atendente (ADR 0252 point 6). One owner per account (ADR 0251 point 22). */
+export type SeatRole = ("owner" | "attendant");
+
+/** A device of the account. display_name: from MAS when it has one. */
+export type SeatDevice = { "device_id": string; "kind": ("phone" | "web"); "display_name"?: string; "added_at": string };
+
+/** A person who answers for the account. Stays only in bipe-api, with no link to a personal account (ADR 0251 point 6). window_expires_at: a device can join this seat until then. devices: empty for a caller that is not the owner. */
+export type Seat = { "id": string; "name": string; "role": SeatRole; "status": ("waiting" | "active"); "devices": Array<SeatDevice>; "window_expires_at"?: string };
+
+/** The caller's device. role none: a device with no person, which has no owner rights (ADR 0251 points 11 and 13). */
+export type SeatMe = { "seat_id"?: string; "name"?: string; "role": ("owner" | "attendant" | "none") };
+
+/** Quem atende. unassigned_devices is empty for a caller that is not the owner. backup_rotation_pending: the owner's phone must rotate the key backup (ADR 0251 points 17 and 19). */
+export type SeatList = { "me": SeatMe; "seats": Array<Seat>; "unassigned_devices": Array<SeatDevice>; "max_people": number; "backup_rotation_pending": boolean };
+
+export type SeatCreate = { "name": string };
+
+export type SeatDeviceAssign = { "seat_id": string };

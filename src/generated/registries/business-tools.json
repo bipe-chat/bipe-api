@@ -43,7 +43,7 @@
     },
     {
       "id": "second_seat",
-      "rule": "the account has a second seat"
+      "rule": "the account has a second person, or the Responsável chose Só eu atendo"
     }
   ],
   "catalogMinItems": 3,
