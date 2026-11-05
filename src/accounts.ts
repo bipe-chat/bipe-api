@@ -1,3 +1,4 @@
+import { openOwnerWindowForRecovery } from "./business-seats.js";
 import { randomBytes } from "node:crypto";
 import type { GroupLinks } from "./group-links.js";
 import type { Growth } from "./growth.js";
@@ -201,6 +202,7 @@ export async function issueCredentials(
     console.error("accounts: MAS refused a generated password");
     throw new ApiError("internal");
   }
+  await openOwnerWindowForRecovery(client, userId);
   return { user_id: userId, password, recovery_token: token };
 }
 

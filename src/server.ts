@@ -19,7 +19,8 @@ import { refreshKeyAttestationStatus } from "./key-attest.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { Reach } from "./reach.js";
 import { ReachTiers, reachSettings } from "./reach-tiers.js";
-import { forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
+import { AttestationBody, checkAttestation, forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
+import { requireOwnerDevice } from "./business-seats.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { recordAgeSignal } from "./age.js";
 import { blockMove, getDiscovery, loadPhoneKeys, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
@@ -111,6 +112,13 @@ const visits = new Visits(config.UMAMI_DATABASE_URL, config.UMAMI_WEBSITE_ID);
 const geo = new Geo(config.GEOIP_CITY_DB);
 const staffReports = new StaffReports(db, config.SYNAPSE_DATABASE_URL, visits);
 const theft = new Theft(db, mas, badges, config.SERVER_NAME);
+
+/** The owner-only account routes: on a company account, only an owner device (ADR 0251 point 11). */
+async function ownerOf(c: Context): Promise<string> {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  await requireOwnerDevice({ db, mas }, userId, deviceId);
+  return userId;
+}
 const profileFacts = new ProfileFacts(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 const intake = new Intake(db, config.STARLINGS_INTAKE_URL, config.STARLINGS_APP_INTAKE_KEY);
 const support = new SupportBot(db, config, intake);
@@ -408,23 +416,7 @@ const SignupBody = z.object({
   lang: Lang.optional(),
   handle: z.string().max(64).optional(),
   display_name: z.string().max(100).optional(),
-  // One form: Apple App Attest or Android Key Attestation (bipe#92). Both fields at once are a bad request.
-  attestation: z
-    .union([
-      z.object({
-        key_attestation_chain: z.array(z.string().min(1).max(8192)).min(2).max(8),
-        challenge: z.string().min(1).max(128),
-        key_id: z.never().optional(),
-        attestation_object: z.never().optional(),
-      }),
-      z.object({
-        key_id: z.string().min(1).max(128),
-        attestation_object: z.string().min(1).max(16_384),
-        challenge: z.string().min(1).max(128),
-        key_attestation_chain: z.never().optional(),
-      }),
-    ])
-    .optional(),
+  attestation: AttestationBody.optional(),
   signup_key: z.string().regex(SECRET_PATTERN).optional(),
   terms_version: z.string().regex(TERMS_VERSION_PATTERN).optional(),
   // ADR 0087: company accounts need an attestation and are device-first only.
@@ -633,7 +625,7 @@ app.put("/v1/me/age", async (c) => {
 });
 
 app.put("/v1/me/pin", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.pinSet.check(userId);
   const body = await parse(c, PinChangeBody);
   await setPin(accounts, userId, body.pin, body.old_pin ?? undefined);
@@ -641,19 +633,19 @@ app.put("/v1/me/pin", async (c) => {
 });
 
 app.post("/v1/me/pin/check", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.pinCheck.check(userId);
   await verifyPin(accounts, userId, (await parse(c, PinBody)).pin, "session");
   return c.body(null, 204);
 });
 
 // Web sign-in approval on the phone (ADR 0118). Never log the IP.
-const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }), kind: z.enum(["computer", "phone"]).optional() });
+const WebLinkFinishBody = z.object({ since: z.iso.datetime({ offset: true }), kind: z.enum(["computer", "phone"]).optional(), seat_id: z.string().min(1).max(64).optional() });
 app.post("/v1/web-link/finish", async (c) => {
   const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   limits.webLinkFinish.check(userId);
   const body = await parse(c, WebLinkFinishBody);
-  const finished = await finishWebLink(mas, userId, body.since, { db, deviceId, kind: body.kind });
+  const finished = await finishWebLink(mas, userId, body.since, { db, deviceId, kind: body.kind, ...(body.seat_id ? { seatId: body.seat_id } : {}) });
   return c.json({ finished });
 });
 
@@ -674,7 +666,7 @@ app.get("/v1/web-link/place", async (c) => {
 });
 
 app.post("/v1/me/device-first", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.credentials.check(userId);
   const { pin } = await parse(c, PinBody);
   c.header("cache-control", "no-store");
@@ -682,7 +674,7 @@ app.post("/v1/me/device-first", async (c) => {
 });
 
 app.post("/v1/me/recovery-token", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.credentials.check(userId);
   const { pin } = await parse(c, PinBody);
   await verifyPin(accounts, userId, pin, "session");
@@ -708,7 +700,7 @@ app.post("/v1/me/approval-nudge", async (c) => {
 });
 
 app.put("/v1/me/email", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.emailSet.check(userId);
   const { email, lang } = await parse(c, EmailBody);
   await setEmail(accounts, userId, email, lang);
@@ -716,7 +708,7 @@ app.put("/v1/me/email", async (c) => {
 });
 
 app.delete("/v1/me/email", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await removeEmail(accounts, userId);
   return c.body(null, 204);
 });
@@ -725,20 +717,21 @@ app.delete("/v1/me/email", async (c) => {
 const DeletionBody = z.object({ pin: PinField, redact_messages: z.boolean() });
 app.post("/v1/me/deletion", async (c) => {
   const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  await requireOwnerDevice({ db, mas }, userId, deviceId);
   limits.deletion.check(userId);
   const { pin, redact_messages } = await parse(c, DeletionBody);
   return c.json(await requestDeletion(accounts, userId, deviceId, pin, redact_messages), 201);
 });
 
 app.post("/v1/me/deletions/:id/cancel", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.deletionCancel.check(userId);
   await cancelDeletion(accounts, userId, c.req.param("id").slice(0, 64));
   return c.body(null, 204);
 });
 
 app.post("/v1/me/recoveries/:id/cancel", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await cancelRecovery(accounts, userId, c.req.param("id").slice(0, 64));
   return c.body(null, 204);
 });
@@ -800,14 +793,14 @@ function providerParam(c: Context): Provider {
 app.get("/v1/links/providers", (c) => c.json(linkDeps.links.providers()));
 
 app.post("/v1/me/links/nonce", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.linkStart.check(userId);
   c.header("cache-control", "no-store");
   return c.json(await newNonce(linkDeps, "link", userId), 201);
 });
 
 app.post("/v1/me/links/:provider/web", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   const provider = providerParam(c);
   limits.linkStart.check(userId);
   const { app_id } = await parse(c, LinkWebBody);
@@ -816,7 +809,7 @@ app.post("/v1/me/links/:provider/web", async (c) => {
 });
 
 app.put("/v1/me/links/:provider", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   const provider = providerParam(c);
   limits.linkSet.check(userId);
   await linkAccount(linkDeps, userId, provider, await parse(c, LinkProofBody));
@@ -824,7 +817,7 @@ app.put("/v1/me/links/:provider", async (c) => {
 });
 
 app.delete("/v1/me/links/:provider", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await unlinkAccount(linkDeps, userId, providerParam(c));
   return c.body(null, 204);
 });
@@ -940,13 +933,13 @@ app.get("/v1/me/group-links", async (c) => {
 });
 
 app.post("/v1/me/group-links", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.groupLinkCreate.check(userId);
   return c.json(await groupLinks.create(userId, (await parse(c, GroupLinkBody)).room_id), 201);
 });
 
 app.delete("/v1/me/group-links/:id", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await groupLinks.revoke(userId, c.req.param("id"));
   return c.body(null, 204);
 });
@@ -957,7 +950,7 @@ app.get("/v1/me/invites", async (c) => {
 });
 
 app.post("/v1/me/invites", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.inviteCreate.check(userId);
   const invite = await createPersonalInvite(db, userId, invitePolicy, config.PUBLIC_SITE_URL);
   growth.record(userId, "invite_sent");
@@ -988,7 +981,7 @@ app.get("/v1/me/messaging", async (c) => {
 });
 
 app.put("/v1/me/messaging", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.setMessaging.check(userId);
   const { who_can_message } = await parse(c, MessagingBody);
   await setPolicy(db, userId, who_can_message);
@@ -1198,13 +1191,13 @@ app.get("/v1/me/invite-connections", async (c) => {
 
 const InviteNameBody = z.object({ name: z.string().max(80) });
 app.put("/v1/me/invites/:id", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await nameInvite(db, userId, c.req.param("id"), (await parse(c, InviteNameBody)).name);
   return c.body(null, 204);
 });
 
 app.delete("/v1/me/invites/:id", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await revokePersonalInvite(db, userId, c.req.param("id"));
   return c.body(null, 204);
 });
@@ -1222,14 +1215,14 @@ app.get("/v1/me/phone", async (c) => {
 });
 
 app.delete("/v1/me/phone", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await unlinkPhone(db, userId);
   return c.body(null, 204);
 });
 
 // bipe#469: the holder keeps the number.
 app.post("/v1/me/phone/moves/:id/block", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await blockMove(db, userId, c.req.param("id"));
   return c.body(null, 204);
 });
@@ -1240,7 +1233,7 @@ app.get("/v1/me/discovery", async (c) => {
 });
 
 app.put("/v1/me/discovery", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   return c.json(await setDiscovery(db, userId, (await parse(c, DiscoveryBody)).by_phone));
 });
 
@@ -1271,7 +1264,7 @@ app.get("/v1/me/guardians", async (c) => {
 });
 
 app.put("/v1/me/guardians", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.theftAction.check(userId);
   const body = await parse(c, GuardiansBody);
   // bipe-chat/bipe#908: a session alone cannot replace the guardians.
@@ -1385,14 +1378,14 @@ app.get("/v1/brand-marks/:userId", async (c) => {
 });
 
 app.post("/v1/me/brand-marks/invites", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.brandMarkInvite.check(userId);
   const body = BrandMarkInviteBody.safeParse(await c.req.json().catch(() => null));
   if (!body.success) throw new ApiError("bad_request");
   return c.json(await brandMarks.createInvite(userId, body.data.label), 201);
 });
 app.delete("/v1/me/brand-marks/invites/:inviteId", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await brandMarks.cancelInvite(userId, c.req.param("inviteId"));
   return c.body(null, 204);
 });
@@ -1405,7 +1398,7 @@ app.get("/v1/me/brand-marks", async (c) => {
   return c.json(await brandMarks.held(userId));
 });
 app.delete("/v1/me/brand-marks/:markId", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await brandMarks.end(userId, c.req.param("markId"));
   return c.body(null, 204);
 });
@@ -1444,7 +1437,7 @@ app.get("/v1/me/profile", async (c) => {
 });
 
 app.put("/v1/me/profile", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.setProfile.check(userId);
   return c.json(await saveProfile(db, config.PUBLIC_API_URL, userId, await parse(c, ProfileBody)));
 });
@@ -1468,13 +1461,13 @@ app.get("/v1/me/handle", async (c) => {
 });
 
 app.put("/v1/me/handle", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.setHandle.check(userId);
   return c.json(await setHandle(db, userId, (await parse(c, HandleBody)).handle));
 });
 
 app.delete("/v1/me/handle", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.setHandle.check(userId);
   return c.json(await removeHandle(db, userId));
 });
@@ -1485,31 +1478,31 @@ app.get("/v1/me/business", async (c) => {
 });
 
 app.post("/v1/me/business", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.businessClaim.check(userId);
   return c.json(await createClaim(db, config, userId, (await parse(c, CnpjBody)).cnpj, kickScan), 201);
 });
 
 app.delete("/v1/me/business", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   await withdrawClaim(db, userId);
   return c.body(null, 204);
 });
 
 app.post("/v1/me/business/ecnpj", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.businessProof.check(userId);
   return c.json(await proveWithEcnpj(db, userId, (await parse(c, EcnpjBody)).signature, icpBrasilRoots));
 });
 
 app.post("/v1/me/business/domains", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.businessDomain.check(userId);
   return c.json(await addDomain(db, userId, (await parse(c, DomainBody)).domain), 201);
 });
 
 app.post("/v1/me/business/domains/:domain/check", async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.businessDomain.check(userId);
   return c.json(await checkDomain(db, userId, c.req.param("domain")));
 });
@@ -1674,7 +1667,7 @@ staffGet("/v1/admin/reports", (c) => {
 });
 
 // Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
-app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp, stepEvents: growth, pushes: businessPushes(db, devicePush) }));
+app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp, stepEvents: growth, pushes: businessPushes(db, devicePush), people: { mas, attest: (attestation) => checkAttestation(accounts, attestation) } }));
 setInterval(() => void refreshBusyImports(db).catch((e: Error) => console.error(`busy imports: ${e.name}`)), 15 * 60_000).unref();
 setInterval(() => void runBusinessPushes(db, devicePush).catch((e: Error) => console.error(`business pushes: ${e.name}`)), 60_000).unref();
 

@@ -1,3 +1,4 @@
+import { afterDeviceStolen, forgetDevices } from "./business-seats.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import type { MasSession } from "./mas.js";
@@ -182,10 +183,12 @@ export class Theft {
         const id = await this.masId(company.user_id);
         // The phone's own device and the web sessions it approved (bipe#398). Other seats and their web sessions stay.
         const web = await webDevicesApprovedBy(this.db, company.user_id, company.device_id);
+        for (const device of await afterDeviceStolen(this.db, company.user_id, company.device_id)) web.add(device);
         for (const session of await this.mas.activeSessions(id)) {
           if (session.deviceId && (session.deviceId === company.device_id || web.has(session.deviceId))) await this.mas.finishSession(session);
         }
-        await this.db.query("DELETE FROM web_links WHERE user_id = $1 AND approver_device_id = $2", [company.user_id, company.device_id]);
+        await this.db.query("DELETE FROM web_links WHERE user_id = $1 AND web_device_id = ANY($2::text[])", [company.user_id, [...web]]);
+        await forgetDevices(this.db, company.user_id, [company.device_id, ...web]);
       } catch {
         failed = true;
       }

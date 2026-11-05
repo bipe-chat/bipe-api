@@ -168,10 +168,10 @@ export class Mas {
         const q = new URLSearchParams({ "filter[user]": userId, "filter[status]": "active", "page[first]": "100" });
         if (cursor) q.set("page[after]", cursor);
         const body = await this.json(await this.call("GET", `/${kind}?${q}`));
-        const data = body.data as { id: string; attributes?: { device_id?: string | null; scope?: string | null; finished_at?: string | null } }[];
+        const data = body.data as { id: string; attributes?: { device_id?: string | null; scope?: string | null; finished_at?: string | null; created_at?: string } }[];
         for (const s of data) {
           if (s.attributes?.finished_at) continue;
-          out.push({ kind, id: s.id, deviceId: deviceOf(s.attributes) });
+          out.push({ kind, id: s.id, deviceId: deviceOf(s.attributes), ...(s.attributes?.created_at ? { createdAt: s.attributes.created_at } : {}) });
         }
         if (data.length < 100) break;
         cursor = data.at(-1)!.id;
@@ -237,7 +237,7 @@ export class Mas {
   }
 }
 
-export type MasSession = { kind: "compat-sessions" | "oauth2-sessions" | "user-sessions"; id: string; deviceId: string | null };
+export type MasSession = { kind: "compat-sessions" | "oauth2-sessions" | "user-sessions"; id: string; deviceId: string | null; createdAt?: string };
 
 /** The Matrix device of a MAS session: device_id (compatibility) or the device scope token (OAuth 2.0). */
 export function deviceOf(a: { device_id?: string | null; scope?: string | null } | undefined): string | null {

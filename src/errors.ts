@@ -59,7 +59,12 @@ export type ErrorId =
   | "tool_needs_catalog"
   | "tool_not_live"
   | "web_off"
-  | "shop_token_invalid";
+  | "shop_token_invalid"
+  // People on a work account (ADR 0251).
+  | "owner_only"
+  | "seat_limit"
+  | "seat_window_open"
+  | "seat_window_closed";
 
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503> = {
   bad_request: 400,
@@ -121,6 +126,10 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   tool_not_live: 422,
   web_off: 422,
   shop_token_invalid: 401,
+  owner_only: 403,
+  seat_limit: 409,
+  seat_window_open: 409,
+  seat_window_closed: 409,
 };
 
 export class ApiError extends Error {
