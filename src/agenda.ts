@@ -154,6 +154,11 @@ async function agendasOf(db: Queryable, businessId: string): Promise<AgendaRow[]
   return rows;
 }
 
+/** not_found unless this agenda belongs to this business. */
+export async function agendaRowExists(db: Queryable, businessId: string, agendaId: string): Promise<void> {
+  await agendaRow(db, businessId, agendaId);
+}
+
 async function agendaRow(db: Queryable, businessId: string, agendaId: string): Promise<AgendaRow> {
   const { rows } = await db.query<AgendaRow>(
     "SELECT id, seq, business_id, name, photo, active, sort, availability FROM agendas WHERE business_id = $1 AND id = $2 AND deleted_at IS NULL",
@@ -495,6 +500,11 @@ async function snapshot(db: Queryable, settings: SettingsRow, serviceId: string,
        AND id IS DISTINCT FROM $5`,
     [settings.business_id, [...ids], dateFrom, dateTo, exceptBooking ?? null],
   );
+  // Busy times from external calendars (ADR 0101), start and end only.
+  const { rows: busy } = await db.query<{ agenda_id: string; start_at: Date; end_at: Date }>(
+    "SELECT agenda_id, start_at, end_at FROM busy_blocks WHERE agenda_id = ANY($1) AND end_at > $2::date - 2 AND start_at < $3::date + 3",
+    [[...ids], dateFrom, dateTo],
+  );
   return {
     time_zone: settings.time_zone,
     agendas: agendas.map((a) => ({ id: a.id, active: a.active, sort: a.sort, availability: a.availability })),
@@ -517,7 +527,7 @@ async function snapshot(db: Queryable, settings: SettingsRow, serviceId: string,
       buffer_before_minutes: b.buffer_before_minutes,
       buffer_after_minutes: b.buffer_after_minutes,
     })),
-    busy_blocks: [],
+    busy_blocks: busy.map((b) => ({ agenda_id: b.agenda_id, start: b.start_at.toISOString(), end: b.end_at.toISOString() })),
     now: new Date().toISOString(),
     service_id: serviceId,
     agenda_id: agendaId,

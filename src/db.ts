@@ -997,6 +997,30 @@ export const MIGRATIONS: readonly string[] = [
   `ALTER TABLE profile_changes DROP CONSTRAINT profile_changes_kind_check, DROP CONSTRAINT profile_changes_source_check,
      ADD CONSTRAINT profile_changes_kind_check CHECK (kind IN ('name', 'photo', 'number_out', 'number_in')),
      ADD CONSTRAINT profile_changes_source_check CHECK (source IN ('matrix', 'public', 'phone'));`,
+  // External calendars of an agenda (ADR 0101, bipe#319). The feed token only as a hash; busy blocks hold start and end.
+  `CREATE TABLE agenda_feeds (
+     agenda_id text PRIMARY KEY REFERENCES agendas(id) ON DELETE CASCADE,
+     business_id text NOT NULL,
+     token_hash text NOT NULL UNIQUE,
+     include_first_name boolean NOT NULL DEFAULT false
+   );
+   CREATE TABLE busy_imports (
+     id text PRIMARY KEY,
+     business_id text NOT NULL,
+     agenda_id text NOT NULL REFERENCES agendas(id) ON DELETE CASCADE,
+     url text NOT NULL,
+     last_checked_at timestamptz,
+     failures integer NOT NULL DEFAULT 0,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX busy_imports_agenda ON busy_imports (agenda_id);
+   CREATE TABLE busy_blocks (
+     import_id text NOT NULL REFERENCES busy_imports(id) ON DELETE CASCADE,
+     agenda_id text NOT NULL,
+     start_at timestamptz NOT NULL,
+     end_at timestamptz NOT NULL
+   );
+   CREATE INDEX busy_blocks_agenda ON busy_blocks (agenda_id, start_at);`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

@@ -386,6 +386,8 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       await q(`DELETE FROM ${table} WHERE user_id = $1`);
     }
     await q("DELETE FROM business_stops WHERE customer_id = $1 OR business_id = $1");
+    await q("DELETE FROM busy_imports WHERE business_id = $1");
+    await q("DELETE FROM agenda_feeds WHERE business_id = $1");
     // ADR 0140 point 6: only the CPF hash and the badge record stay (deletionVerificationKeepDays).
     await q("DELETE FROM business_claims WHERE user_id = $1 AND status NOT IN ('verified', 'revoked')");
     await q(

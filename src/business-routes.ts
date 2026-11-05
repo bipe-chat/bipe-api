@@ -10,6 +10,7 @@ import type { MatrixAuth } from "./auth.js";
 import { businessOf, requireCompany } from "./business-common.js";
 import type { BusinessPushes } from "./business-pushes.js";
 import { isStopped, setStopped } from "./business-stops.js";
+import * as calendars from "./agenda-calendars.js";
 import * as tools from "./business-tools.js";
 import * as shopWeb from "./shop-web.js";
 import * as catalog from "./catalog.js";
@@ -119,6 +120,33 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
   });
   app.get("/v1/me/business/today", async (c) => c.json(await tools.today(db, await owner(c, false))));
   app.get("/v1/businesses/:handle/tools", async (c) => c.json(await tools.liveTools(db, await publicBusiness(c))));
+
+  // ---- External calendars of an agenda (ADR 0101). Never log a token or an address. ----
+  app.post("/v1/me/business/agenda/agendas/:agendaId/feed", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await calendars.issueFeed(db, apiUrl, businessId, c.req.param("agendaId"), await parse(c, calendars.FeedBody)));
+  });
+  app.delete("/v1/me/business/agenda/agendas/:agendaId/feed", async (c) => {
+    await calendars.revokeFeed(db, await owner(c), c.req.param("agendaId"));
+    return c.body(null, 204);
+  });
+  app.get("/v1/me/business/agenda/agendas/:agendaId/busy-imports", async (c) =>
+    c.json(await calendars.listImports(db, await owner(c, false), c.req.param("agendaId"))));
+  app.post("/v1/me/business/agenda/agendas/:agendaId/busy-imports", async (c) => {
+    const businessId = await owner(c);
+    return c.json(await calendars.addImport(db, businessId, c.req.param("agendaId"), await parse(c, calendars.ImportBody)), 201);
+  });
+  app.delete("/v1/me/business/agenda/agendas/:agendaId/busy-imports/:importId", async (c) => {
+    await calendars.removeImport(db, await owner(c), c.req.param("agendaId"), c.req.param("importId"));
+    return c.body(null, 204);
+  });
+  app.get("/v1/agenda/feeds/:file", async (c) => {
+    limits.publicRead.check(clientIp(c));
+    const m = /^([A-Za-z0-9_-]{43})\.ics$/.exec(c.req.param("file"));
+    if (!m) throw new ApiError("not_found");
+    const ics = await calendars.feedIcs(db, m[1]!);
+    return c.body(ics, 200, { "content-type": "text/calendar; charset=utf-8", "cache-control": "no-store" });
+  });
 
   // ---- Parar de receber (ADR 0237) ----
   const stopTarget = (c: Context) => {
