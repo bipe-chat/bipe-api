@@ -2449,6 +2449,7 @@
     "bipe_group_link_preview_title": "Group %1$s on Bipe",
     "bipe_group_link_preview_count": "People in the group: %1$s. Tap to join.",
     "bipe_groups_service_name": "Bipe Grupos",
+    "bipe_groups_service_about": "This account invites people who open the group link. It reads no messages.",
     "bipe_year_recap_title": "Your stats",
     "bipe_year_recap_card_title": "My %1$s on Bipe",
     "bipe_year_recap_reading": "Reading the chats on this phone: %1$s of %2$s",
