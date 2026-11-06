@@ -2509,6 +2509,9 @@
     "bipe_web_account_unread_last_sync": "Unread messages at the last sync",
     "bipe_web_account_cap_reached": "This browser already has %1$s accounts. That is the limit.",
     "bipe_web_sign_out_all": "Sign out of all accounts in this browser",
-    "bipe_app_assistant_reads": "An assistant of %1$s reads this chat"
+    "bipe_app_assistant_reads": "An assistant of %1$s reads this chat",
+    "bipe_mac_accounts_title": "Accounts on this Mac",
+    "bipe_mac_work_overview": "Work overview",
+    "bipe_mac_refresh": "Refresh"
   }
 }
