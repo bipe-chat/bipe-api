@@ -34,6 +34,8 @@ export type GovbrDeps = {
   cpfSecret: string | undefined;
   /** The caller's badge after a verification, or null when badges are off. */
   badgeOf: (userId: string) => Promise<BadgeEnvelope | null>;
+  /** The master key the new proof binds to (ADR 0239), or null. */
+  masterKeyOf: (userId: string) => Promise<string | null>;
 };
 
 function newCode(): string {
@@ -98,6 +100,8 @@ export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: strin
   // Fail closed and loud: a gov.br certificate without a CPF we can read means personOf needs the #542 answer.
   if (!person.cpf) throw new ApiError("internal", "govbr_cpf_missing");
   const cpfHash = createHmac("sha256", deps.cpfSecret).update(person.cpf).digest("hex");
+  const masterKey = await deps.masterKeyOf(userId);
+  if (!masterKey) throw new ApiError("internal", "master_key_unavailable");
 
   const client = await db.connect();
   try {
@@ -106,11 +110,21 @@ export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: strin
     if (used.rowCount !== 1) throw new ApiError("not_found");
     // The challenge in the URL ends with the one that matched: the app asked for it, and it must not verify again.
     if (match.id !== id) await client.query("UPDATE govbr_challenges SET used_at = $2 WHERE id = $1 AND used_at IS NULL", [id, now]);
+    // Another CPF on this account means another person: the older proofs stop counting. A CPF of another account fails
+    // on the unique index (cpf_in_use).
     await client.query(
-      `INSERT INTO person_verifications (user_id, level, verified_name, cpf_hash, device_key, verified_at)
-       VALUES ($1, 'govbr', $2, $3, $4, $5)
-       ON CONFLICT (user_id) DO UPDATE SET level = 'govbr', verified_name = $2, cpf_hash = $3, device_key = $4, verified_at = $5`,
-      [userId, person.name, cpfHash, match.device_key, now],
+      "DELETE FROM person_verifications WHERE user_id = $1 AND EXISTS (SELECT 1 FROM person_identities i WHERE i.user_id = $1 AND i.cpf_hash <> $2)",
+      [userId, cpfHash],
+    );
+    await client.query(
+      "INSERT INTO person_identities (user_id, cpf_hash) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET cpf_hash = $2",
+      [userId, cpfHash],
+    );
+    await client.query(
+      `INSERT INTO person_verifications (user_id, level, verified_name, master_key, verified_at)
+       VALUES ($1, 'govbr', $2, $3, $4)
+       ON CONFLICT (user_id, level) DO UPDATE SET verified_name = $2, master_key = $3, verified_at = $4`,
+      [userId, person.name, masterKey, now],
     );
     await client.query("COMMIT");
   } catch (e) {

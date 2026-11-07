@@ -1055,6 +1055,21 @@ export const MIGRATIONS: readonly string[] = [
      ADD COLUMN second_seat_skipped boolean NOT NULL DEFAULT false;
    INSERT INTO business_seats (id, business_id, name, role, status)
      SELECT gen_random_uuid(), user_id, 'Responsável', 'owner', 'active' FROM signups WHERE account_type = 'company';`,
+  // Every proof of an account (ADR 0275, bipe#1239). person_identities keeps the rule one CPF, one account, because one
+  // account now has a row per level. A proof binds to a master key (ADR 0239). A row with no master key signs no badge:
+  // no pix or govbr badge has reached a person, so nobody loses a seal and the person verifies again.
+  `CREATE TABLE person_identities (
+     user_id text PRIMARY KEY,
+     cpf_hash text NOT NULL UNIQUE
+   );
+   INSERT INTO person_identities (user_id, cpf_hash) SELECT user_id, cpf_hash FROM person_verifications;
+   ALTER TABLE person_verifications
+     DROP CONSTRAINT person_verifications_pkey,
+     DROP COLUMN cpf_hash,
+     DROP COLUMN device_key,
+     ADD COLUMN master_key text NOT NULL DEFAULT '',
+     ADD PRIMARY KEY (user_id, level);
+   ALTER TABLE person_verifications ALTER COLUMN master_key DROP DEFAULT;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

@@ -40,11 +40,12 @@ export async function publicProfile(db: Db, apiUrl: string, raw: string, badges:
   );
   const row = rows[0];
   if (!row) throw new ApiError("not_found");
-  // The same envelope as GET /v1/badges/{userId}. A badge failure must not hide the profile: no badge then.
+  // The same envelopes as GET /v1/badges/{userId} and its /proofs. A badge failure must not hide the profile: no badge then.
   const badge = await badges.forUser(row.user_id).catch((e: Error) => {
     console.error(`profile badge failed: ${e.message}`);
     return null;
   });
+  const proofs = badge?.status === 200 ? await badges.proofsFor(row.user_id).catch(() => [badge.envelope]) : [];
   const socials = knownSocials(row.socials);
   return {
     handle: row.handle,
@@ -52,7 +53,7 @@ export async function publicProfile(db: Db, apiUrl: string, raw: string, badges:
     ...(row.bio ? { bio: row.bio } : {}),
     ...(row.photo_version ? { photo_url: photoUrl(apiUrl, row.handle, row.photo_version) } : {}),
     ...(Object.keys(socials).length ? { socials } : {}),
-    ...(badge?.status === 200 ? { badge: badge.envelope } : {}),
+    ...(badge?.status === 200 ? { badge: badge.envelope, proofs } : {}),
   };
 }
 

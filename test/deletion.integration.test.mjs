@@ -130,7 +130,8 @@ test("at due_at: rooms handed over, messages redacted, account deactivated, rows
   await f.db.query("INSERT INTO public_profiles (user_id, enabled, name) VALUES ($1, true, 'Gone')", [u]);
   await f.db.query("INSERT INTO terms_acceptances (user_id, version, source) VALUES ($1, '2026-10-01', 'signup')", [u]);
   await f.db.query("INSERT INTO invites (code_hash, uses_left, expires_at, created_by, name) VALUES ('h1', 1, now() + interval '1 day', $1, 'Tia')", [u]);
-  await f.db.query("INSERT INTO person_verifications (user_id, level, verified_name, cpf_hash, device_key) VALUES ($1, 'govbr', 'Fulana', 'cpfhash', 'dk')", [u]);
+  await f.db.query("INSERT INTO person_verifications (user_id, level, verified_name, master_key) VALUES ($1, 'govbr', 'Fulana', 'mk')", [u]);
+  await f.db.query("INSERT INTO person_identities (user_id, cpf_hash) VALUES ($1, 'cpfhash')", [u]);
   await f.db.query("INSERT INTO business_claims (user_id, cnpj, status, challenge, verified_at) VALUES ($1, '11222333000181', 'verified', 'c', now())", [u]);
   // The user as a customer of another business, and as a business with its own catálogo.
   await f.db.query(`INSERT INTO catalog_items (id, business_id, kind, name, price, active, sort) VALUES ('svc', $1, 'service', 'Corte', '{}', true, 0), ('mine', $2, 'product', 'Bolo', '{}', true, 0)`, [other, u]);
@@ -168,8 +169,10 @@ test("at due_at: rooms handed over, messages redacted, account deactivated, rows
   assert.equal(await count("SELECT count(*)::int AS n FROM handle_holds WHERE user_id = $1 AND hold_until > now() + interval '89 days'"), 1, "the @ is held 90 days");
   assert.equal(await count("SELECT count(*)::int AS n FROM invites WHERE created_by = $1"), 0);
   assert.equal(await count("SELECT count(*)::int AS n FROM catalog_items WHERE business_id = $1"), 0, "the company's catálogo goes");
-  const pv = (await f.db.query("SELECT verified_name, cpf_hash, device_key FROM person_verifications WHERE user_id = $1", [u])).rows[0];
-  assert.deepEqual(pv, { verified_name: "", cpf_hash: "cpfhash", device_key: "" }, "only the CPF hash stays");
+  const pv = (await f.db.query("SELECT verified_name, master_key FROM person_verifications WHERE user_id = $1", [u])).rows[0];
+  assert.deepEqual(pv, { verified_name: "", master_key: "" }, "the proof keeps no name and no key");
+  const identity = (await f.db.query("SELECT cpf_hash FROM person_identities WHERE user_id = $1", [u])).rows[0];
+  assert.deepEqual(identity, { cpf_hash: "cpfhash" }, "only the CPF hash stays");
   const claim = (await f.db.query("SELECT status, reason FROM business_claims WHERE user_id = $1", [u])).rows[0];
   assert.deepEqual(claim, { status: "revoked", reason: "account_deleted" }, "the badge record stays, revoked");
   const booking = (await f.db.query("SELECT customer_id, customer_name, status FROM bookings WHERE id = 'b1'")).rows[0];
@@ -198,11 +201,13 @@ test("a failed step runs again later and the job ends the same way", async (t) =
 
 test("the kept records go after deletionVerificationKeepDays", async (t) => {
   const f = await fixture(t);
-  await f.db.query("INSERT INTO person_verifications (user_id, level, verified_name, cpf_hash, device_key) VALUES ($1, 'govbr', '', 'h', '')", [f.user]);
+  await f.db.query("INSERT INTO person_verifications (user_id, level, verified_name, master_key) VALUES ($1, 'govbr', '', '')", [f.user]);
+  await f.db.query("INSERT INTO person_identities (user_id, cpf_hash) VALUES ($1, 'h')", [f.user]);
   await f.db.query("INSERT INTO account_deletions (id, user_id, redact_messages, state, due_at, done_at) VALUES ('old', $1, false, 'done', now() - interval '400 days', now() - interval '366 days')", [f.user]);
   await f.db.query("INSERT INTO account_deletions (id, user_id, redact_messages, state, due_at, done_at) VALUES ('new', '@recent:example.test', false, 'done', now(), now())");
   assert.equal(await pruneDeletions(f.db), 1);
   assert.equal((await f.db.query("SELECT count(*)::int AS n FROM person_verifications")).rows[0].n, 0);
+  assert.equal((await f.db.query("SELECT count(*)::int AS n FROM person_identities")).rows[0].n, 0);
   assert.equal((await f.db.query("SELECT count(*)::int AS n FROM account_deletions")).rows[0].n, 1);
 });
 
