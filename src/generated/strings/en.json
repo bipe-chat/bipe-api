@@ -2520,6 +2520,14 @@
     "bipe_app_assistant_reads": "An assistant of %1$s reads this chat",
     "bipe_mac_accounts_title": "Accounts on this Mac",
     "bipe_mac_work_overview": "Work overview",
-    "bipe_mac_refresh": "Refresh"
+    "bipe_mac_refresh": "Refresh",
+    "bipe_mac_notifications_off": "Off on this Mac",
+    "bipe_mac_notifications_enable": "Turn on for this Mac",
+    "bipe_mac_notifications_permission_body": "You can change this in System Settings.",
+    "bipe_mac_account_change_on_phone": "To change these, use Bipe on your phone.",
+    "bipe_mac_linked_devices_footer": "To sign out a device, use Bipe on your phone.",
+    "bipe_mac_sign_out_title": "Sign out of Bipe on this Mac?",
+    "bipe_mac_sign_out_body": "To come back, link this Mac again from your phone.",
+    "bipe_mac_sign_out_history": "Your old messages are only on this Mac. Without a recovery key, they don't come back."
   }
 }
