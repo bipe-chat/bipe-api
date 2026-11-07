@@ -6,6 +6,7 @@ import { evaluateTrustFacts, validateTrustRegistry } from "./trust.mjs";
 import { validateAgendaTemplates } from "./agenda-templates.mjs";
 import { validateSettings } from "./gen-settings.mjs";
 import { validateOnboarding } from "./gen-onboarding.mjs";
+import { validateMessageReactions } from "./reactions.mjs";
 import { validateHaptics } from "./gen-haptics.mjs";
 
 export function loadRegistries(root) {
@@ -51,6 +52,7 @@ export function loadRegistries(root) {
     groupPowerLevels: read("registries/group-power-levels.json"),
     relationshipNames: read("registries/relationship-names.json"),
     messageFormatting: read("registries/message-formatting.json"),
+    messageReactions: read("registries/message-reactions.json"),
     photoMatch: read("registries/photo-match.json"),
     profileFacts: read("registries/profile-facts.json"),
     reach: read("registries/reach.json"),
@@ -507,6 +509,7 @@ export function validateBusinessTools(reg) {
 function validate(reg, phosphor) {
   validateReportCategories(reg);
   validateMessageFormatting(reg.messageFormatting);
+  validateMessageReactions(reg.messageReactions);
   validateTrustRegistry(reg.trust);
   validateAgendaTemplates(reg);
   validateSettings(reg, phosphor);
