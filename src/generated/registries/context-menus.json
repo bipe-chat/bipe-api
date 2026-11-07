@@ -1,0 +1,150 @@
+{
+  "$comment": "Context menus (specs message-actions and chat-row-actions, bipe-chat/bipe#1162). One source for the order, title string and SF Symbol of each command. A client shows the commands that apply to the target and that it has a handler for, in this order. Which commands apply stays in the specs. destructive marks the red commands.",
+  "version": 1,
+  "message": [
+    {
+      "id": "reply",
+      "title": "bipe_app_message_action_reply",
+      "symbol": "arrowshape.turn.up.left"
+    },
+    {
+      "id": "replyInThread",
+      "title": "bipe_thread_reply_action",
+      "symbol": "bubble.left.and.text.bubble.right"
+    },
+    {
+      "id": "edit",
+      "title": "bipe_app_message_action_edit",
+      "symbol": "pencil"
+    },
+    {
+      "id": "removeCaption",
+      "title": "bipe_caption_remove",
+      "symbol": "text.badge.minus"
+    },
+    {
+      "id": "copy",
+      "title": "bipe_app_copy",
+      "symbol": "doc.on.doc"
+    },
+    {
+      "id": "copyLink",
+      "title": "bipe_app_message_action_copy_link",
+      "symbol": "link"
+    },
+    {
+      "id": "pin",
+      "title": "bipe_pin_action",
+      "symbol": "pin"
+    },
+    {
+      "id": "unpin",
+      "title": "bipe_unpin_action",
+      "symbol": "pin.slash"
+    },
+    {
+      "id": "forward",
+      "title": "bipe_forward_action",
+      "symbol": "arrowshape.turn.up.right"
+    },
+    {
+      "id": "select",
+      "title": "bipe_select_action",
+      "symbol": "checkmark.circle"
+    },
+    {
+      "id": "saveSticker",
+      "title": "bipe_action_save_sticker",
+      "symbol": "square.and.arrow.down"
+    },
+    {
+      "id": "viewStickerPack",
+      "title": "bipe_action_view_sticker_pack",
+      "symbol": "square.on.square"
+    },
+    {
+      "id": "keepAudio",
+      "title": "bipe_voice_keep",
+      "symbol": "bookmark"
+    },
+    {
+      "id": "unkeepAudio",
+      "title": "bipe_voice_unkeep",
+      "symbol": "bookmark.slash"
+    },
+    {
+      "id": "retry",
+      "title": "bipe_app_retry",
+      "symbol": "arrow.clockwise"
+    },
+    {
+      "id": "delete",
+      "title": "bipe_app_message_action_delete",
+      "symbol": "trash",
+      "destructive": true
+    },
+    {
+      "id": "report",
+      "title": "bipe_app_message_action_report",
+      "symbol": "flag"
+    }
+  ],
+  "chatRow": [
+    {
+      "id": "sendMedia",
+      "title": "bipe_chat_send_media",
+      "symbol": "photo.on.rectangle"
+    },
+    {
+      "id": "favourite",
+      "title": "bipe_chat_favourite_action",
+      "symbol": "star"
+    },
+    {
+      "id": "unfavourite",
+      "title": "bipe_chat_unfavourite_action",
+      "symbol": "star.slash"
+    },
+    {
+      "id": "reorderFavourites",
+      "title": "bipe_chat_favourites_reorder_action",
+      "symbol": "arrow.left.arrow.right"
+    },
+    {
+      "id": "markRead",
+      "title": "bipe_app_notification_mark_read",
+      "symbol": "envelope.open"
+    },
+    {
+      "id": "markUnread",
+      "title": "bipe_chat_mark_unread",
+      "symbol": "envelope.badge"
+    },
+    {
+      "id": "notifications",
+      "title": "bipe_settings_notifications",
+      "symbol": "bell"
+    },
+    {
+      "id": "details",
+      "title": "bipe_chat_details",
+      "symbol": "info.circle"
+    },
+    {
+      "id": "archive",
+      "title": "bipe_archive_action",
+      "symbol": "archivebox"
+    },
+    {
+      "id": "unarchive",
+      "title": "bipe_unarchive_action",
+      "symbol": "tray.and.arrow.up"
+    },
+    {
+      "id": "deleteDm",
+      "title": "bipe_dm_delete_action",
+      "symbol": "trash",
+      "destructive": true
+    }
+  ]
+}
