@@ -286,6 +286,8 @@ try {
     console.table(report.funnel);
     console.log("Retention by sign-up week: active on day N / sign-ups whose day N is over");
     console.table(report.retention);
+    console.log("Conversation with another person by day 30, by sign-up week: of the sign-ups whose day 30 is over");
+    console.table(report.conversations);
     console.log("All events: users and count");
     console.table(report.totals);
     console.log("Days from sign-up to the fifth contact (a person who shares a DM), by sign-up week; invites accepted per member");
