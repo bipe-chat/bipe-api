@@ -1,0 +1,6 @@
+{
+  "$comment": "Source of the signed issuer registry (docs/signed-lists.md, bipe-chat/bipe#637, ADR 0272). The schemes and regions come from registries/schemes.json and registries/regions.json, the keys of issuer bipe from registries/badge-keys.json. A change in any of them needs a new signed version: tools/sign-list.mjs.",
+  "issuers": [
+    { "id": "bipe", "name": "Bipe", "status": "valid", "accredited": "2026-10-26", "region": "br", "levels": ["pix", "govbr", "institution", "cnpj", "brand-mark"], "schemes": ["br.pix", "br.govbr", "br.cnpj"] }
+  ]
+}
