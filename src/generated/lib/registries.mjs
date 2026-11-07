@@ -38,6 +38,7 @@ export function loadRegistries(root) {
     chatFavourites: read("registries/chat-favourites.json"),
     requestRooms: read("registries/request-rooms.json"),
     syncedSettings: read("registries/synced-settings.json"),
+    contextMenus: read("registries/context-menus.json"),
     imageDescriptions: read("registries/image-descriptions.json"),
     pixMarks: read("registries/pix-marks.json"),
     dataUse: read("registries/data-use.json"),

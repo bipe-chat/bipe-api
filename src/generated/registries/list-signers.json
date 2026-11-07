@@ -1,0 +1,5 @@
+{
+  "$comment": "The signer set of the operator list and the issuer registry (docs/signed-lists.md). kid to raw Ed25519 public key, base64url without padding. Interim until bipe-chat/bipe#638: one associação key, threshold 1. This key gives no protection against A-2: one person with the key can change a list. keys stays empty until tools/sign-list.mjs init makes the key.",
+  "threshold": 1,
+  "keys": {}
+}
