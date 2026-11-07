@@ -4,6 +4,12 @@
   "strings": {
     "bipe_badge_verified": "Name verified",
     "bipe_badge_verified_name": "Name verified: %1$s",
+    "bipe_badge_verified_via": "Name verified via %1$s",
+    "bipe_badge_verified_name_via": "Name verified via %1$s: %2$s",
+    "bipe_person_seal_scheme": "Verified with",
+    "bipe_person_seal_checked": "Checked",
+    "bipe_person_seal_valid_until": "Valid until",
+    "bipe_person_seal_body": "The seal confirms the person's name. It does not promise that they are honest or that the message is safe.",
     "bipe_badge_institution": "Verified organisation",
     "bipe_badge_suspended": "Name verification suspended",
     "bipe_profile_fact_created": "Account created %1$s ago",

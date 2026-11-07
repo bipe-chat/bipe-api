@@ -1,6 +1,10 @@
 {
-  "$comment": "Verification schemes (bipe ADR 0272; docs/badge-attestation.md, docs/signed-lists.md). A scheme is one proof rail or registry in one country. class: person or org. assurance: person is bank or state, org is registry+control. alias: the older badge level of this scheme; an alias badge counts as this scheme. names: the label per locale. Each scheme belongs to one region in registries/regions.json. The signed issuer registry carries the schemes of every region, so a new country needs no app release. zz is reserved for test vectors and never appears here.",
+  "$comment": "Verification schemes (bipe ADR 0272; docs/badge-attestation.md, docs/signed-lists.md). A scheme is one proof rail or registry in one country. class: person or org. assurance: person is bank or state, org is registry+control. alias: the older badge level of this scheme; an alias badge counts as this scheme. names: the label per locale. Each scheme belongs to one region in registries/regions.json. The signed issuer registry carries the schemes of every region, so a new country needs no app release. zz is reserved for test vectors and never appears here. personAssurance: the person assurances, strongest first, with the compact seal mark of each (ADR 0275): regular is Phosphor seal-check, fill is seal-check-fill. personProofs in tools/lib/registries.mjs reads it; test-vectors/person-proofs.json checks it.",
   "version": 1,
+  "personAssurance": [
+    { "id": "state", "mark": "fill" },
+    { "id": "bank", "mark": "regular" }
+  ],
   "schemes": [
     { "id": "br.pix", "country": "BR", "class": "person", "assurance": "bank", "alias": "pix", "names": { "pt-BR": "Pix", "en": "Pix" } },
     { "id": "br.govbr", "country": "BR", "class": "person", "assurance": "state", "alias": "govbr", "names": { "pt-BR": "gov.br", "en": "gov.br" } },
