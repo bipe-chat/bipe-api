@@ -2520,6 +2520,14 @@
     "bipe_app_assistant_reads": "Um assistente de %1$s lê esta conversa",
     "bipe_mac_accounts_title": "Contas neste Mac",
     "bipe_mac_work_overview": "Resumo do trabalho",
-    "bipe_mac_refresh": "Atualizar"
+    "bipe_mac_refresh": "Atualizar",
+    "bipe_mac_notifications_off": "Desligadas neste Mac",
+    "bipe_mac_notifications_enable": "Ligar neste Mac",
+    "bipe_mac_notifications_permission_body": "Você pode mudar isso nos Ajustes do Sistema.",
+    "bipe_mac_account_change_on_phone": "Para mudar, use o Bipe no celular.",
+    "bipe_mac_linked_devices_footer": "Para desconectar um aparelho, use o Bipe no celular.",
+    "bipe_mac_sign_out_title": "Sair do Bipe neste Mac?",
+    "bipe_mac_sign_out_body": "Para voltar, conecte este Mac de novo pelo celular.",
+    "bipe_mac_sign_out_history": "Suas mensagens antigas estão só neste Mac. Sem a chave de recuperação, elas não voltam."
   }
 }
