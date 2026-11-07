@@ -148,6 +148,7 @@ export class Growth {
           await this.syncGroups(users);
           await this.syncPlatforms(users);
           await this.syncFifthContacts(users);
+          await this.syncConversations(users);
         }
         await this.db.query("DELETE FROM growth_events WHERE day < current_date - $1::int", [growthRules.retentionDaysKept]);
       } finally {
@@ -209,12 +210,14 @@ export class Growth {
     console.log(`growth: back-filled ${signups.rowCount} sign-ups, ${sent.rowCount} invite days, ${redeemed.rowCount} redeem days`);
   }
 
-  /** Local people: no application services, guests, bots or support accounts (SUPPORT_USER_ID is skipped by name). */
+  /** Local people: no application services, guests, bots, assistants (ADR 0268) or support accounts (SUPPORT_USER_ID is skipped by name). */
   private async localUsers(): Promise<Set<string>> {
     const { rows } = await this.synapse!.query<{ name: string }>(
       "SELECT name FROM users WHERE appservice_id IS NULL AND is_guest = 0 AND user_type IS NULL",
     );
-    return new Set(rows.map((r) => r.name).filter((n) => n.endsWith(this.serverSuffix) && !this.skipUsers.has(n)));
+    const assistants = await this.db.query<{ user_id: string }>("SELECT user_id FROM assistant_accounts");
+    const skip = new Set([...this.skipUsers, ...assistants.rows.map((r) => r.user_id)]);
+    return new Set(rows.map((r) => r.name).filter((n) => n.endsWith(this.serverSuffix) && !skip.has(n)));
   }
 
   /** active_day, first_message_sent and call_started from new events, in stream order. */
@@ -409,6 +412,48 @@ export class Growth {
     });
   }
 
+  /**
+   * first_human_conversation (bipe-chat/bipe#1182, ADR 0268): the first day that the user and another local person
+   * have both sent a message in one room. Walks the message events in stream order from its own position, so the first
+   * pass covers the history. For each room in a batch it reads each sender's first message; the room ID is not kept.
+   */
+  private async syncConversations(users: Set<string>): Promise<void> {
+    for (;;) {
+      const from = await this.position(this.db, "synapse_conversations");
+      const { rows } = await this.synapse!.query<{ so: string; room_id: string }>(
+        `SELECT stream_ordering AS so, room_id FROM events
+          WHERE stream_ordering > $1 AND NOT outlier AND type = ANY($3) ORDER BY stream_ordering LIMIT $2`,
+        [from, BATCH, MESSAGE_TYPES],
+      );
+      if (rows.length === 0) return;
+      const firsts = await this.synapse!.query<{ room_id: string; sender: string; ts: string }>(
+        `SELECT room_id, sender, min(origin_server_ts) AS ts FROM events
+          WHERE room_id = ANY($1) AND NOT outlier AND type = ANY($2) GROUP BY room_id, sender`,
+        [[...new Set(rows.map((r) => r.room_id))], MESSAGE_TYPES],
+      );
+      const rooms = new Map<string, { sender: string; ts: number }[]>();
+      for (const r of firsts.rows) {
+        if (users.has(r.sender)) rooms.set(r.room_id, [...(rooms.get(r.room_id) ?? []), { sender: r.sender, ts: Number(r.ts) }]);
+      }
+      const earliest = new Map<string, number>();
+      for (const people of rooms.values()) {
+        if (people.length < 2) continue;
+        // The conversation starts when the second person writes. A person who writes later joins it at their own first message.
+        const second = [...people].sort((a, b) => a.ts - b.ts)[1]!;
+        for (const p of people) {
+          const at = Math.max(p.ts, second.ts);
+          earliest.set(p.sender, Math.min(earliest.get(p.sender) ?? at, at));
+        }
+      }
+      const to = Number(rows[rows.length - 1]!.so);
+      await this.tx(async (q) => {
+        for (const [user, at] of earliest) await this.put(q, this.uid(user), "first_human_conversation", dayOf(at));
+        await this.setPosition(q, "synapse_conversations", to);
+      });
+      if (rows.length < BATCH) return;
+    }
+  }
+
   async close(): Promise<void> {
     await this.synapse?.end();
   }
@@ -423,6 +468,8 @@ export type GrowthNumbers = {
   totals: { event: string; users: number; count: number }[];
   /** Days from sign-up to contact_fifth per sign-up week (bipe-chat/bipe#752). null: fewer reached it than the rank. */
   contacts: { week: string; signups: number; reached: number; medianDays: number | null; p75Days: number | null; invitesAcceptedPerMember: number }[];
+  /** Sign-ups whose day 30 is over, and those with a conversation with another person by day 30 (ADR 0268). */
+  conversations: { week: string; due: number; conversed: number }[];
 };
 
 /**
@@ -501,13 +548,22 @@ export async function growthNumbers(db: Db, since: string): Promise<GrowthNumber
       invitesAcceptedPerMember: Math.round((100 * accepted) / people.length) / 100,
     };
   });
-  return { funnel, retention, totals: all.rows, contacts };
+  const talk = await db.query<{ week: string; due: number; conversed: number }>(
+    `SELECT to_char(date_trunc('week', s.day), 'YYYY-MM-DD') AS week, count(*)::int AS due,
+            count(*) FILTER (WHERE EXISTS (SELECT 1 FROM growth_events c WHERE c.uid = s.uid
+              AND c.event = 'first_human_conversation' AND c.day <= s.day + 30))::int AS conversed
+       FROM growth_events s
+      WHERE s.event = 'signup_done' AND s.day >= $1::date AND s.day < $2::date - 30
+      GROUP BY 1 ORDER BY 1`,
+    [since, today],
+  );
+  return { funnel, retention, totals: all.rows, contacts, conversations: talk.rows };
 }
 
 /** The same numbers as text tables, for the CLI. */
 export type ContactRow = { week: string; signups: number; reached: string; median_days: number | string; p75_days: number | string; invites_accepted_per_member: number };
 
-export async function growthReport(db: Db, since: string): Promise<{ funnel: FunnelStep[]; retention: RetentionRow[]; totals: Record<string, number>; contacts: ContactRow[] }> {
+export async function growthReport(db: Db, since: string): Promise<{ funnel: FunnelStep[]; retention: RetentionRow[]; totals: Record<string, number>; conversations: { week: string; conversed_by_d30: string }[]; contacts: ContactRow[] }> {
   const g = await growthNumbers(db, since);
   const first = g.funnel[0]?.users ?? 0;
   const funnel = g.funnel.map((f, k) => ({
@@ -534,5 +590,6 @@ export async function growthReport(db: Db, since: string): Promise<{ funnel: Fun
     p75_days: w.p75Days ?? "-",
     invites_accepted_per_member: w.invitesAcceptedPerMember,
   }));
-  return { funnel, retention, totals, contacts };
+  const conversations = g.conversations.map((w) => ({ week: w.week, conversed_by_d30: `${w.conversed}/${w.due} ${pct(w.conversed, w.due)}` }));
+  return { funnel, retention, totals, conversations, contacts };
 }
