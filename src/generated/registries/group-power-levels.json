@@ -2,6 +2,13 @@
   "$comment": "bipe-chat/bipe#733: the three roles of a group and the m.room.power_levels of a new group. Admin changes roles and group settings and notifies everyone with @room (#718). Moderador removes and bans members, deletes other people's messages and pins messages. Membro posts, reacts and replies. The app shows no numbers and no custom levels. A room whose levels another Matrix app changed keeps them: the members screen shows the nearest role and a note. The assistant notice chat.bipe.assistant stays open, as in DMs (bipe-chat/bipe#879). Old groups keep their power levels.",
   "version": 1,
   "roles": { "admin": 100, "moderator": 50, "member": 0 },
+  "publicationOnly": {
+    "$comment": "bipe ADR 0280, bipe-chat/bipe#1263. A group with this state event and enabled true: members below minPostLevel send only a thread reply, an edit, a reaction or a redaction. bipe-infra compose/synapse-modules/bipe_messaging.py enforces it with the same values: change both.",
+    "stateEvent": "chat.bipe.publication_only",
+    "minPostLevel": 50,
+    "memberRelations": ["m.thread", "m.replace"],
+    "memberEventTypes": ["m.reaction", "m.room.redaction"]
+  },
   "usersDefault": 0,
   "eventsDefault": 0,
   "stateDefault": 100,
