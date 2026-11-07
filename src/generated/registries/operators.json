@@ -1,19 +1,32 @@
 {
-  "$comment": "Source of the signed operator list (docs/signed-lists.md, bipe-chat/bipe#645, bipe-chat/bipe#815). A change needs a new signed version: tools/sign-list.mjs. push_egress is the public address of the production node in bipe-infra dns.md (read 7 November 2026, egress not measured). report_keys and appeal_keys stay empty until tools/sign-list.mjs init makes the keys.",
-  "region": { "id": "br", "name": "Brasil", "core_api": "https://api.bipe.net.br", "floor": "e2ee" },
+  "$comment": "Source of the signed operator list (docs/signed-lists.md, bipe-chat/bipe#645, bipe-chat/bipe#815). A change needs a new signed version: tools/sign-list.mjs. push_egress is the public address of the production node in bipe-infra dns.md (read 7 November 2026, egress not measured). The private keys of report_keys and appeal_keys are in the mini4p Keychain.",
+  "region": {
+    "id": "br",
+    "name": "Brasil",
+    "core_api": "https://api.bipe.net.br",
+    "floor": "e2ee"
+  },
   "regions": [],
-  "appeal_keys": {},
+  "appeal_keys": {
+    "appeal-2026-11": "IzLYL0_za00xzq4HNGbfNQHKymySKPNDn1h4D8b8JhM"
+  },
   "operators": [
     {
       "server_name": "bipe.net.br",
       "name": "Bipe",
       "status": "valid",
       "joined": "2026-10-26",
-      "signing_keys": { "ed25519:a_uWhH": "7HXogCFFR3qSU/ncy54xWHXFFp/s+QbnzHuCjthjsvk" },
+      "signing_keys": {
+        "ed25519:a_uWhH": "7HXogCFFR3qSU/ncy54xWHXFFp/s+QbnzHuCjthjsvk"
+      },
       "account_api": "https://api.bipe.net.br",
-      "push_egress": ["201.23.82.254/32"],
+      "push_egress": [
+        "201.23.82.254/32"
+      ],
       "signup": "invite",
-      "report_keys": {}
+      "report_keys": {
+        "report-bipe-2026-11": "1MS7R0z2UnmY7EsrrMJpETR-H16KxBW3rvfSS_HrSQg"
+      }
     }
   ]
 }
