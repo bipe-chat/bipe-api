@@ -1,0 +1,6 @@
+{
+  "$comment": "Settings that follow the account (bipe-chat/bipe#1161). The global account data event below holds { \"readReceipts\": bool, \"palette\": id, \"chatBackground\": id, \"mural\": bool }. A device keeps a copy, and the copy of the current account applies to the whole app. Reference: syncedSettingsReconcile in tools/lib/registries.mjs. At a device's first read for an account, a value only the device has goes to the account, and readReceipts takes the more private value: off wins. After that the account's value wins, except a value the person changed on this device that has not reached the server yet. A write reads the server copy and keeps every other key, including keys this client does not know. A malformed event counts as empty.",
+  "version": 1,
+  "eventType": "chat.bipe.settings",
+  "keys": ["readReceipts", "palette", "chatBackground", "mural"]
+}

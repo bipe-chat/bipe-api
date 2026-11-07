@@ -1,0 +1,6 @@
+{
+  "$comment": "Reactions (product/screens/message-reactions.json). These quick keys, in this order, appear on every client. Received keys are preserved for toggling and only their display is shortened, at an extended-grapheme boundary. The system emoji picker sends its first character. SDK timeline state owns counts and the current user's selection.",
+  "version": 1,
+  "quickKeys": ["👍", "❤️", "😂", "😮", "😢", "🙏"],
+  "displayKeyMaxGraphemes": 16
+}
