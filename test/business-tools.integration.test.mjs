@@ -178,7 +178,9 @@ test("tool state: starts off; a dependency blocks; live tools only reach custome
   let plan = await tools.setup(db, shop);
   assert.equal(plan.first_tool, "catalog");
   assert.equal(plan.done_count, 0);
-  assert.ok(!plan.steps.some((s) => s.id === "second_seat"), "no seats yet");
+  assert.equal(plan.steps.find((s) => s.id === "second_seat").done, false, "one person, not skipped");
+  await tools.skipSecondSeat(db, shop);
+  assert.equal((await tools.setup(db, shop)).steps.find((s) => s.id === "second_seat").done, true);
   await tools.setSector(db, shop, { sector: "food" });
   plan = await tools.setup(db, shop);
   assert.equal(plan.first_tool, "orders");
