@@ -1,3 +1,4 @@
+import { listVersion, newestList } from "./signed-lists.js";
 import { serve } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import pg from "pg";
@@ -216,6 +217,7 @@ const limits = {
   newsSwitch: new RateLimiter(20, 3_600_000),
   starlingsReply: new RateLimiter(600, 3_600_000),
   banner: new RateLimiter(120, 60_000),
+  signedLists: new RateLimiter(120, 60_000),
   assistant: new RateLimiter(120, 60_000),
   assistantResolve: new RateLimiter(60, 60_000),
   mcp: new RateLimiter(60, 60_000),
@@ -563,6 +565,26 @@ app.get("/v1/signup/config", (c) => {
   c.header("cache-control", "public, max-age=300");
   return c.json({ invite_required: config.SIGNUP_INVITE_REQUIRED, terms_version: legalRules.legalVersion });
 });
+
+// Signed lists (bipe#645, bipe-shared docs/signed-lists.md). No auth: anyone can read the lists and their public log.
+for (const typ of ["operators", "issuers"] as const) {
+  app.get(`/v1/${typ}`, (c) => {
+    limits.signedLists.check(clientIp(c));
+    const envelope = newestList(typ);
+    if (!envelope) throw new ApiError("not_found");
+    c.header("cache-control", "public, max-age=300");
+    c.header("content-type", "application/json");
+    return c.body(envelope);
+  });
+  app.get(`/v1/${typ}/versions/:version`, (c) => {
+    limits.signedLists.check(clientIp(c));
+    const envelope = listVersion(typ, c.req.param("version"));
+    if (!envelope) throw new ApiError("not_found");
+    c.header("cache-control", "public, max-age=86400, immutable");
+    c.header("content-type", "application/json");
+    return c.body(envelope);
+  });
+}
 
 // Remote critical banner (ADR 0117, bipe#386). No auth: the apps read it on launch and on foreground.
 app.get("/v1/banner", async (c) => {
