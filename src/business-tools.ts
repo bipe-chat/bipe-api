@@ -179,8 +179,6 @@ export async function setSector(db: Queryable, businessId: string, body: z.infer
   return tools(db, businessId);
 }
 
-const SECOND_SEAT_LIVE = false;
-
 /** POST /v1/me/business/setup/second-seat-skip: only the owner answers. One person is a complete state (ADR 0252). */
 export async function skipSecondSeat(db: Queryable, businessId: string): Promise<void> {
   await db.query(
@@ -226,8 +224,7 @@ export async function setup(db: Queryable, businessId: string, events?: StepEven
     second_seat: row.people >= 2 || row.second_seat_skipped,
   };
   const path = pathOf(row.sector ?? undefined);
-  // second_seat stays out until the apps can add a person (phase 2 of bipe/docs/work-accounts.md, bipe#1056).
-  const steps: WorkSetupStep[] = path.step_order.filter((id) => SECOND_SEAT_LIVE || id !== "second_seat").map((id) => ({ id, done: done[id] === true }));
+  const steps: WorkSetupStep[] = path.step_order.map((id) => ({ id, done: done[id] === true }));
   const doneNow = steps.filter((s) => s.done).map((s) => s.id as string);
   const known = row.steps_done ?? [];
   const fresh = doneNow.filter((id) => !known.includes(id));
