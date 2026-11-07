@@ -4,6 +4,12 @@
   "strings": {
     "bipe_badge_verified": "Nome verificado",
     "bipe_badge_verified_name": "Nome verificado: %1$s",
+    "bipe_badge_verified_via": "Nome verificado via %1$s",
+    "bipe_badge_verified_name_via": "Nome verificado via %1$s: %2$s",
+    "bipe_person_seal_scheme": "Verificado com",
+    "bipe_person_seal_checked": "Conferido em",
+    "bipe_person_seal_valid_until": "Válido até",
+    "bipe_person_seal_body": "O selo confirma o nome da pessoa. Não garante que ela é honesta nem que a mensagem é segura.",
     "bipe_badge_institution": "Instituição verificada",
     "bipe_badge_suspended": "Verificação do nome suspensa",
     "bipe_profile_fact_created": "Conta criada há %1$s",

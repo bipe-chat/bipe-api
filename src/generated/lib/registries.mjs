@@ -901,6 +901,10 @@ export function validateSchemes(reg) {
     }
   }
   for (const id of ids) if (!owned.has(id)) throw new Error(`schemes: ${id} has no region`);
+  const order = reg.schemes.personAssurance;
+  if (!Array.isArray(order) || order.map((a) => a.id).sort().join() !== [...SCHEME_ASSURANCE.person].sort().join()) throw new Error("schemes: personAssurance must list every person assurance once");
+  for (const a of order) if (a.mark !== "regular" && a.mark !== "fill") throw new Error(`schemes: personAssurance ${a.id} has mark ${a.mark}`);
+  if (new Set(order.map((a) => a.mark)).size !== order.length) throw new Error("schemes: two assurances share a mark");
 }
 
 // ADR 0272: what a badge level proves, for a feature gate. pix, govbr and cnpj are aliases of a scheme, person and
@@ -910,6 +914,22 @@ export function badgeClass(payload, schemes) {
     ? schemes.find((s) => s.id === payload.scheme)
     : schemes.find((s) => s.alias === payload.lvl);
   return scheme ? { class: scheme.class, assurance: scheme.assurance, country: scheme.country, scheme: scheme.id } : null;
+}
+
+// ADR 0275: the person proofs of an account, strongest first, one per scheme, from payloads that already passed the
+// badge check on this device. An org badge, a level that is not portable or an unknown scheme gives no proof (fail
+// closed). The first proof draws the compact seal; each proof is one line on the profile.
+export function personProofs(payloads, reg) {
+  const order = reg.schemes.personAssurance;
+  const proofs = new Map();
+  for (const payload of payloads ?? []) {
+    const found = badgeClass(payload, reg.schemes.schemes);
+    if (found?.class !== "person" || proofs.has(found.scheme)) continue;
+    const rank = order.findIndex((a) => a.id === found.assurance);
+    if (rank < 0) continue;
+    proofs.set(found.scheme, { rank, scheme: found.scheme, assurance: found.assurance, mark: order[rank].mark });
+  }
+  return [...proofs.values()].sort((a, b) => a.rank - b.rank).map(({ rank, ...proof }) => proof);
 }
 
 // ADR 0197, ADR 0272: the region of a user ID in the signed issuer registry, or null. The server name is everything
@@ -1407,7 +1427,9 @@ export function chatListPrompt(eligible, slot, nowMs, reg) {
 // number_moved_out and number_moved_in (bipe#161): the account's number went to, or came from, another account. Each
 // gives a line after the name line, { fact: "numberOut" | "numberIn", at }. numberNotice names the newest of them in the
 // window and is absent without one.
-export function profileFactLines(facts, nowMs, reg) {
+// alwaysCreated: person-profile keeps the account age at any age (ADR 0275 point 13). chat-request keeps the
+// new-account rule of ADR 0049.
+export function profileFactLines(facts, nowMs, reg, { alwaysCreated = false } = {}) {
   const r = reg.profileFacts;
   const day = 86_400_000;
   const inWindow = (list) => (list ?? []).map((t) => Date.parse(t)).filter((t) => Number.isFinite(t) && t <= nowMs && nowMs - t < r.windowDays * day).sort((a, b) => a - b);
@@ -1415,7 +1437,7 @@ export function profileFactLines(facts, nowMs, reg) {
   const photos = inWindow(facts.photo_changes);
   const lines = [];
   const created = facts.created_at ? Date.parse(facts.created_at) : NaN;
-  if (Number.isFinite(created) && created <= nowMs && nowMs - created < r.newAccountDays * day) {
+  if (Number.isFinite(created) && created <= nowMs && (alwaysCreated || nowMs - created < r.newAccountDays * day)) {
     lines.push({ fact: "created", at: new Date(created).toISOString() });
   }
   if (photos.length) lines.push({ fact: "photo", count: photos.length, at: new Date(photos.at(-1)).toISOString() });
