@@ -41,6 +41,8 @@ export function validateSettings(reg, phosphor) {
         const where = `${g.key}.${sec.key}.${r.key}`;
         if (!KEY.test(r.key)) fail(`${where}: key`);
         if (!KINDS.includes(r.kind)) fail(`${where}: kind "${r.kind}"`);
+        if (r.scope !== undefined && !["account", "device", "platform"].includes(r.scope)) fail(`${where}: scope "${r.scope}"`);
+        if ((r.kind === "switch" || r.kind === "choice") && r.scope === undefined) fail(`${where}: a switch or choice row needs a scope`);
         needString(r.title, where);
         if (r.footer) needString(r.footer, where);
         if (r.gate !== undefined && !GATE.test(r.gate)) fail(`${where}: gate "${r.gate}"`);
