@@ -2339,6 +2339,8 @@
     "bipe_thread_reply_action": "Responder em conversa",
     "bipe_thread_title": "Conversa",
     "bipe_thread_replies": "Respostas: %1$s",
+    "bipe_thread_list_title": "Conversas do grupo",
+    "bipe_thread_list_empty": "Nenhuma conversa neste grupo ainda.",
     "bipe_select_action": "Selecionar",
     "bipe_select_count": "Selecionadas: %1$s",
     "bipe_select_limit": "Escolha até %1$s mensagens.",
