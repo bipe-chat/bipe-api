@@ -1,0 +1,9 @@
+{
+  "$comment": "Verification schemes (bipe ADR 0272; docs/badge-attestation.md, docs/signed-lists.md). A scheme is one proof rail or registry in one country. class: person or org. assurance: person is bank or state, org is registry+control. alias: the older badge level of this scheme; an alias badge counts as this scheme. names: the label per locale. Each scheme belongs to one region in registries/regions.json. The signed issuer registry carries the schemes of every region, so a new country needs no app release. zz is reserved for test vectors and never appears here.",
+  "version": 1,
+  "schemes": [
+    { "id": "br.pix", "country": "BR", "class": "person", "assurance": "bank", "alias": "pix", "names": { "pt-BR": "Pix", "en": "Pix" } },
+    { "id": "br.govbr", "country": "BR", "class": "person", "assurance": "state", "alias": "govbr", "names": { "pt-BR": "gov.br", "en": "gov.br" } },
+    { "id": "br.cnpj", "country": "BR", "class": "org", "assurance": "registry+control", "alias": "cnpj", "names": { "pt-BR": "CNPJ", "en": "CNPJ" } }
+  ]
+}

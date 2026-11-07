@@ -23,6 +23,7 @@ export function loadRegistries(root) {
     phones: read("registries/phone-numbers.json"),
     bipeServers: read("registries/bipe-servers.json"),
     regions: read("registries/regions.json"),
+    schemes: read("registries/schemes.json"),
     accounts: read("registries/accounts.json"),
     legal: read("registries/legal.json"),
     agendaTemplates: read("registries/agenda-templates.json"),
@@ -589,6 +590,7 @@ function validate(reg, phosphor) {
   if (!(Array.isArray(bs) && bs.length > 0 && bs.every((s) => typeof s === "string" && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(s)))) fail("bipe servers: servers must be lower-case host names");
   if (new Set(bs).size !== bs.length) fail("bipe servers: duplicate server");
   validateRegions(reg);
+  validateSchemes(reg);
   for (const [cat, names] of Object.entries(reg.reserved.categories)) {
     if (!/^[a-z]+$/.test(cat)) fail(`reserved category id "${cat}"`);
     // Entries must already be in normalised form so lookups are exact.
@@ -860,6 +862,80 @@ export function extractInviteCode(text, reg) {
 export function canProvePhone(e164, regionId, reg) {
   const region = reg.regions.regions.find((r) => r.id === regionId);
   return !!region && typeof e164 === "string" && region.phoneProofCountryCodes.some((code) => e164.startsWith(`+${code}`));
+}
+
+// ADR 0272: a scheme is one proof rail or registry in one country, and it belongs to one region.
+const SCHEME_ASSURANCE = { person: ["bank", "state"], org: ["registry+control"] };
+export function validateSchemes(reg) {
+  const schemes = reg.schemes.schemes;
+  if (!(Array.isArray(schemes) && schemes.length > 0)) throw new Error("schemes: at least one scheme");
+  const ids = new Set();
+  const aliases = new Set();
+  for (const s of schemes) {
+    if (typeof s.id !== "string" || !/^[a-z]{2}\.[a-z0-9-]{1,30}$/.test(s.id)) throw new Error(`schemes: bad id ${s.id}`);
+    if (ids.has(s.id)) throw new Error(`schemes: duplicate ${s.id}`);
+    ids.add(s.id);
+    if (typeof s.country !== "string" || !/^[A-Z]{2}$/.test(s.country) || s.country === "ZZ") throw new Error(`schemes: ${s.id} needs a country`);
+    if (s.id.slice(0, 2) !== s.country.toLowerCase()) throw new Error(`schemes: ${s.id} does not start with its country ${s.country}`);
+    if (!SCHEME_ASSURANCE[s.class]?.includes(s.assurance)) throw new Error(`schemes: ${s.id} has class ${s.class} and assurance ${s.assurance}`);
+    if (s.alias !== undefined) {
+      if (typeof s.alias !== "string" || !s.alias || aliases.has(s.alias)) throw new Error(`schemes: ${s.id} bad alias ${s.alias}`);
+      aliases.add(s.alias);
+    }
+    const names = s.names ?? {};
+    if (!names["pt-BR"] || !names.en) throw new Error(`schemes: ${s.id} needs names in pt-BR and en`);
+  }
+  const owned = new Set();
+  for (const r of reg.regions.regions) {
+    if (!(Array.isArray(r.schemes) && r.schemes.length > 0)) throw new Error(`regions: ${r.id} needs schemes`);
+    for (const id of r.schemes) {
+      if (!ids.has(id)) throw new Error(`regions: ${r.id} has unknown scheme ${id}`);
+      if (owned.has(id)) throw new Error(`regions: scheme ${id} is in two regions`);
+      owned.add(id);
+    }
+  }
+  for (const id of ids) if (!owned.has(id)) throw new Error(`schemes: ${id} has no region`);
+}
+
+// ADR 0272: what a badge level proves, for a feature gate. pix, govbr and cnpj are aliases of a scheme, person and
+// org name theirs. Every other level (institution, brand-mark) is not portable and gives null.
+export function badgeClass(payload, schemes) {
+  const scheme = payload.lvl === "person" || payload.lvl === "org"
+    ? schemes.find((s) => s.id === payload.scheme)
+    : schemes.find((s) => s.alias === payload.lvl);
+  return scheme ? { class: scheme.class, assurance: scheme.assurance, country: scheme.country, scheme: scheme.id } : null;
+}
+
+// ADR 0197, ADR 0272: the region of a user ID in the signed issuer registry, or null. The server name is everything
+// after the first ':'.
+export function regionOfUser(userId, regions) {
+  const colon = typeof userId === "string" ? userId.indexOf(":") : -1;
+  if (colon < 0) return null;
+  const server = userId.slice(colon + 1);
+  return regions.find((r) => r.servers.includes(server))?.id ?? null;
+}
+
+// Reference for the steps that ADR 0272 adds to docs/badge-attestation.md "Verification order", on a payload whose
+// signature and issuer already passed. Returns null, or the error id of the first step that fails.
+export function badgeSchemeError(payload, sender, issuer, schemes, regions) {
+  if (payload.lvl === "person" || payload.lvl === "org") {
+    const text = (v) => typeof v === "string" && v.length > 0;
+    if (!text(payload.name) || !text(payload.msk) || !text(payload.assurance)) return "malformed";
+    if (typeof payload.country !== "string" || !/^[A-Z]{2}$/.test(payload.country)) return "malformed";
+    if (typeof payload.scheme !== "string" || !/^[a-z]{2}\.[a-z0-9-]{1,30}$/.test(payload.scheme)) return "malformed";
+    if (payload.lvl === "org" && (!text(payload.org_id) || payload.org_id.length > 128)) return "malformed";
+    if (payload.lvl === "org" && payload.legal_name !== undefined && !text(payload.legal_name)) return "malformed";
+  }
+  if (!issuer.levels.includes(payload.lvl)) return "level_not_allowed";
+  if (payload.lvl === "person" || payload.lvl === "org") {
+    const scheme = schemes.find((s) => s.id === payload.scheme);
+    if (!scheme) return "unknown_scheme";
+    if (!issuer.schemes.includes(scheme.id)) return "scheme_not_allowed";
+    if (scheme.class !== payload.lvl || scheme.country !== payload.country || scheme.assurance !== payload.assurance) return "scheme_mismatch";
+  }
+  if (payload.sub !== sender) return "subject_mismatch";
+  if (regionOfUser(payload.sub, regions) !== issuer.region) return "region_mismatch";
+  return null;
 }
 
 // ADR 0168, bipe-chat/bipe#680: a Bipe user is a user ID whose server name (everything after the first ':') is in
