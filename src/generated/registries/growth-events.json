@@ -6,6 +6,7 @@
     "signup_done",
     "onboarding_finished",
     "first_message_sent",
+    "first_human_conversation",
     "contact_verified",
     "invite_sent"
   ],
@@ -35,6 +36,13 @@
       "once": true,
       "source": "synapse_db",
       "detail": "The first m.room.message or m.room.encrypted event from the user (events: sender, type, origin_server_ts). Only the type is read.",
+      "content": "none"
+    },
+    {
+      "id": "first_human_conversation",
+      "once": true,
+      "source": "synapse_db",
+      "detail": "The first day that the user and another local person have both sent a message in one room (bipe-chat/bipe#1182, ADR 0268). Bots, application services, guests, support and assistant accounts are not people here. Reads events: room_id, sender, type, origin_server_ts. The room ID is not kept. Two people's own assistants that write through their accounts look like people: the server cannot tell.",
       "content": "none"
     },
     {
