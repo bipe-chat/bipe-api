@@ -1,0 +1,6 @@
+{
+  "$comment": "Chats accepted from chat-requests (spec timeline-media fromStranger, bipe-chat/bipe#1162). The global account data event below holds the room IDs of DMs the person accepted from chat-requests on any device: { \"rooms\": [\"<room_id>\", ...] }, newest last. Every client of the account reads it, so a computer without chat-requests still holds a stranger's media for a tap. A write reads the server copy, adds the room IDs, and keeps the newest max room IDs. A phone adds only rooms its current client knows, because the phone's own list can hold rooms of another account. A malformed event counts as an empty list. A computer that has not read the event yet treats a DM as accepted from chat-requests.",
+  "version": 1,
+  "eventType": "chat.bipe.request_rooms",
+  "max": 500
+}
