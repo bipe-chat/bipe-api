@@ -42,7 +42,7 @@ test("tiers: unattested, new, normal, verified, company", async (t) => {
   assert.equal(await tiers.tierOf("@young:example.test"), "new");
   await signup(db, ana);
   assert.equal(await tiers.tierOf(ana), "normal");
-  await db.query("INSERT INTO person_verifications (user_id, level, verified_name, cpf_hash, device_key, verified_at) VALUES ($1, 'govbr', 'Ana', 'h', 'k', now())", [ana]);
+  await db.query("INSERT INTO person_verifications (user_id, level, verified_name, master_key, verified_at) VALUES ($1, 'govbr', 'Ana', 'k', now())", [ana]);
   assert.equal(await tiers.tierOf(ana), "verified");
   await signup(db, "@loja:example.test", { attested: null, type: "company" });
   assert.equal(await tiers.tierOf("@loja:example.test"), "company");

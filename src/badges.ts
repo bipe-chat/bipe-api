@@ -1,6 +1,7 @@
 // Signed badges (bipe#399, ADR 0123; format: bipe-shared/docs/badge-attestation.md). The server signs on
 // read: a verified claim plus the account's cross-signing master key from Synapse give a lvl "cnpj" badge;
-// a verified person (person_verifications, bipe#543) gives a lvl "pix" or "govbr" badge bound to a device key.
+// a verified person (person_verifications, bipe#543) gives one lvl "pix" or "govbr" badge per proof, bound to the
+// master key the person verified with (ADR 0239, ADR 0275).
 // Fail closed: no signing key, no master key or no registry record means no badge (404).
 import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -8,7 +9,7 @@ import { join } from "node:path";
 import pg from "pg";
 import type { Db } from "./db.js";
 import { cvmField } from "./cvm.js";
-import { badgeRules, brandMarkRules, theftRules } from "./registry.js";
+import { badgeRules, brandMarkRules, personLevels, theftRules } from "./registry.js";
 
 const KID = /^prod-\d{4}-(0[1-9]|1[0-2])$/;
 // Matrix unpadded base64 of a 32-byte Ed25519 key (master key and device key).
@@ -21,6 +22,9 @@ export type BadgeResult =
   | { status: 200; envelope: BadgeEnvelope }
   | { status: 404 }
   | { status: 410; reason: "revoked" | "not_active" | "not_found" | "staff" | "stolen" };
+
+/** Every badge of an account, strongest first. forUser answers the first one. */
+type Resolved = { status: 200; envelopes: BadgeEnvelope[] } | { status: 404 } | Extract<BadgeResult, { status: 410 }>;
 
 type ClaimRow = {
   cnpj: string;
@@ -56,7 +60,24 @@ export class Badges {
     return `on (kid ${this.key.kid}${trusted})`;
   }
 
+  /** GET /v1/badges/{userId}: the strongest badge. Old apps and the compact seal read this one. */
   async forUser(userId: string, now = Math.floor(Date.now() / 1000)): Promise<BadgeResult> {
+    const resolved = await this.resolve(userId, now);
+    return resolved.status === 200 ? { status: 200, envelope: resolved.envelopes[0]! } : resolved;
+  }
+
+  /** GET /v1/badges/{userId}/proofs (ADR 0275): every badge, strongest first. A theft mark or a revoke gives none. */
+  async proofsFor(userId: string, now = Math.floor(Date.now() / 1000)): Promise<BadgeEnvelope[]> {
+    const resolved = await this.resolve(userId, now);
+    return resolved.status === 200 ? resolved.envelopes : [];
+  }
+
+  /** The master key to bind a new person proof to, or null. A later reset leaves the proof on the old key. */
+  async currentMasterKey(userId: string): Promise<string | null> {
+    return this.synapse ? this.masterKey(userId) : null;
+  }
+
+  private async resolve(userId: string, now: number): Promise<Resolved> {
     // A theft mark suspends every badge of the account (ADR 0044, rule 4).
     const { rowCount: stolen } = await this.db.query("SELECT 1 FROM theft_marks WHERE user_id = $1 AND cleared_at IS NULL", [userId]);
     if (stolen) return { status: 410, reason: "stolen" };
@@ -69,7 +90,10 @@ export class Badges {
     const claim = rows[0];
     if (claim?.status === "revoked") return { status: 410, reason: goneReason(claim.reason) };
     // No verified company: a verified person (trust step 4 or 5, bipe#543) can still have a badge.
-    if (claim?.status !== "verified") return this.personBadge(userId, now);
+    if (claim?.status !== "verified") {
+      const envelopes = await this.personBadges(userId, now);
+      return envelopes.length > 0 ? { status: 200, envelopes } : { status: 404 };
+    }
     if (!claim.method || !claim.verified_at) return { status: 404 };
     if (!claim.active || !claim.legal_name || !claim.release_month || !this.key || !this.synapse) return { status: 404 };
     const msk = await this.masterKey(userId);
@@ -81,7 +105,7 @@ export class Badges {
     const cacheKey = JSON.stringify([claim.cnpj, claim.method, claim.verified_at.toISOString(), claim.legal_name, claim.trade_name, claim.release_month, msk, this.key.kid, cvm ?? null]);
     const cached = this.cache.get(userId);
     if (cached && cached.key === cacheKey && now < cached.exp - badgeRules.renewDaysBeforeExpiry * DAY) {
-      return { status: 200, envelope: cached.envelope };
+      return { status: 200, envelopes: [cached.envelope] };
     }
     const iat = now;
     const exp = iat + badgeRules.lifeDays * DAY;
@@ -102,7 +126,7 @@ export class Badges {
     };
     const envelope = this.signPayload(payload);
     this.cache.set(userId, { key: cacheKey, exp, envelope });
-    return { status: 200, envelope };
+    return { status: 200, envelopes: [envelope] };
   }
 
   /**
@@ -167,25 +191,35 @@ export class Badges {
     return envelopes;
   }
 
-  /** A person badge (lvl pix or govbr), bound to the device key the user verified from. */
-  private async personBadge(userId: string, now: number): Promise<BadgeResult> {
-    if (!this.key) return { status: 404 };
-    const { rows } = await this.db.query<{ level: string; verified_name: string; device_key: string; verified_at: Date }>(
-      "SELECT level, verified_name, device_key, verified_at FROM person_verifications WHERE user_id = $1",
+  /**
+   * The person badges (lvl pix or govbr), strongest first. Each stays bound to the master key of its verification:
+   * after an identity reset the apps answer master_key_mismatch and show the suspended state until the person verifies
+   * again (ADR 0239). A new signature with the new key, or a 404, would hide the suspension.
+   */
+  private async personBadges(userId: string, now: number): Promise<BadgeEnvelope[]> {
+    if (!this.key) return [];
+    const { rows } = await this.db.query<{ level: string; verified_name: string; master_key: string; verified_at: Date }>(
+      "SELECT level, verified_name, master_key, verified_at FROM person_verifications WHERE user_id = $1 AND verified_name <> '' AND master_key <> ''",
       [userId],
     );
-    const person = rows[0];
-    if (!person) return { status: 404 };
-    const cacheKey = JSON.stringify([person.level, person.verified_name, person.device_key, person.verified_at.toISOString(), this.key.kid]);
-    const cached = this.cache.get(userId);
-    if (cached && cached.key === cacheKey && now < cached.exp - badgeRules.renewDaysBeforeExpiry * DAY) {
-      return { status: 200, envelope: cached.envelope };
+    const envelopes: BadgeEnvelope[] = [];
+    for (const level of personLevels) {
+      const person = rows.find((row) => row.level === level);
+      if (!person) continue;
+      const cacheKey = JSON.stringify([person.level, person.verified_name, person.master_key, person.verified_at.toISOString(), this.key.kid]);
+      const cacheId = `person:${userId}:${level}`;
+      const cached = this.cache.get(cacheId);
+      if (cached && cached.key === cacheKey && now < cached.exp - badgeRules.renewDaysBeforeExpiry * DAY) {
+        envelopes.push(cached.envelope);
+        continue;
+      }
+      const exp = now + badgeRules.lifeDays * DAY;
+      const payload = { sub: userId, lvl: person.level, name: person.verified_name, msk: person.master_key, iat: now, exp };
+      const envelope = this.signPayload(payload);
+      this.cache.set(cacheId, { key: cacheKey, exp, envelope });
+      envelopes.push(envelope);
     }
-    const exp = now + badgeRules.lifeDays * DAY;
-    const payload = { sub: userId, lvl: person.level, name: person.verified_name, dev: person.device_key, iat: now, exp };
-    const envelope = this.signPayload(payload);
-    this.cache.set(userId, { key: cacheKey, exp, envelope });
-    return { status: 200, envelope };
+    return envelopes;
   }
 
   /** A theft statement (bipe-shared docs/theft-mark.md), or null without a signing key. */

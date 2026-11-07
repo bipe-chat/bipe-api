@@ -19,6 +19,15 @@ export const growthRules = reg.growth as {
   events: { id: string; once: boolean; source: "api" | "synapse_db"; detail: string }[];
 };
 
+const schemeRules = reg.schemes as {
+  personAssurance: { id: string }[];
+  schemes: { class: string; assurance: string; alias?: string }[];
+};
+/** The person badge levels, strongest first (ADR 0275, registries/schemes.json). */
+export const personLevels: string[] = schemeRules.personAssurance.flatMap((a) =>
+  schemeRules.schemes.filter((s) => s.class === "person" && s.assurance === a.id && s.alias).map((s) => s.alias!),
+);
+
 /** Brand marks for resellers (ADR 0162, registries/brand-marks.json). */
 export const brandMarkRules = reg.brandMarks as { labels: string[]; maxPerAccount: number; inviteDays: number; recheckMinutes: number };
 

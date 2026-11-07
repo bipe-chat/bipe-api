@@ -1375,6 +1375,15 @@ app.get("/v1/badges/:userId", async (c) => {
   return c.json(result.envelope);
 });
 
+// Every proof of an account, strongest first (ADR 0275). Public like the badge. A theft mark or a revoke empties it.
+app.get("/v1/badges/:userId/proofs", async (c) => {
+  limits.badge.check(clientIp(c));
+  const userId = c.req.param("userId");
+  c.header("cache-control", "public, max-age=300");
+  if (!/^@[^:\s]{1,255}:[^\s]{1,255}$/.test(userId)) return c.json({ badges: [] });
+  return c.json({ badges: await badges.proofsFor(userId) });
+});
+
 // Assistants as chat members (ADR 0210, bipe#867). Public like the badge: anyone who sees the account may check it.
 app.use("/v1/assistants/:userId", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
 app.post("/v1/assistants/resolve", smallBody, async (c) => {
@@ -1555,6 +1564,7 @@ app.put("/v1/verifications/govbr/:id/document", async (c) => {
         const r = await badges.forUser(id);
         return r.status === 200 ? r.envelope : null;
       },
+      masterKeyOf: (id) => badges.currentMasterKey(id),
     },
     userId,
     c.req.param("id"),

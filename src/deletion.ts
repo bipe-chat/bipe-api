@@ -397,7 +397,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q(
       "UPDATE business_claims SET status = 'revoked', reason = 'account_deleted', challenge = '', ended_at = COALESCE(ended_at, now()) WHERE user_id = $1",
     );
-    await q("UPDATE person_verifications SET verified_name = '', device_key = '' WHERE user_id = $1");
+    await q("UPDATE person_verifications SET verified_name = '', master_key = '' WHERE user_id = $1");
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
@@ -421,6 +421,7 @@ export async function pruneDeletions(db: Db): Promise<number> {
     const users = rows.map((r) => r.user_id);
     if (users.length > 0) {
       await client.query("DELETE FROM person_verifications WHERE user_id = ANY($1)", [users]);
+      await client.query("DELETE FROM person_identities WHERE user_id = ANY($1)", [users]);
       await client.query("DELETE FROM business_claims WHERE user_id = ANY($1) AND reason = 'account_deleted'", [users]);
     }
     await client.query("COMMIT");
