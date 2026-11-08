@@ -2570,6 +2570,16 @@
     "bipe_account_status_raise_wait": "O limite volta a subir com o tempo.",
     "bipe_reach_limit_body": "Você chegou ao limite de conversas com pessoas que não conhecem você. A próxima libera em %1$s.",
     "bipe_reach_limit_body_none": "Esta conta não pode começar conversas com pessoas que não conhecem você.",
-    "bipe_avatar_open": "Ver foto"
+    "bipe_avatar_open": "Ver foto",
+    "bipe_interno_title": "Interno",
+    "bipe_interno_row_body": "Conversas só entre quem atende por %1$s.",
+    "bipe_interno_geral": "Geral",
+    "bipe_interno_geral_body": "Todo mundo que atende por %1$s.",
+    "bipe_interno_new": "Nova conversa",
+    "bipe_interno_pick_title": "Conversar com quem?",
+    "bipe_interno_private_hint": "Só vocês dois veem esta conversa. Nem a pessoa responsável vê.",
+    "bipe_interno_setup": "Preparando o Interno",
+    "bipe_interno_error": "Não deu para abrir o Interno. Tente de novo.",
+    "bipe_interno_empty": "Ninguém mais atende por esta conta ainda."
   }
 }
