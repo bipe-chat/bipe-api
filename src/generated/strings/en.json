@@ -2569,6 +2569,7 @@
     "bipe_account_status_raise_verify": "Verify your account to start more new chats.",
     "bipe_account_status_raise_wait": "The limit goes back up with time.",
     "bipe_reach_limit_body": "You reached the limit of chats with people who do not know you. The next one frees up %1$s.",
-    "bipe_reach_limit_body_none": "This account cannot start chats with people who do not know you."
+    "bipe_reach_limit_body_none": "This account cannot start chats with people who do not know you.",
+    "bipe_avatar_open": "View photo"
   }
 }
