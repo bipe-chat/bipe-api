@@ -281,7 +281,8 @@ export function draftFromEvent(event, ctx, reg) {
 // Notes room of a work account (bipe ADR 0284, bipe-chat/bipe#1291; registries/work-notes.json).
 export function validateWorkNotes(w) {
   if (w.version !== 1) fail("work-notes: version must be 1");
-  if (w.roomType !== "chat.bipe.work_notes" || w.accountDataType !== "chat.bipe.work_notes_room" || w.noteField !== "chat.bipe.work_note" || w.replyByType !== "chat.bipe.reply_by") fail("work-notes: unsupported ADR 0284 names");
+  if (w.roomType !== "chat.bipe.work_notes" || w.accountDataType !== "chat.bipe.work_notes_room" || w.noteField !== "chat.bipe.work_note" || w.replyByField !== "chat.bipe.reply_by") fail("work-notes: unsupported ADR 0284 names");
+  if (typeof w.replyByBody !== "string" || !w.replyByBody.trim() || w.replyByBody.length > 64) fail("work-notes: replyByBody must be 1 to 64 characters");
   if (!Number.isInteger(w.bodyMaxLength) || w.bodyMaxLength < 500 || w.bodyMaxLength > 65536) fail("work-notes: bodyMaxLength must be an integer from 500 to 65536");
 }
 
@@ -289,8 +290,9 @@ const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
 
 /**
  * Whether the apps show a notes room event as a note on a customer chat, and why not (bipe ADR 0284 point 18).
- * event: { sender, type, redacted?, content }, an event of the notes room. ctx: { ownUserId, joinedRoomIds }.
- * Returns { show: true, note: { roomId, body } } or { show: false, reason }.
+ * event: { sender, type, redacted?, content }, an event of the notes room. ctx: { ownUserId, joinedRoomIds, seatIds }.
+ * Returns { show: true, note: { roomId, body, seatId } } or { show: false, reason }. seatId is null when the note names no
+ * seat of the account (a seat that left, or none): the note still shows, with no author.
  */
 export function workNoteFromEvent(event, ctx, reg) {
   const w = reg.workNotes;
@@ -306,7 +308,8 @@ export function workNoteFromEvent(event, ctx, reg) {
   if (!ctx.joinedRoomIds.includes(f.room_id)) return no("not_joined");
   if (typeof c.body !== "string" || !c.body.trim()) return no("body");
   if (c.body.length > w.bodyMaxLength) return no("body_too_long");
-  return { show: true, note: { roomId: f.room_id, body: c.body } };
+  const seatId = typeof f.seat_id === "string" && (ctx.seatIds ?? []).includes(f.seat_id) ? f.seat_id : null;
+  return { show: true, note: { roomId: f.room_id, body: c.body, seatId } };
 }
 
 /**
@@ -316,11 +319,13 @@ export function workNoteFromEvent(event, ctx, reg) {
  */
 export function replyByFromEvent(event, ctx, reg) {
   const no = (reason) => ({ show: false, reason });
-  if (!event || event.type !== reg.workNotes.replyByType) return no("type");
+  if (!event || event.type !== "m.room.message") return no("type");
   if (event.redacted) return no("redacted");
   if (event.sender !== ctx.ownUserId) return no("sender");
-  const c = event.content;
-  if (!isObject(c)) return no("content");
+  const content = event.content;
+  if (!isObject(content) || content.msgtype !== "m.notice") return no("content");
+  const c = content[reg.workNotes.replyByField];
+  if (!isObject(c)) return no("field");
   if (typeof c.room_id !== "string" || !c.room_id.startsWith("!")) return no("room_id");
   if (typeof c.event_id !== "string" || !c.event_id.startsWith("$")) return no("event_id");
   if (typeof c.seat_id !== "string" || !ctx.seatIds.includes(c.seat_id)) return no("seat_id");
