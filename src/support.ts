@@ -117,6 +117,33 @@ export class SupportBot extends EncryptedBot {
   }
 
   /** Posts a notice into the user's support room. Used after a problem report. */
+  /**
+   * Capacity alerts (ADR 0285, bipe#1313): the one staff room ("Alertas do servidor"). Made on first use with the
+   * staff invited; a staff member who left is invited again. Not a support room: messages there never go to Starlings.
+   */
+  async staffAlert(staff: readonly string[], body: string): Promise<void> {
+    if (!this.enabled || staff.length === 0) return;
+    await this.ready;
+    const { rows } = await this.db.query<{ room_id: string }>("SELECT room_id FROM capacity_alert_room WHERE id = 1");
+    let roomId = rows[0]?.room_id;
+    if (!roomId) {
+      const created = await this.matrix<{ room_id: string }>("POST", "/createRoom", {
+        preset: "private_chat",
+        invite: [...staff],
+        name: "Alertas do servidor",
+        initial_state: [{ type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } }],
+      });
+      const { rows: kept } = await this.db.query<{ room_id: string }>(
+        `INSERT INTO capacity_alert_room (id, room_id) VALUES (1, $1)
+         ON CONFLICT (id) DO UPDATE SET id = 1 RETURNING room_id`, [created.room_id]);
+      roomId = kept[0]!.room_id;
+      if (roomId !== created.room_id) await this.matrix("POST", `/rooms/${enc(created.room_id)}/leave`, {}).catch(() => {});
+    } else {
+      for (const userId of staff) await this.reinviteIfGone(roomId, userId);
+    }
+    await this.sendText(roomId, body, "m.text");
+  }
+
   async notice(userId: string, body: string): Promise<void> {
     const roomId = await this.roomFor(userId);
     await this.sendText(roomId, body, "m.notice");

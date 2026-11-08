@@ -596,7 +596,7 @@ function validate(reg, phosphor) {
   // gov.br verification (bipe-chat/bipe#544): only the gov.br app's own store pages, and the contract's file limits.
   const gb = reg.govbr;
   if (gb.version !== 1) fail("govbr: version must be 1");
-  if (gb.fileName !== "bipe-verificacao.pdf") fail("govbr: fileName must be the GovbrChallenge fileName bipe-verificacao.pdf");
+  if (gb.fileName !== "bipe_verificacao.pdf") fail("govbr: fileName must be the fallback bipe_verificacao.pdf (bipe-chat/bipe#998)");
   if (!Number.isInteger(gb.maxDocumentBytes) || gb.maxDocumentBytes <= 0 || gb.maxDocumentBytes > 5242880) fail("govbr: maxDocumentBytes must be an integer from 1 to 5242880 (contract maxLength)");
   if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(gb.androidPackage ?? "")) fail("govbr: androidPackage must be an Android package name");
   if (!/^https:\/\/apps\.apple\.com\/br\/app\/[a-z0-9-]+\/id\d+$/.test(gb.iosStoreUrl ?? "")) fail("govbr: iosStoreUrl must be an apps.apple.com/br app page");

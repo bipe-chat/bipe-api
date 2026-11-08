@@ -5,7 +5,7 @@ import { deflateSync } from "node:zlib";
 import { webcrypto } from "node:crypto";
 import * as asn1 from "asn1js";
 import * as pki from "pkijs";
-import { challengePdf, checkSignedPdf, containsCode, matchingChallenge, personOf, validCpf } from "../dist/govbr.js";
+import { challengeFileName, challengePdf, checkSignedPdf, containsCode, matchingChallenge, personOf, validCpf } from "../dist/govbr.js";
 
 pki.setEngine("node", new pki.CryptoEngine({ name: "node", crypto: webcrypto }));
 const key = () => webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
@@ -146,4 +146,14 @@ test("CPF check digits", () => {
   assert.ok(!validCpf("52998224726"));
   assert.ok(!validCpf("11111111111"));
   assert.ok(!validCpf("123"));
+});
+
+test("the challenge file name names the account and the code (bipe#998)", () => {
+  const pattern = /^bipe_[a-z0-9._-]{1,64}_[A-Z0-9-]{3,16}\.pdf$/;
+  assert.equal(challengeFileName("mz", "ABC-234"), "bipe_mz_ABC-234.pdf");
+  assert.equal(challengeFileName("Ana.Souza", "XYZ-789"), "bipe_ana.souza_XYZ-789.pdf");
+  assert.equal(challengeFileName("joão", "XYZ-789"), "bipe_joo_XYZ-789.pdf");
+  assert.equal(challengeFileName(null, "XYZ-789"), "bipe_verificacao_XYZ-789.pdf");
+  assert.equal(challengeFileName("çã", "XYZ-789"), "bipe_verificacao_XYZ-789.pdf");
+  for (const name of ["bipe_mz_ABC-234.pdf", challengeFileName("a".repeat(80), "ABC-234")]) assert.match(name, pattern);
 });

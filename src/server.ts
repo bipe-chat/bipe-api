@@ -48,6 +48,7 @@ import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
 import { deleteLocalMedia, SynapseAdmin } from "./synapse-admin.js";
+import { CAPACITY_SAMPLE_PATH, CapacitySample, capacityReport, checkAlerts, pruneCapacity, recordSample } from "./capacity.js";
 import { accountCount, businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
@@ -317,6 +318,11 @@ const pruneReports = () =>
     .catch((e) => console.error(`problem report prune failed: ${(e as Error).message}`));
 pruneReports();
 setInterval(pruneReports, 24 * 3_600_000).unref();
+const capacityLimits = { memory: config.CAPACITY_ALERT_MEMORY, disk: config.CAPACITY_ALERT_DISK, cpu: config.CAPACITY_ALERT_CPU };
+console.log(`capacity alerts: ${support.enabled && config.CAPACITY_ALERT_USERS.length > 0 ? `on, ${config.CAPACITY_ALERT_USERS.length} staff` : "off (no CAPACITY_ALERT_USERS or support bot off)"}`);
+const pruneCapacityJob = () => void pruneCapacity(db).catch((e) => console.error(`capacity prune failed: ${(e as Error).message}`));
+pruneCapacityJob();
+setInterval(pruneCapacityJob, 24 * 3_600_000).unref();
 // Retries for Starlings intake lines that failed. A new line is sent at once.
 setInterval(() => void intake.flush(), 60_000).unref();
 void intake.flush();
@@ -508,7 +514,7 @@ app.use("*", (c, next) => {
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
   if (c.req.path === PHOTO_PATH || CATALOG_PHOTO_PATH.test(c.req.path)) return photoBody(c, next);
   if (GOVBR_DOCUMENT_PATH.test(c.req.path)) return govbrBody(c, next);
-  if (c.req.path === "/internal/v1/first-contacts/ignored") return ignoredBody(c, next);
+  if (c.req.path === "/internal/v1/first-contacts/ignored" || c.req.path === CAPACITY_SAMPLE_PATH) return ignoredBody(c, next);
   return smallBody(c, next);
 });
 
@@ -1103,6 +1109,19 @@ app.post("/internal/v1/first-contacts/ignored", async (c) => {
   return c.json({});
 });
 
+// Capacity sample (ADR 0285, bipe#1312) from the probe CronJob (src/capacity-probe.ts). Machine numbers only.
+app.post(CAPACITY_SAMPLE_PATH, async (c) => {
+  checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
+  const sample = await parse(c, CapacitySample);
+  const fresh = await recordSample(db, sample);
+  // Alerts (bipe#1313) run after the answer: a failed send never fails the sample, and the next sample tries again.
+  if (support.enabled && config.CAPACITY_ALERT_USERS.length > 0) {
+    void checkAlerts(db, sample, fresh, capacityLimits, (body) => support.staffAlert(config.CAPACITY_ALERT_USERS, body))
+      .catch((e) => console.error(`capacity alert failed: ${(e as Error).message}`));
+  }
+  return c.json({});
+});
+
 // Support DM (ADR 0114): the caller's room with the support account.
 app.post("/v1/me/support", async (c) => {
   const userId = await auth.userId(c.req.header("authorization"));
@@ -1682,6 +1701,11 @@ staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));
 staffGet("/v1/admin/retention", () => staffReports.retention());
 staffGet("/v1/admin/accounts", () => accountCount(db));
+staffGet("/v1/admin/capacity", (c) => {
+  const days = z.coerce.number().int().min(7).max(731).default(90).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return capacityReport(db, days.data);
+});
 // bipe#531: share of active iOS accounts with a way back that survives the App Store transfer.
 staffGet("/v1/admin/transfer-readiness", (c) => {
   const days = z.coerce.number().int().min(1).max(90).default(30).safeParse(c.req.query("days"));
