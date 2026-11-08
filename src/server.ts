@@ -48,6 +48,7 @@ import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
 import { deleteLocalMedia, SynapseAdmin } from "./synapse-admin.js";
+import { CAPACITY_SAMPLE_PATH, CapacitySample, pruneCapacity, recordSample } from "./capacity.js";
 import { accountCount, businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
@@ -317,6 +318,9 @@ const pruneReports = () =>
     .catch((e) => console.error(`problem report prune failed: ${(e as Error).message}`));
 pruneReports();
 setInterval(pruneReports, 24 * 3_600_000).unref();
+const pruneCapacityJob = () => void pruneCapacity(db).catch((e) => console.error(`capacity prune failed: ${(e as Error).message}`));
+pruneCapacityJob();
+setInterval(pruneCapacityJob, 24 * 3_600_000).unref();
 // Retries for Starlings intake lines that failed. A new line is sent at once.
 setInterval(() => void intake.flush(), 60_000).unref();
 void intake.flush();
@@ -508,7 +512,7 @@ app.use("*", (c, next) => {
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
   if (c.req.path === PHOTO_PATH || CATALOG_PHOTO_PATH.test(c.req.path)) return photoBody(c, next);
   if (GOVBR_DOCUMENT_PATH.test(c.req.path)) return govbrBody(c, next);
-  if (c.req.path === "/internal/v1/first-contacts/ignored") return ignoredBody(c, next);
+  if (c.req.path === "/internal/v1/first-contacts/ignored" || c.req.path === CAPACITY_SAMPLE_PATH) return ignoredBody(c, next);
   return smallBody(c, next);
 });
 
@@ -1100,6 +1104,13 @@ app.post("/internal/v1/first-contacts/ignored", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
   const { user_id, ignored_users } = await parse(c, IgnoredUsersBody);
   await reach.ignored(user_id, ignored_users);
+  return c.json({});
+});
+
+// Capacity sample (ADR 0285, bipe#1312) from the probe CronJob (src/capacity-probe.ts). Machine numbers only.
+app.post(CAPACITY_SAMPLE_PATH, async (c) => {
+  checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
+  await recordSample(db, await parse(c, CapacitySample));
   return c.json({});
 });
 
