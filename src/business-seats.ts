@@ -95,6 +95,12 @@ async function resolveSeat({ db, mas }: Deps, businessId: string, deviceId: stri
   return null;
 }
 
+/** The seat of the calling device, or null (ADR 0284: the chat routes need a person). */
+export async function callerSeat(deps: Deps, businessId: string, deviceId: string | null): Promise<{ id: string; role: "owner" | "attendant" } | null> {
+  const seat = await resolveSeat(deps, businessId, deviceId);
+  return seat ? { id: seat.id, role: seat.role } : null;
+}
+
 /** Owner-only actions. An account that is not a company account passes: the rule is about people on one account. */
 export async function requireOwnerDevice(deps: Deps, userId: string, deviceId: string | null): Promise<void> {
   if (!(await isCompany(deps.db, userId))) return;

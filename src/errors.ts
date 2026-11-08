@@ -64,7 +64,10 @@ export type ErrorId =
   | "owner_only"
   | "seat_limit"
   | "seat_window_open"
-  | "seat_window_closed";
+  | "seat_window_closed"
+  // Who has each customer chat (ADR 0284).
+  | "seat_required"
+  | "chat_taken";
 
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503> = {
   bad_request: 400,
@@ -130,6 +133,8 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   seat_limit: 409,
   seat_window_open: 409,
   seat_window_closed: 409,
+  seat_required: 403,
+  chat_taken: 409,
 };
 
 export class ApiError extends Error {
