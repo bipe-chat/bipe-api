@@ -1092,6 +1092,37 @@ export const MIGRATIONS: readonly string[] = [
    );
    CREATE INDEX business_members_business ON business_members (business_id);
    ALTER TABLE business_work_settings ADD COLUMN geral_room_id text;`,
+  // Capacity of the node (ADR 0285, bipe#1312). Machine numbers and an account count only, no personal data. Raw samples
+  // stay 7 days, one row per Brazil day stays 2 years (pruneCapacity). capacity_ooms keeps each OOM kill once, so a kill
+  // that shows in many samples counts once.
+  `CREATE TABLE capacity_samples (
+     id bigserial PRIMARY KEY,
+     taken_at timestamptz NOT NULL DEFAULT now(),
+     accounts integer NOT NULL,
+     sample jsonb NOT NULL
+   );
+   CREATE INDEX capacity_samples_taken_at ON capacity_samples (taken_at);
+   CREATE TABLE capacity_days (
+     day date PRIMARY KEY,
+     samples integer NOT NULL,
+     accounts_max integer NOT NULL,
+     cpu_used_max bigint NOT NULL,
+     cpu_allocatable bigint NOT NULL,
+     memory_used_max bigint NOT NULL,
+     memory_allocatable bigint NOT NULL,
+     fs_used_max bigint NOT NULL,
+     fs_capacity bigint NOT NULL,
+     volume_ratio_max real NOT NULL,
+     oom_kills integer NOT NULL
+   );
+   CREATE TABLE capacity_ooms (
+     namespace text NOT NULL,
+     pod text NOT NULL,
+     container text NOT NULL,
+     finished_at timestamptz NOT NULL,
+     seen_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (namespace, pod, container, finished_at)
+   );`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
