@@ -1,9 +1,10 @@
 {
-  "$comment": "Notes room of a work account (bipe ADR 0284 points 18 and 19, bipe-chat/bipe#1291). Each work account has one private, end-to-end encrypted notes room with only the account's own devices, like the drafts room (registries/drafts.json). Its room ID is in global account data accountDataType as {\"room_id\": ...}. The creating device sets the creation type roomType when its SDK can. A note is an m.room.message with msgtype m.text: body is the note text, and noteField holds {\"room_id\"}, the customer chat it is about. After a send to a customer, the sending device sends one replyByType event with {\"room_id\", \"event_id\", \"seat_id\"}: inside the account, the apps show the name of that seat on that reply. Customers see nothing of this room. A modified client can skip or fake a reply-by event, so the name is a help, not proof. Rules: test-vectors/work-notes.json.",
+  "$comment": "Notes room of a work account (bipe ADR 0284 points 18 and 19, bipe-chat/bipe#1291, bipe-chat/bipe#1293). Each work account has one private, end-to-end encrypted notes room with only the account's own devices, like the drafts room (registries/drafts.json). Its room ID is in global account data accountDataType as {\"room_id\": ...}. The creating device sets the creation type roomType when its SDK can. A note is an m.room.message with msgtype m.text: body is the note text, and noteField holds {\"room_id\", \"seat_id\"?}: the customer chat it is about and the seat that wrote it. After a send to a customer, the sending device sends one m.room.message with msgtype m.notice, body replyByBody, and replyByField {\"room_id\", \"event_id\", \"seat_id\"}: inside the account, the apps show the name of that seat on that reply. Both are m.room.message because matrix-sdk-ui drops custom event types from the timeline (matrix-sdk-ffi 26.08.11). Customers see nothing of this room. A modified client can skip or fake these fields, so a name is a help, not proof. Rules: test-vectors/work-notes.json.",
   "version": 1,
   "roomType": "chat.bipe.work_notes",
   "accountDataType": "chat.bipe.work_notes_room",
   "noteField": "chat.bipe.work_note",
-  "replyByType": "chat.bipe.reply_by",
+  "replyByField": "chat.bipe.reply_by",
+  "replyByBody": "Resposta enviada",
   "bodyMaxLength": 4000
 }
