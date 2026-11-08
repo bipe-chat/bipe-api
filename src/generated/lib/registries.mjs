@@ -64,6 +64,7 @@ export function loadRegistries(root) {
     govbr: read("registries/govbr.json"),
     mcpTools: read("registries/mcp-tools.json"),
     drafts: read("registries/drafts.json"),
+    workNotes: read("registries/work-notes.json"),
     assistants: read("registries/assistants.json"),
     ageSignals: read("registries/age-signals.json"),
     reportCategories: read("registries/report-categories.json"),
@@ -275,6 +276,55 @@ export function draftFromEvent(event, ctx, reg) {
     if (f[k] !== undefined && (typeof f[k] !== "string" || !f[k].startsWith("$"))) return no(k);
   }
   return { show: true, draft: { roomId: f.room_id, body: c.body, replyTo: f.reply_to ?? null, threadRoot: f.thread_root ?? null, client: f.client.trim() } };
+}
+
+// Notes room of a work account (bipe ADR 0284, bipe-chat/bipe#1291; registries/work-notes.json).
+export function validateWorkNotes(w) {
+  if (w.version !== 1) fail("work-notes: version must be 1");
+  if (w.roomType !== "chat.bipe.work_notes" || w.accountDataType !== "chat.bipe.work_notes_room" || w.noteField !== "chat.bipe.work_note" || w.replyByType !== "chat.bipe.reply_by") fail("work-notes: unsupported ADR 0284 names");
+  if (!Number.isInteger(w.bodyMaxLength) || w.bodyMaxLength < 500 || w.bodyMaxLength > 65536) fail("work-notes: bodyMaxLength must be an integer from 500 to 65536");
+}
+
+const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * Whether the apps show a notes room event as a note on a customer chat, and why not (bipe ADR 0284 point 18).
+ * event: { sender, type, redacted?, content }, an event of the notes room. ctx: { ownUserId, joinedRoomIds }.
+ * Returns { show: true, note: { roomId, body } } or { show: false, reason }.
+ */
+export function workNoteFromEvent(event, ctx, reg) {
+  const w = reg.workNotes;
+  const no = (reason) => ({ show: false, reason });
+  if (!event || event.type !== "m.room.message") return no("type");
+  if (event.redacted) return no("redacted");
+  if (event.sender !== ctx.ownUserId) return no("sender");
+  const c = event.content;
+  if (!isObject(c) || c.msgtype !== "m.text") return no("content");
+  const f = c[w.noteField];
+  if (!isObject(f)) return no("field");
+  if (typeof f.room_id !== "string" || !f.room_id.startsWith("!")) return no("room_id");
+  if (!ctx.joinedRoomIds.includes(f.room_id)) return no("not_joined");
+  if (typeof c.body !== "string" || !c.body.trim()) return no("body");
+  if (c.body.length > w.bodyMaxLength) return no("body_too_long");
+  return { show: true, note: { roomId: f.room_id, body: c.body } };
+}
+
+/**
+ * Who sent a reply to a customer, from a reply-by event of the notes room (bipe ADR 0284 point 19).
+ * ctx: { ownUserId, seatIds }, seatIds from GET /v1/me/business/seats.
+ * Returns { show: true, replyBy: { roomId, eventId, seatId } } or { show: false, reason }.
+ */
+export function replyByFromEvent(event, ctx, reg) {
+  const no = (reason) => ({ show: false, reason });
+  if (!event || event.type !== reg.workNotes.replyByType) return no("type");
+  if (event.redacted) return no("redacted");
+  if (event.sender !== ctx.ownUserId) return no("sender");
+  const c = event.content;
+  if (!isObject(c)) return no("content");
+  if (typeof c.room_id !== "string" || !c.room_id.startsWith("!")) return no("room_id");
+  if (typeof c.event_id !== "string" || !c.event_id.startsWith("$")) return no("event_id");
+  if (typeof c.seat_id !== "string" || !ctx.seatIds.includes(c.seat_id)) return no("seat_id");
+  return { show: true, replyBy: { roomId: c.room_id, eventId: c.event_id, seatId: c.seat_id } };
 }
 
 // Report categories (bipe-chat/bipe#697, docs/report-envelope.md). The ids are the contract of the sealed report.
@@ -578,6 +628,7 @@ function validate(reg, phosphor) {
   for (const loc of as.modelLocations) if (!reg.strings.strings[`bipe_assistant_model_${loc}`]) fail(`assistants: string bipe_assistant_model_${loc} missing`);
   validateMcpTools(reg.mcpTools);
   validateDrafts(reg.drafts);
+  validateWorkNotes(reg.workNotes);
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }

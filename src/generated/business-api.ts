@@ -87,7 +87,7 @@ export type BusyImport = { "id": string; "agenda_id": string; /** UTC, with a tr
 
 export type AgendaError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed"); "reason"?: string };
 
-export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live" | "web_off" | "shop_token_invalid" | "owner_only" | "seat_limit" | "seat_window_open" | "seat_window_closed" | "attestation_invalid"); "reason"?: string };
+export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live" | "web_off" | "shop_token_invalid" | "owner_only" | "seat_limit" | "seat_window_open" | "seat_window_closed" | "attestation_invalid" | "seat_required" | "chat_taken"); "reason"?: string };
 
 export type EmptyBusinessRequest = Record<string, never>;
 
@@ -250,3 +250,15 @@ export type SeatList = { "me": SeatMe; "seats": Array<Seat>; "unassigned_devices
 export type SeatCreate = { "name": string };
 
 export type SeatDeviceAssign = { "seat_id": string };
+
+/** open: someone must answer. waiting: the account waits for the customer. solved: nothing to do (bipe ADR 0284 point 15). */
+export type ChatAssignmentStatus = ("open" | "waiting" | "solved");
+
+/** Who has a customer chat of a work account, and its status (bipe ADR 0284 points 14 to 17). No content and no customer text. A chat with no record is open and in the pool. assignee_seat_id null: the chat is in the pool. */
+export type ChatAssignment = { "room_id": string; "assignee_seat_id": (string | null); "status": ChatAssignmentStatus; "opened_at": string; "updated_at": string };
+
+/** The records of the account's customer chats. */
+export type ChatAssignmentList = { "chats": Array<ChatAssignment> };
+
+/** Take a chat (assignee_seat_id = my seat), give it to another seat, or put it back in the pool (null). expected_assignee_seat_id is the assignee the client last saw (null for the pool). When it is not the current one, the API answers 409 chat_taken and changes nothing. status is optional and keeps its value when absent. */
+export type ChatAssignmentUpdate = { "assignee_seat_id": (string | null); "expected_assignee_seat_id": (string | null); "status"?: ChatAssignmentStatus };
