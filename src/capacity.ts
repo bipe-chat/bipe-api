@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Db } from "./db.js";
+import { cell, MIN_CELL } from "./staff-report.js";
 
 // Capacity of the node (ADR 0285, bipe#1312). The probe CronJob (src/capacity-probe.ts) reads metrics-server and the
 // kubelet stats summary and posts one sample every 5 minutes to /internal/v1/capacity/sample. Machine numbers only.
@@ -140,4 +141,68 @@ export async function checkAlerts(db: Db, s: CapacitySample, fresh: CapacitySamp
     await db.query("DELETE FROM capacity_alerts WHERE condition = $1", [key]);
   }
   for (const o of fresh) await send(`${o.pod} (container ${o.container}) reiniciou por falta de memória às ${brTime(o.finished_at)}.`);
+}
+
+// ---- Staff report (ADR 0285, bipe#1315) ----------------------------------------------------------
+
+const percent = (used: number, total: number) => (total > 0 ? Math.round((used / total) * 100) : 0);
+
+/** /v1/admin/capacity: the last sample and one row per Brazil day, oldest first. Accounts go through cell(). */
+export async function capacityReport(db: Db, days: number) {
+  const { rows: last } = await db.query<{ taken_at: Date; accounts: number; sample: CapacitySample }>(
+    "SELECT taken_at, accounts, sample FROM capacity_samples ORDER BY taken_at DESC LIMIT 1");
+  const { rows: dayRows } = await db.query<{
+    day: string; accounts_max: number; cpu_used_max: string; cpu_allocatable: string; memory_used_max: string;
+    memory_allocatable: string; fs_used_max: string; fs_capacity: string; volume_ratio_max: number; oom_kills: number;
+  }>(
+    `SELECT to_char(day, 'YYYY-MM-DD') AS day, accounts_max, cpu_used_max, cpu_allocatable, memory_used_max,
+            memory_allocatable, fs_used_max, fs_capacity, volume_ratio_max, oom_kills
+       FROM capacity_days WHERE day > (now() AT TIME ZONE 'America/Sao_Paulo')::date - $1::int ORDER BY day`, [days]);
+  const l = last[0];
+  const s = l?.sample;
+  const newest = dayRows.at(-1);
+  const gb = newest ? Number(newest.memory_used_max) / 2 ** 30 : 0;
+  const vcpu = newest ? Number(newest.cpu_used_max) / 1000 : 0;
+  const accounts = newest ? cell(newest.accounts_max) : null;
+  return {
+    min_cell: MIN_CELL,
+    last: l && s ? {
+      taken_at: l.taken_at.toISOString(),
+      accounts: cell(l.accounts),
+      cpu_pct: percent(s.node.cpu_used, s.node.cpu_allocatable),
+      memory_pct: percent(s.node.memory_used, s.node.memory_allocatable),
+      disk_pct: percent(s.node.fs_used, s.node.fs_capacity),
+      cpu_allocatable_m: s.node.cpu_allocatable,
+      memory_allocatable: s.node.memory_allocatable,
+      fs_capacity: s.node.fs_capacity,
+      volumes: s.volumes.map((v) => ({ name: `${v.namespace}/${v.name}`, used: v.used, capacity: v.capacity, pct: percent(v.used, v.capacity) }))
+        .sort((a, b) => b.pct - a.pct),
+      pods: [...s.pods].sort((a, b) => b.memory - a.memory).slice(0, 10).map((p) => ({ name: p.name, memory: p.memory })),
+    } : null,
+    days: dayRows.map((d) => ({
+      day: d.day,
+      accounts: cell(d.accounts_max),
+      cpu_pct: percent(Number(d.cpu_used_max), Number(d.cpu_allocatable)),
+      memory_pct: percent(Number(d.memory_used_max), Number(d.memory_allocatable)),
+      disk_pct: percent(Number(d.fs_used_max), Number(d.fs_capacity)),
+      volume_pct: Math.round(d.volume_ratio_max * 100),
+      oom_kills: d.oom_kills,
+    })),
+    accounts_per_gb: accounts !== null && gb > 0 ? Math.round((accounts / gb) * 10) / 10 : null,
+    accounts_per_vcpu: accounts !== null && vcpu > 0 ? Math.round((accounts / vcpu) * 10) / 10 : null,
+  };
+}
+
+/** The staff index part: null when no sample came in the last 15 minutes, so a stopped probe shows "-". */
+export async function capacitySummary(db: Db) {
+  const { rows } = await db.query<{ sample: CapacitySample }>(
+    "SELECT sample FROM capacity_samples WHERE taken_at > now() - interval '15 minutes' ORDER BY taken_at DESC LIMIT 1");
+  const s = rows[0]?.sample;
+  if (!s) return null;
+  const { rows: oom } = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM capacity_ooms WHERE finished_at > now() - interval '7 days'");
+  return {
+    memory_pct: percent(s.node.memory_used, s.node.memory_allocatable),
+    disk_pct: Math.max(percent(s.node.fs_used, s.node.fs_capacity), ...s.volumes.map((v) => percent(v.used, v.capacity))),
+    ooms_7d: oom[0]!.n,
+  };
 }

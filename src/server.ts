@@ -48,7 +48,7 @@ import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
 import { deleteLocalMedia, SynapseAdmin } from "./synapse-admin.js";
-import { CAPACITY_SAMPLE_PATH, CapacitySample, checkAlerts, pruneCapacity, recordSample } from "./capacity.js";
+import { CAPACITY_SAMPLE_PATH, CapacitySample, capacityReport, checkAlerts, pruneCapacity, recordSample } from "./capacity.js";
 import { accountCount, businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
@@ -1701,6 +1701,11 @@ staffGet("/v1/admin/waitlist", () => waitlistReport(db));
 staffGet("/v1/admin/business", () => businessReport(db));
 staffGet("/v1/admin/retention", () => staffReports.retention());
 staffGet("/v1/admin/accounts", () => accountCount(db));
+staffGet("/v1/admin/capacity", (c) => {
+  const days = z.coerce.number().int().min(7).max(731).default(90).safeParse(c.req.query("days"));
+  if (!days.success) throw new ApiError("bad_request");
+  return capacityReport(db, days.data);
+});
 // bipe#531: share of active iOS accounts with a way back that survives the App Store transfer.
 staffGet("/v1/admin/transfer-readiness", (c) => {
   const days = z.coerce.number().int().min(1).max(90).default(30).safeParse(c.req.query("days"));
