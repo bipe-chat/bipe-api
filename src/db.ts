@@ -1070,6 +1070,17 @@ export const MIGRATIONS: readonly string[] = [
      ADD COLUMN master_key text NOT NULL DEFAULT '',
      ADD PRIMARY KEY (user_id, level);
    ALTER TABLE person_verifications ALTER COLUMN master_key DROP DEFAULT;`,
+  // Who has each customer chat of a work account (ADR 0284 phase A, bipe#1292). Removing a seat puts its chats back in
+  // the pool (ON DELETE SET NULL). No content.
+  `CREATE TABLE business_chats (
+     business_id text NOT NULL,
+     room_id text NOT NULL,
+     assignee_seat_id uuid REFERENCES business_seats (id) ON DELETE SET NULL,
+     status text NOT NULL CHECK (status IN ('open', 'waiting', 'solved')),
+     opened_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (business_id, room_id)
+   );`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

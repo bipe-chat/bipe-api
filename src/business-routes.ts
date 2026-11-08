@@ -14,6 +14,7 @@ import * as calendars from "./agenda-calendars.js";
 import * as tools from "./business-tools.js";
 import * as shopWeb from "./shop-web.js";
 import * as seats from "./business-seats.js";
+import * as chats from "./business-chats.js";
 import * as catalog from "./catalog.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
@@ -156,6 +157,25 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     app.delete("/v1/me/business/seats/devices/:deviceId", async (c) => {
       const { businessId, deviceId } = await seatOwner(c);
       return c.json(await seats.removeDevice(deps, businessId, deviceId, c.req.param("deviceId")));
+    });
+
+    // Who has each customer chat (ADR 0284 phase A). Any device with a person; no owner guard.
+    const RoomId = z.string().regex(/^![^\s/]{1,254}$/);
+    const SeatRef = z.string().min(1).max(64).nullable();
+    const ChatUpdate = z.object({
+      assignee_seat_id: SeatRef,
+      expected_assignee_seat_id: SeatRef,
+      status: z.enum(["open", "waiting", "solved"]).optional(),
+    }).strict();
+    app.get("/v1/me/business/chats", async (c) => {
+      const { businessId, deviceId } = await seatCaller(c);
+      return c.json(await chats.listChats(deps, businessId, deviceId));
+    });
+    app.put("/v1/me/business/chats/:roomId", async (c) => {
+      const { businessId, deviceId } = await seatCaller(c);
+      const roomId = RoomId.safeParse(c.req.param("roomId"));
+      if (!roomId.success) throw new ApiError("bad_request", "room_id");
+      return c.json(await chats.updateChat(deps, businessId, deviceId, roomId.data, await parse(c, ChatUpdate)));
     });
   }
 

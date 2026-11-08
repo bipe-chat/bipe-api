@@ -22,6 +22,7 @@ import { Reach } from "./reach.js";
 import { ReachTiers, reachSettings } from "./reach-tiers.js";
 import { AttestationBody, checkAttestation, forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { requireOwnerDevice } from "./business-seats.js";
+import { forgetChat } from "./business-chats.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { recordAgeSignal } from "./age.js";
 import { blockMove, getDiscovery, loadPhoneKeys, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
@@ -1079,6 +1080,8 @@ app.post("/internal/v1/first-contacts/membership", async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
   const { room_id, user_id, membership } = await parse(c, MemberChangeBody);
   await reach.membership(room_id, user_id, membership);
+  // A work account that leaves a customer chat drops its record (ADR 0284).
+  if (membership === "leave") await forgetChat(db, user_id, room_id);
   // A JSON body: the module's client parses every answer as JSON.
   return c.json({});
 });
