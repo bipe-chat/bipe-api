@@ -87,7 +87,7 @@ export type BusyImport = { "id": string; "agenda_id": string; /** UTC, with a tr
 
 export type AgendaError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed"); "reason"?: string };
 
-export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live" | "web_off" | "shop_token_invalid" | "owner_only" | "seat_limit" | "seat_window_open" | "seat_window_closed" | "attestation_invalid" | "seat_required" | "chat_taken" | "geral_exists"); "reason"?: string };
+export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live" | "web_off" | "shop_token_invalid" | "owner_only" | "seat_limit" | "seat_window_open" | "seat_window_closed" | "attestation_invalid" | "seat_required" | "chat_taken"); "reason"?: string };
 
 export type EmptyBusinessRequest = Record<string, never>;
 
@@ -262,15 +262,3 @@ export type ChatAssignmentList = { "chats": Array<ChatAssignment> };
 
 /** Take a chat (assignee_seat_id = my seat), give it to another seat, or put it back in the pool (null). expected_assignee_seat_id is the assignee the client last saw (null for the pool). When it is not the current one, the API answers 409 chat_taken and changes nothing. status is optional and keeps its value when absent. */
 export type ChatAssignmentUpdate = { "assignee_seat_id": (string | null); "expected_assignee_seat_id": (string | null); "status"?: ChatAssignmentStatus };
-
-/** A person's member identity on a work account (bipe ADR 0284 points 1 to 6). user_id is a Matrix ID with the memberLocalpartPrefix. name is the seat name. */
-export type WorkMember = { "seat_id": string; "user_id": string; "name": string };
-
-/** The member identities of the account and its Geral room. me: the member identity of the caller's seat, or null when it has none yet. geral_room_id: null until a member's app makes Geral and claims it. */
-export type WorkMembers = { "members": Array<WorkMember>; "me": (string | null); "geral_room_id": (string | null) };
-
-/** Sign-in for the caller's member identity. password is new on every call, works for one m.login.password sign-in, and the app never stores it (ADR 0284, ADR 0283). The Matrix device of that sign-in belongs to this device's person. */
-export type WorkMemberSession = { "user_id": string; "password": string };
-
-/** The Geral room that a member's app made. */
-export type WorkGeral = { "room_id": string };
