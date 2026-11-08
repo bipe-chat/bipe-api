@@ -113,6 +113,12 @@ const Env = z.object({
   SUPPORT_ACCESS_TOKEN: emptyAsUnset(z.string().min(16)),
   SUPPORT_STORE_DIR: z.string().default("/data/support-crypto"),
   SUPPORT_STORE_PASSPHRASE: emptyAsUnset(z.string().min(32)),
+  // Capacity alerts (ADR 0285, bipe#1313): Matrix IDs of the staff in the support bot's alert room. Empty: alerts off.
+  // Thresholds are shares of capacity: node memory, node disk or any volume, node CPU for 15 minutes.
+  CAPACITY_ALERT_USERS: z.string().default("").transform(list).pipe(z.array(z.string().regex(/^@[a-z0-9._=\/-]+:[a-z0-9.-]+$/)).max(10)),
+  CAPACITY_ALERT_MEMORY: z.coerce.number().gt(0).lt(1).default(0.75),
+  CAPACITY_ALERT_DISK: z.coerce.number().gt(0).lt(1).default(0.8),
+  CAPACITY_ALERT_CPU: z.coerce.number().gt(0).lt(1).default(0.8),
   // Novidades do Bipe (ADR 0117, ADR 0119). Its own account, device and key store; off without the token and the passphrase.
   NEWS_USER_ID: z.string().regex(/^@[a-z0-9._=\/-]+:[a-z0-9.-]+$/).optional(),
   NEWS_ACCESS_TOKEN: emptyAsUnset(z.string().min(16)),

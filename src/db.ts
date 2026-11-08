@@ -1123,6 +1123,15 @@ export const MIGRATIONS: readonly string[] = [
      seen_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (namespace, pod, container, finished_at)
    );`,
+  // Capacity alerts (ADR 0285, bipe#1313): one row per condition that holds now, and the one staff room of the support bot.
+  `CREATE TABLE capacity_alerts (
+     condition text PRIMARY KEY,
+     since timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE capacity_alert_room (
+     id integer PRIMARY KEY CHECK (id = 1),
+     room_id text NOT NULL
+   );`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

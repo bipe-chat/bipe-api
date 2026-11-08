@@ -48,7 +48,7 @@ import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
 import { deleteLocalMedia, SynapseAdmin } from "./synapse-admin.js";
-import { CAPACITY_SAMPLE_PATH, CapacitySample, pruneCapacity, recordSample } from "./capacity.js";
+import { CAPACITY_SAMPLE_PATH, CapacitySample, checkAlerts, pruneCapacity, recordSample } from "./capacity.js";
 import { accountCount, businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
 import { exportData } from "./export.js";
 import { Badges } from "./badges.js";
@@ -318,6 +318,8 @@ const pruneReports = () =>
     .catch((e) => console.error(`problem report prune failed: ${(e as Error).message}`));
 pruneReports();
 setInterval(pruneReports, 24 * 3_600_000).unref();
+const capacityLimits = { memory: config.CAPACITY_ALERT_MEMORY, disk: config.CAPACITY_ALERT_DISK, cpu: config.CAPACITY_ALERT_CPU };
+console.log(`capacity alerts: ${support.enabled && config.CAPACITY_ALERT_USERS.length > 0 ? `on, ${config.CAPACITY_ALERT_USERS.length} staff` : "off (no CAPACITY_ALERT_USERS or support bot off)"}`);
 const pruneCapacityJob = () => void pruneCapacity(db).catch((e) => console.error(`capacity prune failed: ${(e as Error).message}`));
 pruneCapacityJob();
 setInterval(pruneCapacityJob, 24 * 3_600_000).unref();
@@ -1110,7 +1112,13 @@ app.post("/internal/v1/first-contacts/ignored", async (c) => {
 // Capacity sample (ADR 0285, bipe#1312) from the probe CronJob (src/capacity-probe.ts). Machine numbers only.
 app.post(CAPACITY_SAMPLE_PATH, async (c) => {
   checkInternal(c.req.header("x-bipe-internal"), config.BIPE_INTERNAL_SECRET);
-  await recordSample(db, await parse(c, CapacitySample));
+  const sample = await parse(c, CapacitySample);
+  const fresh = await recordSample(db, sample);
+  // Alerts (bipe#1313) run after the answer: a failed send never fails the sample, and the next sample tries again.
+  if (support.enabled && config.CAPACITY_ALERT_USERS.length > 0) {
+    void checkAlerts(db, sample, fresh, capacityLimits, (body) => support.staffAlert(config.CAPACITY_ALERT_USERS, body))
+      .catch((e) => console.error(`capacity alert failed: ${(e as Error).message}`));
+  }
   return c.json({});
 });
 
