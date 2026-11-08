@@ -2554,6 +2554,21 @@
     "bipe_chat_notes_empty": "No notes on this chat.",
     "bipe_chat_notes_placeholder": "Write a note",
     "bipe_chat_notes_error": "The note was not saved. Try again.",
-    "bipe_chat_reply_by": "by %1$s"
+    "bipe_chat_reply_by": "by %1$s",
+    "bipe_account_status_title": "Account status",
+    "bipe_account_status_footer": "Bipe limits how many chats an account can start with people who do not know you yet. This makes scams and spam harder. Chats with your contacts and replies do not count.",
+    "bipe_account_status_tier": "Account type",
+    "bipe_account_status_tier_unattested": "Device not checked",
+    "bipe_account_status_tier_new": "New",
+    "bipe_account_status_tier_normal": "Not verified",
+    "bipe_account_status_tier_verified": "Verified",
+    "bipe_account_status_tier_company": "Verified company",
+    "bipe_account_status_tier_slowed": "Lower limit",
+    "bipe_account_status_used": "New chats: %1$s of %2$s",
+    "bipe_account_status_resets": "The next one frees up %1$s",
+    "bipe_account_status_raise_verify": "Verify your account to start more new chats.",
+    "bipe_account_status_raise_wait": "The limit goes back up with time.",
+    "bipe_reach_limit_body": "You reached the limit of chats with people who do not know you. The next one frees up %1$s.",
+    "bipe_reach_limit_body_none": "This account cannot start chats with people who do not know you."
   }
 }

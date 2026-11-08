@@ -73,6 +73,12 @@
       "icon": "user-circle",
       "sections": [
         {
+          "key": "status",
+          "rows": [
+            { "key": "reachStatus", "title": "bipe_account_status_title", "kind": "link" }
+          ]
+        },
+        {
           "key": "waysBack",
           "title": "bipe_fallback_title",
           "rows": [

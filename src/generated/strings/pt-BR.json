@@ -2554,6 +2554,21 @@
     "bipe_chat_notes_empty": "Nenhuma nota nesta conversa.",
     "bipe_chat_notes_placeholder": "Escreva uma nota",
     "bipe_chat_notes_error": "A nota não foi salva. Tente de novo.",
-    "bipe_chat_reply_by": "por %1$s"
+    "bipe_chat_reply_by": "por %1$s",
+    "bipe_account_status_title": "Status da conta",
+    "bipe_account_status_footer": "O Bipe limita quantas conversas uma conta pode começar com pessoas que ainda não conhecem você. Isso dificulta golpes e spam. Conversas com seus contatos e respostas não contam.",
+    "bipe_account_status_tier": "Tipo de conta",
+    "bipe_account_status_tier_unattested": "Sem verificação do aparelho",
+    "bipe_account_status_tier_new": "Nova",
+    "bipe_account_status_tier_normal": "Sem verificação",
+    "bipe_account_status_tier_verified": "Verificada",
+    "bipe_account_status_tier_company": "Empresa verificada",
+    "bipe_account_status_tier_slowed": "Com limite menor",
+    "bipe_account_status_used": "Conversas novas: %1$s de %2$s",
+    "bipe_account_status_resets": "A próxima libera em %1$s",
+    "bipe_account_status_raise_verify": "Verifique sua conta para começar mais conversas novas.",
+    "bipe_account_status_raise_wait": "O limite volta a subir com o tempo.",
+    "bipe_reach_limit_body": "Você chegou ao limite de conversas com pessoas que não conhecem você. A próxima libera em %1$s.",
+    "bipe_reach_limit_body_none": "Esta conta não pode começar conversas com pessoas que não conhecem você."
   }
 }
