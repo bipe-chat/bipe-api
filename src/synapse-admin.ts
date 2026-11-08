@@ -31,7 +31,7 @@ export interface SynapseAdminApi {
   redactUser(userId: string): Promise<string>;
   redactStatus(redactId: string): Promise<{ status: RedactStatus; failed: number }>;
   /** Deactivates and erases the user. Idempotent. */
-  deactivate(userId: string): Promise<void>;
+  deactivate(userId: string, erase?: boolean): Promise<void>;
 }
 
 /** Voice audio expiry (ADR 0164). Deletes one local media file; a file that is already gone counts as deleted. */
@@ -79,8 +79,9 @@ export class SynapseAdmin implements SynapseAdminApi {
     return { status: body.status, failed };
   }
 
-  async deactivate(userId: string): Promise<void> {
-    await this.call("deactivate", "POST", `/v1/deactivate/${encodeURIComponent(userId)}`, { erase: true });
+  /** erase false keeps the user's messages for the other members (ADR 0284: a member identity that ends). */
+  async deactivate(userId: string, erase = true): Promise<void> {
+    await this.call("deactivate", "POST", `/v1/deactivate/${encodeURIComponent(userId)}`, { erase });
   }
 
   async pushers(userId: string): Promise<Pusher[]> {

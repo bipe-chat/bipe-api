@@ -198,6 +198,7 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     business_seats: await all(db, "SELECT name, role, status, created_at FROM business_seats WHERE business_id = $1 ORDER BY created_at", userId),
     business_seat_devices: await all(db, "SELECT device_id, kind, added_at FROM business_seat_devices WHERE business_id = $1 ORDER BY added_at", userId),
     business_seat_events: await all(db, "SELECT action, at FROM business_seat_events WHERE business_id = $1 ORDER BY at", userId),
+    business_members: await all(db, "SELECT user_id, created_at FROM business_members WHERE business_id = $1 ORDER BY created_at", userId),
     business_chats: await all(db, "SELECT room_id, status, opened_at, updated_at FROM business_chats WHERE business_id = $1 ORDER BY opened_at", userId),
     brand_mark_events: await all(db, "SELECT mark_id, invite_id, action, at FROM brand_mark_events WHERE actor_user_id = $1 ORDER BY at", userId),
     // Voice audio expiry (ADR 0164): the caller's registered uploads and the audio the caller keeps.

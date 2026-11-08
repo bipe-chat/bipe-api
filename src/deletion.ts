@@ -341,6 +341,8 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q("DELETE FROM business_seat_events WHERE business_id = $1");
     // Who has each customer chat (ADR 0284).
     await q("DELETE FROM business_chats WHERE business_id = $1");
+    // Interno (ADR 0284): retireMembers() deactivates the member identities on its next run.
+    await q("UPDATE business_members SET retire = true WHERE business_id = $1");
     await q("UPDATE theft_marks SET root_id = NULL WHERE root_id IN (SELECT id FROM theft_marks WHERE user_id = $1)");
     await q("DELETE FROM theft_marks WHERE user_id = $1");
     // ADR 0164: the voice uploads stay registered without their owner, so the purge still deletes the files.
