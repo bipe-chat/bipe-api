@@ -1,4 +1,5 @@
 import pg from "pg";
+import { capacitySummary } from "./capacity.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { experimentReport } from "./experiments.js";
@@ -173,7 +174,7 @@ export class StaffReports {
       }
     };
     const count = async (sql: string, args: unknown[] = []) => (await this.db.query<{ n: number }>(sql, args)).rows[0]!.n;
-    const [crescimento, convites, visitas, experimentos, espera, empresas, denuncias, lgpd] = await Promise.all([
+    const [crescimento, convites, visitas, experimentos, espera, empresas, denuncias, lgpd, servidor] = await Promise.all([
       // Sign-ups from the signups table: it is on without growth events (BIPE_GROWTH_HMAC_SECRET).
       part("crescimento", async () => ({
         signups_7d: cell(await count("SELECT count(*)::int AS n FROM signups WHERE created_at > now() - interval '7 days'")),
@@ -208,8 +209,10 @@ export class StaffReports {
         return { reports_7d: rows[0]!.n };
       }),
       part("lgpd", async () => ({ over: (await this.retention()).items.reduce((sum, i) => sum + i.over, 0) })),
+      // Capacity (ADR 0285): null when no sample came in the last 15 minutes.
+      part("servidor", () => capacitySummary(this.db)),
     ]);
-    return { min_cell: MIN_CELL, crescimento, convites, visitas, experimentos, espera, empresas, denuncias, lgpd };
+    return { min_cell: MIN_CELL, crescimento, convites, visitas, experimentos, espera, empresas, denuncias, lgpd, servidor };
   }
 
   /**
