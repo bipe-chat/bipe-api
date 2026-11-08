@@ -2580,6 +2580,8 @@
     "bipe_interno_private_hint": "Only you two see this chat. Not even the person in charge sees it.",
     "bipe_interno_setup": "Setting up Interno",
     "bipe_interno_error": "Could not open Interno. Try again.",
-    "bipe_interno_empty": "Nobody else answers for this account yet."
+    "bipe_interno_empty": "Nobody else answers for this account yet.",
+    "bipe_govbr_step_sign_file": "In the gov.br app, tap sign document and pick %1$s.",
+    "bipe_govbr_reason_wrong_document_file": "This is not the document of this check. Use the file %1$s."
   }
 }
