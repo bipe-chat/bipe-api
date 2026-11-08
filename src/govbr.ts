@@ -18,7 +18,6 @@ const LIFE_MS = 30 * 60_000;
 // No 0/O and 1/I: the code is read by people.
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 export const GOVBR_PDF_MAX_BYTES = 5 * 1024 * 1024;
-const FILE_NAME = "bipe-verificacao.pdf";
 const MARKER = "bipe-govbr:";
 // ICP-Brasil person data otherName: birth date (8 digits), then the CPF (11 digits), then more fields.
 const OID_PERSON_DATA = "2.16.76.1.3.1";
@@ -44,6 +43,16 @@ function newCode(): string {
   return `${s.slice(0, 3)}-${s.slice(3)}`;
 }
 
+/**
+ * GovbrChallenge.fileName (bipe-chat/bipe#998): bipe_<handle>_<code>.pdf, so a person with several accounts or several
+ * attempts can tell the files apart. The handle in lower case keeps only a-z, 0-9, dot, underscore and hyphen; no
+ * handle (or nothing left): bipe_verificacao_<code>.pdf.
+ */
+export function challengeFileName(handle: string | null | undefined, code: string): string {
+  const who = (handle ?? "").toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 64) || "verificacao";
+  return `bipe_${who}_${code}.pdf`;
+}
+
 /** POST /v1/verifications/govbr: a challenge bound to the caller's device key. */
 export async function createGovbrChallenge(db: Db, userId: string, deviceKey: string, now = new Date()) {
   const { rows } = await db.query<{ handle: string }>("SELECT handle FROM handles WHERE user_id = $1", [userId]);
@@ -58,7 +67,7 @@ export async function createGovbrChallenge(db: Db, userId: string, deviceKey: st
     code,
     expiresAt,
   ]);
-  return { verificationId: id, pdf: challengePdf(who, code, now).toString("base64"), fileName: FILE_NAME, expiresAt: expiresAt.toISOString() };
+  return { verificationId: id, pdf: challengePdf(who, code, now).toString("base64"), fileName: challengeFileName(rows[0]?.handle, code), expiresAt: expiresAt.toISOString() };
 }
 
 export type ChallengeRow = { id: string; device_key: string; code: string; expires_at: Date; used_at: Date | null };

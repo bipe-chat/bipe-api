@@ -1,7 +1,7 @@
 {
-  "$comment": "Trust step 5, Verificar com gov.br (bipe-chat/bipe#544, spec product/screens/govbr-verify.json). The apps send the user to the gov.br app to sign the challenge PDF of POST /v1/verifications/govbr. fileName is the GovbrChallenge fileName of api/openapi.yaml. maxDocumentBytes is the maxLength of PUT /v1/verifications/govbr/{verificationId}/document: the apps do not upload a bigger file. iosStoreUrl: the gov.br app has no documented URL scheme, so iOS opens its App Store page, which shows Abrir when the app is installed. androidPackage: Android opens the app by this package name when it is installed, else androidStoreUrl. Both store pages checked on 29 Oct 2026.",
+  "$comment": "Trust step 5, Verificar com gov.br (bipe-chat/bipe#544, spec product/screens/govbr-verify.json). The apps send the user to the gov.br app to sign the challenge PDF of POST /v1/verifications/govbr. fileName is the fallback name: the apps show GovbrChallenge.fileName (bipe_<handle>_<code>.pdf, api/openapi.yaml) and use this one only when a challenge has none (bipe-chat/bipe#998). maxDocumentBytes is the maxLength of PUT /v1/verifications/govbr/{verificationId}/document: the apps do not upload a bigger file. iosStoreUrl: the gov.br app has no documented URL scheme, so iOS opens its App Store page, which shows Abrir when the app is installed. androidPackage: Android opens the app by this package name when it is installed, else androidStoreUrl. Both store pages checked on 29 Oct 2026.",
   "version": 1,
-  "fileName": "bipe-verificacao.pdf",
+  "fileName": "bipe_verificacao.pdf",
   "maxDocumentBytes": 5242880,
   "iosStoreUrl": "https://apps.apple.com/br/app/gov-br/id1506827551",
   "androidPackage": "br.gov.meugovbr",
