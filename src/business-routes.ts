@@ -15,6 +15,7 @@ import * as tools from "./business-tools.js";
 import * as shopWeb from "./shop-web.js";
 import * as seats from "./business-seats.js";
 import * as chats from "./business-chats.js";
+import * as members from "./business-members.js";
 import * as catalog from "./catalog.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
@@ -37,7 +38,7 @@ export type BusinessDeps = {
   /** Reminders and alerts (bipe#320); absent in tests. */
   pushes?: BusinessPushes;
   /** People on a work account (ADR 0251); absent in tests of other routes. */
-  people?: { mas: seats.SeatMas; attest: (attestation: z.infer<typeof AttestationBody>) => boolean };
+  people?: { mas: members.MemberMas; attest: (attestation: z.infer<typeof AttestationBody>) => boolean; serverName: string; synapse: members.MemberDeps["synapse"] };
 };
 
 export const CATALOG_PHOTO_PATH = /^\/v1\/me\/business\/catalog\/items\/[^/]+\/photo$/;
@@ -176,6 +177,22 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
       const roomId = RoomId.safeParse(c.req.param("roomId"));
       if (!roomId.success) throw new ApiError("bad_request", "room_id");
       return c.json(await chats.updateChat(deps, businessId, deviceId, roomId.data, await parse(c, ChatUpdate)));
+    });
+
+    // Interno: member identities (ADR 0284 phase B). Any device with a person.
+    const memberDeps: members.MemberDeps = { db, mas: people.mas, serverName: people.serverName, synapse: people.synapse };
+    app.get("/v1/me/business/members", async (c) => {
+      const { businessId, deviceId } = await seatCaller(c);
+      return c.json(await members.listMembers(memberDeps, businessId, deviceId));
+    });
+    app.post("/v1/me/business/members/session", async (c) => {
+      const { businessId, deviceId } = await seatCaller(c);
+      return c.json(await members.memberSession(memberDeps, businessId, deviceId));
+    });
+    app.put("/v1/me/business/members/geral", async (c) => {
+      const { businessId, deviceId } = await seatCaller(c);
+      const { room_id } = await parse(c, z.object({ room_id: RoomId }).strict());
+      return c.json(await members.claimGeral(memberDeps, businessId, deviceId, room_id));
     });
   }
 

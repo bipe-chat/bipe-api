@@ -1081,6 +1081,17 @@ export const MIGRATIONS: readonly string[] = [
      updated_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (business_id, room_id)
    );`,
+  // Member identities for Interno (ADR 0284 phase B, bipe#1294). No foreign key to the seat: when the seat goes, the row
+  // stays until retireMembers() has deactivated the Matrix user. The deletion sets retire.
+  `CREATE TABLE business_members (
+     seat_id uuid PRIMARY KEY,
+     business_id text NOT NULL,
+     user_id text NOT NULL UNIQUE,
+     retire boolean NOT NULL DEFAULT false,
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE INDEX business_members_business ON business_members (business_id);
+   ALTER TABLE business_work_settings ADD COLUMN geral_room_id text;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

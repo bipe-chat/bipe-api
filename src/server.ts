@@ -23,6 +23,7 @@ import { ReachTiers, reachSettings } from "./reach-tiers.js";
 import { AttestationBody, checkAttestation, forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { requireOwnerDevice } from "./business-seats.js";
 import { forgetChat } from "./business-chats.js";
+import { isMemberId, retireMembers, sameAccount } from "./business-members.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { recordAgeSignal } from "./age.js";
 import { blockMove, getDiscovery, loadPhoneKeys, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
@@ -269,6 +270,9 @@ const pruneChanges = () =>
     .catch((e) => console.error(`handle change prune failed: ${(e as Error).message}`));
 pruneChanges();
 setInterval(pruneChanges, 24 * 3_600_000).unref();
+// Interno (ADR 0284): deactivate the member identities of seats that ended. Off without the Synapse admin token: the
+// rows wait, and the fence still holds them inside their account.
+setInterval(() => void retireMembers({ db, mas, serverName: config.SERVER_NAME, synapse: synapseAdmin }).catch(() => {}), 60_000).unref();
 const pruneReplays = () =>
   void pruneSignupReplays(db)
     .then((n) => n > 0 && console.log(`signup replays pruned: ${n}`))
@@ -1054,6 +1058,12 @@ app.post("/internal/v1/may-invite", async (c) => {
   if (inviter === config.SUPPORT_USER_ID || inviter === config.NEWS_USER_ID || inviter === config.GROUPS_USER_ID) {
     return c.json({ allow: true, policy: await policyOf(db, invitee) });
   }
+  // Interno (ADR 0284 point 8): a member identity meets only member identities of its own work account, and those
+  // invites never count as first contacts. The Synapse fence refuses the rest before this call.
+  if (isMemberId(inviter, config.SERVER_NAME) || isMemberId(invitee, config.SERVER_NAME)) {
+    const allow = isMemberId(inviter, config.SERVER_NAME) && isMemberId(invitee, config.SERVER_NAME) && (await sameAccount(db, inviter, invitee));
+    return c.json({ allow, policy: "everyone" });
+  }
   // bipe#851: reason reach_limit when the inviter's first-contact budget is used; the module answers M_LIMIT_EXCEEDED.
   return c.json(await mayInvite(db, inviter, invitee, shares_room, { reach, tiers: reachTiers, roomId: room_id ?? null }));
 });
@@ -1704,7 +1714,7 @@ staffGet("/v1/admin/reports", (c) => {
 });
 
 // Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
-app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp, stepEvents: growth, pushes: businessPushes(db, devicePush), people: { mas, attest: (attestation) => checkAttestation(accounts, attestation) } }));
+app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp, stepEvents: growth, pushes: businessPushes(db, devicePush), people: { mas, attest: (attestation) => checkAttestation(accounts, attestation), serverName: config.SERVER_NAME, synapse: synapseAdmin } }));
 setInterval(() => void refreshBusyImports(db).catch((e: Error) => console.error(`busy imports: ${e.name}`)), 15 * 60_000).unref();
 setInterval(() => void runBusinessPushes(db, devicePush).catch((e: Error) => console.error(`business pushes: ${e.name}`)), 60_000).unref();
 

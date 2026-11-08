@@ -171,6 +171,7 @@ export const accountRules = reg.accounts as {
   recoveryClaimDays: number;
   maxPersonalAccounts: number;
   workAccountMaxPeople: number;
+  memberLocalpartPrefix: string;
   workAccountSeatWindowMinutes: number;
   deletionCooldownHours: number;
   deletionVerificationKeepDays: number;
