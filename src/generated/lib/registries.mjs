@@ -772,6 +772,7 @@ function validate(reg, phosphor) {
   for (const k of ["pinMaxWrongTries", "pinDateYearMin", "pinDateYearMax", "guardianApprovalsMax", "recoveryLinkMinutes", "emailVerifyLinkHours", "recoveryClaimDays", "maxPersonalAccounts", "workAccountMaxPeople", "workAccountSeatWindowMinutes", "webLinkCooldownSeconds", "deletionCooldownHours", "deletionVerificationKeepDays", "approvalNudgeAgainSeconds", "approvalNudgeMaxPerHour"]) {
     if (!(Number.isInteger(ac[k]) && ac[k] > 0)) fail(`accounts: ${k}`);
   }
+  if (typeof ac.memberLocalpartPrefix !== "string" || !/^[a-z][a-z0-9._=/-]*$/.test(ac.memberLocalpartPrefix) || /^[a-z2-7]+$/.test(ac.memberLocalpartPrefix)) fail("accounts: memberLocalpartPrefix must be lowercase localpart characters with one outside base32");
   const rr = ac.recoveryReminder;
   if (!(rr && Number.isInteger(rr.firstAfterDays) && rr.firstAfterDays >= 0)) fail("accounts: recoveryReminder.firstAfterDays");
   // The card never stops for good while the account has no factor (bipe#531): at least one snooze, every one positive.
