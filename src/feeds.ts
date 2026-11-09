@@ -169,7 +169,8 @@ export async function removeOwnPost(db: Db, rooms: FeedRoomState, userId: string
 
 /** Links a handle's feed to a room. Only `test` while the Public Canal gate is closed (ADR 0280 point 16). */
 export async function staffCreateFeed(db: Db, raw: string, roomId: string): Promise<string> {
-  if (!/^![^:]{1,200}:[^\s]{1,200}$/.test(roomId)) throw new Error("room_id must look like !id:server");
+  // Room version 12 IDs have no server part (!<hash>); older ones are !<id>:<server>.
+  if (!/^![^\s]{1,254}$/.test(roomId)) throw new Error("room_id must start with ! and have no spaces");
   const { rows } = await db.query<{ user_id: string; handle: string }>("SELECT user_id, handle FROM handles WHERE handle = $1", [handleKey(raw)]);
   const owner = rows[0];
   if (!owner) throw new Error("no account has that handle");
