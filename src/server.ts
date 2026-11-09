@@ -73,7 +73,7 @@ import { businessPushes, runBusinessPushes } from "./business-pushes.js";
 import { orderHousekeeping } from "./orders.js";
 import { assistantFacts, oneAssistant } from "./assistants.js";
 import { handleMcp, MCP_MAX_BODY_BYTES } from "./mcp.js";
-import { FeedPostBody, type FeedRoomState, type FeedStatus, feedPageHtml, feedRss, postPageHtml, publicFeedJson, publish, readFeed, readPost, removeOwnPost } from "./feeds.js";
+import { FeedPostBody, feedOfRoom, MyFeedBody, myFeed, setMyFeed, type FeedRoomState, type FeedStatus, feedPageHtml, feedRss, postPageHtml, publicFeedJson, publish, readFeed, readPost, removeOwnPost } from "./feeds.js";
 import { queueHousekeeping } from "./queue.js";
 import { quoteHousekeeping } from "./quotes.js";
 import { businessRoutes, CATALOG_PHOTO_PATH } from "./business-routes.js";
@@ -1457,6 +1457,22 @@ app.get("/v1/web/feed/:handle/rss", async (c) => {
   const view = await readFeed(db, badges, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("handle"));
   feedHeaders(c, view.status);
   return c.body(feedRss(config.PUBLIC_SITE_URL, view), 200, { "content-type": "application/rss+xml; charset=utf-8" });
+});
+
+app.get("/v1/me/feed", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  return c.json(await myFeed(db, config.PUBLIC_SITE_URL, userId));
+});
+
+app.put("/v1/me/feed", async (c) => {
+  const userId = await ownerOf(c);
+  return c.json(await setMyFeed(db, config.PUBLIC_SITE_URL, userId, (await parse(c, MyFeedBody)).enabled));
+});
+
+app.get("/v1/me/feed/rooms/:roomId", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.feed.check(userId);
+  return c.json(await feedOfRoom(db, feedRooms, config.PUBLIC_SITE_URL, userId, c.req.param("roomId")));
 });
 
 app.post("/v1/me/feed/posts", async (c) => {
