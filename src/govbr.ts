@@ -6,13 +6,14 @@
 //
 // bipe#542 (a real gov.br-signed file, 3 Nov 2026) confirmed both guesses: the CPF is in SAN 2.16.76.1.3.1 (personOf) and
 // the code survives signing as an incremental update (containsCode). Both still fail closed.
-import { createHmac, randomInt, randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { inflateSync } from "node:zlib";
 import type * as pkijs from "pkijs";
 import type { BadgeEnvelope } from "./badges.js";
 import { commonName, otherNames, verifyCms, type CmsFailure } from "./cms.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
+import { brGovbr } from "./schemes-br.js";
 
 const LIFE_MS = 30 * 60_000;
 // No 0/O and 1/I: the code is read by people.
@@ -30,7 +31,8 @@ export type GovbrStatus =
 
 export type GovbrDeps = {
   roots: pkijs.Certificate[];
-  cpfSecret: string | undefined;
+  /** The dedupe secret of scheme br.govbr (BIPE_CPF_HMAC_SECRET). */
+  dedupeSecret: string | undefined;
   /** The caller's badge after a verification, or null when badges are off. */
   badgeOf: (userId: string) => Promise<BadgeEnvelope | null>;
   /** The master key the new proof binds to (ADR 0239), or null. */
@@ -93,7 +95,7 @@ export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: strin
   const row = rows[0];
   if (!row || row.used_at) throw new ApiError("not_found");
   if (deps.roots.length === 0) throw new ApiError("internal", "govbr_roots_missing");
-  if (!deps.cpfSecret) throw new ApiError("internal", "cpf_secret_missing");
+  if (!deps.dedupeSecret) throw new ApiError("internal", "cpf_secret_missing");
   const reject = (reason: GovbrReason): GovbrStatus => ({ verificationId: id, state: "rejected", reason });
 
   const checked = await checkSignedPdf(pdf, deps.roots, now);
@@ -108,7 +110,7 @@ export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: strin
   if (!person.name) return reject("not_govbr");
   // Fail closed and loud: a gov.br certificate without a CPF we can read means personOf needs the #542 answer.
   if (!person.cpf) throw new ApiError("internal", "govbr_cpf_missing");
-  const cpfHash = createHmac("sha256", deps.cpfSecret).update(person.cpf).digest("hex");
+  const dedupeHash = brGovbr.dedupeHash(deps.dedupeSecret, person.cpf);
   const masterKey = await deps.masterKeyOf(userId);
   if (!masterKey) throw new ApiError("internal", "master_key_unavailable");
 
@@ -120,14 +122,14 @@ export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: strin
     // The challenge in the URL ends with the one that matched: the app asked for it, and it must not verify again.
     if (match.id !== id) await client.query("UPDATE govbr_challenges SET used_at = $2 WHERE id = $1 AND used_at IS NULL", [id, now]);
     // Another CPF on this account means another person: the older proofs stop counting. A CPF of another account fails
-    // on the unique index (cpf_in_use).
+    // on the unique index (cpf_in_use). The dedupe key stays inside its scheme (ADR 0272 decision 8).
     await client.query(
-      "DELETE FROM person_verifications WHERE user_id = $1 AND EXISTS (SELECT 1 FROM person_identities i WHERE i.user_id = $1 AND i.cpf_hash <> $2)",
-      [userId, cpfHash],
+      "DELETE FROM person_verifications WHERE user_id = $1 AND EXISTS (SELECT 1 FROM person_identities i WHERE i.user_id = $1 AND i.scheme = $3 AND i.dedupe_hash <> $2)",
+      [userId, dedupeHash, brGovbr.scheme],
     );
     await client.query(
-      "INSERT INTO person_identities (user_id, cpf_hash) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET cpf_hash = $2",
-      [userId, cpfHash],
+      "INSERT INTO person_identities (user_id, scheme, dedupe_hash) VALUES ($1, $3, $2) ON CONFLICT (user_id, scheme) DO UPDATE SET dedupe_hash = $2",
+      [userId, dedupeHash, brGovbr.scheme],
     );
     await client.query(
       `INSERT INTO person_verifications (user_id, level, verified_name, master_key, verified_at)

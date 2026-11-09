@@ -76,12 +76,12 @@ export async function businessReport(db: Db) {
     created_at: Date; verified_at: Date | null; ended_at: Date | null; legal_name: string | null; trade_name: string | null;
     registry_active: boolean | null; release_month: string | null; domains: number; domains_verified: number; last_checked: Date | null;
   }>(
-    `SELECT c.user_id, c.cnpj, c.status, c.reason, c.method, c.created_at, c.verified_at, c.ended_at,
+    `SELECT c.user_id, c.org_id AS cnpj, c.status, c.reason, c.method, c.created_at, c.verified_at, c.ended_at,
             r.legal_name, r.trade_name, r.active AS registry_active, r.release_month,
             (SELECT count(*)::int FROM business_domains d WHERE d.user_id = c.user_id) AS domains,
             (SELECT count(*)::int FROM business_domains d WHERE d.user_id = c.user_id AND d.verified_at IS NOT NULL) AS domains_verified,
             (SELECT max(d.last_checked_at) FROM business_domains d WHERE d.user_id = c.user_id) AS last_checked
-       FROM business_claims c LEFT JOIN cnpj_registry r ON r.cnpj = c.cnpj
+       FROM business_claims c LEFT JOIN cnpj_registry r ON c.scheme = 'br.cnpj' AND r.cnpj = c.org_id
       ORDER BY c.created_at DESC`,
   );
   return {

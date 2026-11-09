@@ -1,5 +1,6 @@
 // Signed badges (bipe#399, ADR 0123; format: bipe-shared/docs/badge-attestation.md). The server signs on
-// read: a verified claim plus the account's cross-signing master key from Synapse give a lvl "cnpj" badge;
+// read: a verified claim plus the account's cross-signing master key from Synapse give an org badge, whose fields come
+// from the claim's scheme adapter (schemes.ts, ADR 0272; lvl "cnpj" for br.cnpj);
 // a verified person (person_verifications, bipe#543) gives one lvl "pix" or "govbr" badge per proof, bound to the
 // master key the person verified with (ADR 0239, ADR 0275).
 // Fail closed: no signing key, no master key or no registry record means no badge (404).
@@ -8,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import type { Db } from "./db.js";
-import { cvmField } from "./cvm.js";
+import { orgScheme } from "./schemes-br.js";
 import { badgeRules, brandMarkRules, personLevels, theftRules } from "./registry.js";
 
 const KID = /^prod-\d{4}-(0[1-9]|1[0-2])$/;
@@ -27,17 +28,12 @@ export type BadgeResult =
 type Resolved = { status: 200; envelopes: BadgeEnvelope[] } | { status: 404 } | Extract<BadgeResult, { status: 410 }>;
 
 type ClaimRow = {
-  cnpj: string;
+  scheme: string;
+  org_id: string;
   status: string;
   reason: string | null;
   method: string | null;
   verified_at: Date | null;
-  active: boolean | null;
-  legal_name: string | null;
-  trade_name: string | null;
-  release_month: string | null;
-  cnae_main: string | null;
-  cnae_secondary: string[] | null;
 };
 type Cached = { key: string; exp: number; envelope: BadgeEnvelope };
 
@@ -82,9 +78,7 @@ export class Badges {
     const { rowCount: stolen } = await this.db.query("SELECT 1 FROM theft_marks WHERE user_id = $1 AND cleared_at IS NULL", [userId]);
     if (stolen) return { status: 410, reason: "stolen" };
     const { rows } = await this.db.query<ClaimRow>(
-      `SELECT c.cnpj, c.status, c.reason, c.method, c.verified_at, r.active, r.legal_name, r.trade_name, r.release_month,
-              r.cnae_main, r.cnae_secondary
-         FROM business_claims c LEFT JOIN cnpj_registry r ON r.cnpj = c.cnpj WHERE c.user_id = $1`,
+      "SELECT scheme, org_id, status, reason, method, verified_at FROM business_claims WHERE user_id = $1",
       [userId],
     );
     const claim = rows[0];
@@ -94,15 +88,14 @@ export class Badges {
       const envelopes = await this.personBadges(userId, now);
       return envelopes.length > 0 ? { status: 200, envelopes } : { status: 404 };
     }
-    if (!claim.method || !claim.verified_at) return { status: 404 };
-    if (!claim.active || !claim.legal_name || !claim.release_month || !this.key || !this.synapse) return { status: 404 };
+    if (!claim.method || !claim.verified_at || !this.key || !this.synapse) return { status: 404 };
+    const org = await orgScheme(claim.scheme).badge(this.db, claim.org_id, now * 1000);
+    if (!org) return { status: 404 };
     const msk = await this.masterKey(userId);
     if (!msk) return { status: 404 };
 
-    // CVM register line (ADR 0077): read at issue and renewal; a changed line changes the cache key below.
-    const cvm = await cvmField(this.db, claim.cnpj, [claim.cnae_main, ...(claim.cnae_secondary ?? [])], now * 1000).catch(() => undefined);
-    // A changed claim, registry record, CVM line or master key needs a new signature at once.
-    const cacheKey = JSON.stringify([claim.cnpj, claim.method, claim.verified_at.toISOString(), claim.legal_name, claim.trade_name, claim.release_month, msk, this.key.kid, cvm ?? null]);
+    // A changed claim, registry record, national fact or master key needs a new signature at once.
+    const cacheKey = JSON.stringify([claim.scheme, claim.method, claim.verified_at.toISOString(), ...org.cacheParts, msk, this.key.kid]);
     const cached = this.cache.get(userId);
     if (cached && cached.key === cacheKey && now < cached.exp - badgeRules.renewDaysBeforeExpiry * DAY) {
       return { status: 200, envelopes: [cached.envelope] };
@@ -110,20 +103,7 @@ export class Badges {
     const iat = now;
     const exp = iat + badgeRules.lifeDays * DAY;
     // Field order is fixed here; verifiers check the exact bytes, so the order does not matter to them.
-    const payload = {
-      sub: userId,
-      lvl: "cnpj",
-      name: claim.trade_name || claim.legal_name,
-      cnpj: claim.cnpj,
-      legal_name: claim.legal_name,
-      ...(claim.trade_name ? { trade_name: claim.trade_name } : {}),
-      method: claim.method,
-      checked_month: claim.release_month,
-      ...(cvm ? { cvm } : {}),
-      msk,
-      iat,
-      exp,
-    };
+    const payload = { sub: userId, ...org.fields(claim.method), msk, iat, exp };
     const envelope = this.signPayload(payload);
     this.cache.set(userId, { key: cacheKey, exp, envelope });
     return { status: 200, envelopes: [envelope] };
@@ -134,14 +114,16 @@ export class Badges {
    * Its name is the name of the brand's CNPJ badge. null: the account may not grant marks.
    */
   async verifiedBrand(userId: string): Promise<{ name: string; cnpj: string } | null> {
-    const { rows } = await this.db.query<{ cnpj: string; legal_name: string | null; trade_name: string | null }>(
-      `SELECT c.cnpj, r.legal_name, r.trade_name FROM business_claims c JOIN cnpj_registry r ON r.cnpj = c.cnpj
-        WHERE c.user_id = $1 AND c.status = 'verified' AND c.method IS NOT NULL AND c.verified_at IS NOT NULL
-          AND r.active AND r.legal_name IS NOT NULL AND r.release_month IS NOT NULL`,
+    const { rows } = await this.db.query<{ scheme: string; org_id: string }>(
+      `SELECT scheme, org_id FROM business_claims
+        WHERE user_id = $1 AND status = 'verified' AND method IS NOT NULL AND verified_at IS NOT NULL`,
       [userId],
     );
     const row = rows[0];
-    return row?.legal_name ? { name: row.trade_name || row.legal_name, cnpj: row.cnpj } : null;
+    // Brand marks are a br.cnpj feature (ADR 0162): their contract names the organisation ID cnpj.
+    if (row?.scheme !== "br.cnpj") return null;
+    const reg = await orgScheme(row.scheme).record(this.db, row.org_id);
+    return reg?.active && reg.legalName ? { name: reg.tradeName || reg.legalName, cnpj: row.org_id } : null;
   }
 
   /**
