@@ -1132,6 +1132,15 @@ export const MIGRATIONS: readonly string[] = [
      id integer PRIMARY KEY CHECK (id = 1),
      room_id text NOT NULL
    );`,
+  // Signed lists (bipe-chat/bipe#1242): versions that came in through POST /v1/{typ} after the image was built. Public
+  // data signed by the list signers, no personal data, kept for good as the public log (docs/signed-lists.md).
+  `CREATE TABLE signed_lists (
+     typ text NOT NULL,
+     version bigint NOT NULL,
+     envelope text NOT NULL,
+     received_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (typ, version)
+   );`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
