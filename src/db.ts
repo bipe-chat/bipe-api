@@ -1165,6 +1165,12 @@ export const MIGRATIONS: readonly string[] = [
    );
    CREATE INDEX public_feed_posts_page ON public_feed_posts (user_id, created_at DESC) WHERE removed_at IS NULL;
    CREATE INDEX public_feed_posts_author ON public_feed_posts (author_id);`,
+  // ADR 0287: a one-time code to move a personal account's handle to a work account. Only the hash, for 10 minutes.
+  `CREATE TABLE handle_moves (
+     from_user text PRIMARY KEY,
+     code_hash text NOT NULL UNIQUE,
+     expires_at timestamptz NOT NULL
+   );`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

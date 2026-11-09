@@ -75,6 +75,8 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     link_events: await all(db, "SELECT provider, change, at FROM link_events WHERE user_id = $1 ORDER BY at", userId),
     handle: await one(db, "SELECT handle, set_at FROM handles WHERE user_id = $1", userId),
     handle_holds: await all(db, "SELECT hold_until FROM handle_holds WHERE user_id = $1 ORDER BY hold_until", userId),
+    // ADR 0287: an open move code. The code hash stays out.
+    handle_move: await one(db, "SELECT expires_at FROM handle_moves WHERE from_user = $1", userId),
     handle_changes: await all(
       db,
       "SELECT old_handle, new_handle, source, changed_at FROM handle_changes WHERE user_id = $1 ORDER BY changed_at",

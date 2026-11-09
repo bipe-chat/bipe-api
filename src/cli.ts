@@ -29,6 +29,7 @@
 //   node dist/cli.js business verify <user_id>         (staff path, ADR 0042; registry must show the CNPJ active)
 //   node dist/cli.js business revoke <user_id>
 //   node dist/cli.js handle set <user_id> <handle>    (staff: skips the 30-day cooldown; still validates, holds the old handle, refuses a taken one)
+//   node dist/cli.js handle move <@from:server|handle> <@to:server>   (ADR 0287: moves the handle and its public feed to an account with no handle; no hold, no cooldown)
 //   node dist/cli.js feed create <handle> <room_id>   (ADR 0280: links the handle's public feed to a group; test only while the Public Canal gate is closed)
 //   node dist/cli.js feed list                         (handle, room, status, on or off, live posts)
 //   node dist/cli.js feed off <handle> | feed on <handle>
@@ -63,7 +64,7 @@ import { linkPhone, loadPhoneKeys, PhoneHasher, unlinkPhone } from "./phones.js"
 import { experimentReport } from "./experiments.js";
 import { Growth, growthReport } from "./growth.js";
 import { ApiError } from "./errors.js";
-import { existingAccount, setHandle } from "./handles.js";
+import { existingAccount, setHandle, staffMoveHandle } from "./handles.js";
 import { accountCount } from "./staff-reports.js";
 import { createClaim, revokeByStaff, runScan, verifyByStaff } from "./business.js";
 import { downloadRelease, newestMonth } from "./cnpj-registry.js";
@@ -251,6 +252,22 @@ try {
     console.log((await staffTestPost(db, site, arg, positionals.slice(3).join(" "))).url);
   } else if (group === "feed" && command === "remove-post" && arg) {
     console.log((await staffRemovePost(db, arg)) ? "removed" : "no live post with that id");
+  } else if (group === "handle" && command === "move" && arg && arg2?.startsWith("@")) {
+    const from = arg.startsWith("@") && arg.includes(":")
+      ? arg
+      : (await db.query<{ user_id: string }>("SELECT user_id FROM handles WHERE handle = $1", [arg.replace(/^@/, "")])).rows[0]?.user_id;
+    if (!from) {
+      console.error("refused: no account has that handle");
+      process.exitCode = 1;
+    } else {
+      try {
+        console.log(`@${await staffMoveHandle(db, from, arg2)} moved from ${from} to ${arg2} (staff)`);
+      } catch (e) {
+        if (!(e instanceof ApiError)) throw e;
+        console.error(`refused: ${e.id}${e.reason ? ` (${e.reason})` : ""}`);
+        process.exitCode = 1;
+      }
+    }
   } else if (group === "handle" && command === "set" && arg?.startsWith("@") && arg2) {
     try {
       const result = await setHandle(db, arg, arg2, { staff: true });
@@ -361,7 +378,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | feed create HANDLE !room:server | feed list | feed off|on HANDLE | feed test-post HANDLE TEXT | feed remove-post ID | experiment report ID | growth report [--since YYYY-MM-DD] | account count | account number @user | transfer report [--days N] | reach show @user [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | handle move HANDLE|@from @to | feed create HANDLE !room:server | feed list | feed off|on HANDLE | feed test-post HANDLE TEXT | feed remove-post ID | experiment report ID | growth report [--since YYYY-MM-DD] | account count | account number @user | transfer report [--days N] | reach show @user [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
     process.exitCode = 2;
   }
 } finally {

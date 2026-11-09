@@ -9,7 +9,7 @@ import { MatrixAuth, StaffGate } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { migrate, openDb } from "./db.js";
 import { ApiError } from "./errors.js";
-import { availability, handleChanges, lookup, myHandle, pruneHandleChanges, removeHandle, resolve, setHandle } from "./handles.js";
+import { availability, claimHandleMove, handleChanges, lookup, myHandle, pruneHandleChanges, removeHandle, resolve, setHandle, startHandleMove } from "./handles.js";
 import { createPersonalInvite, inviteConnections, inviterReport, myInvites, nameInvite, previewInvite, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { betaLogin } from "./beta-login.js";
@@ -453,6 +453,7 @@ const AgeBody = z.object({
 });
 const SignupResumeBody = z.object({ signup_key: z.string().regex(SECRET_PATTERN) });
 const HandleBody = z.object({ handle: z.string().max(64) });
+const HandleMoveClaimBody = z.object({ code: z.string().min(8).max(64) });
 const PinBody = z.object({ pin: PinField });
 // bipe-chat/bipe#908: changing the PIN needs the current one when the account has a PIN.
 const PinChangeBody = z.object({ pin: PinField, old_pin: PinField.nullish() });
@@ -1632,6 +1633,19 @@ app.delete("/v1/me/handle", async (c) => {
   const userId = await ownerOf(c);
   limits.setHandle.check(userId);
   return c.json(await removeHandle(db, userId));
+});
+
+// ADR 0287: the personal account asks for a move code, the work account on the same phone claims it.
+app.post("/v1/me/handle/move", async (c) => {
+  const userId = await ownerOf(c);
+  limits.setHandle.check(userId);
+  return c.json(await startHandleMove(db, userId));
+});
+
+app.post("/v1/me/handle/move/claim", async (c) => {
+  const userId = await ownerOf(c);
+  limits.setHandle.check(userId);
+  return c.json(await claimHandleMove(db, userId, (await parse(c, HandleMoveClaimBody)).code));
 });
 
 app.get("/v1/me/business", async (c) => {
