@@ -1188,6 +1188,9 @@ export const MIGRATIONS: readonly string[] = [
    ALTER TABLE person_identities ALTER COLUMN scheme DROP DEFAULT;
    ALTER TABLE person_identities DROP CONSTRAINT person_identities_cpf_hash_key, ADD UNIQUE (scheme, dedupe_hash);
    ALTER TABLE person_identities DROP CONSTRAINT person_identities_pkey, ADD PRIMARY KEY (user_id, scheme);`,
+  // ADR 0283 rule 13 (bipe#1350): a signed-in phone resets a forgotten PIN, method device.
+  `ALTER TABLE recoveries DROP CONSTRAINT recoveries_method_check;
+   ALTER TABLE recoveries ADD CONSTRAINT recoveries_method_check CHECK (method IN ('token', 'email', 'guardian', 'cpf', 'apple', 'google', 'device'));`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
