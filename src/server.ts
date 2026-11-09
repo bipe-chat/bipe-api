@@ -38,7 +38,7 @@ import { ProfileFacts } from "./profile-facts.js";
 import { Theft } from "./theft.js";
 import { deletePhoto, myProfile, publicPhoto, publicProfile, saveProfile, setPhoto } from "./profiles.js";
 import { appString, accountRules, assistantRules, legalRules, profileRules } from "./registry.js";
-import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
+import { accountStatus, cancelRecovery, claimRecovery, confirmRecoveryEmail, moveToDeviceFirst, redeemToken, removeEmail, requestRecoveryEmail, rotateRecoveryToken, setEmail, setPin, startPinReset, verifyEmail, verifyPin, type AccountDeps } from "./accounts.js";
 import { Mailer } from "./mailer.js";
 import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth, growthNumbers } from "./growth.js";
@@ -190,6 +190,7 @@ const limits = {
   // Device-first accounts (ADR 0057). The PIN limit (5 wrong in total) is in the database; these limit cost and spam.
   pinSet: new RateLimiter(10, 3_600_000),
   pinCheck: new RateLimiter(10, 3_600_000),
+  pinReset: new RateLimiter(3, 3_600_000),
   credentials: new RateLimiter(5, 3_600_000),
   emailSet: new RateLimiter(5, 3_600_000),
   keychainMove: new RateLimiter(20, 3_600_000),
@@ -691,6 +692,16 @@ app.put("/v1/me/pin", async (c) => {
   const body = await parse(c, PinChangeBody);
   await setPin(accounts, userId, body.pin, body.old_pin ?? undefined);
   return c.body(null, 204);
+});
+
+// ADR 0283 rule 13 (bipe#1350): the biometric owner check ran on the phone. The new PIN waits like the email path.
+const PinResetBody = z.object({ new_pin: PinField });
+app.post("/v1/me/pin/reset", async (c) => {
+  const userId = await ownerOf(c);
+  limits.pinReset.check(userId);
+  const { new_pin } = await parse(c, PinResetBody);
+  c.header("cache-control", "no-store");
+  return c.json(await startPinReset(accounts, userId, new_pin), 202);
 });
 
 app.post("/v1/me/pin/check", async (c) => {

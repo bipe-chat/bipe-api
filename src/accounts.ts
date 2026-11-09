@@ -175,6 +175,40 @@ export async function setPin(deps: AccountDeps, userId: string, pin: string, old
   if (hadPin) await notify(deps, userId, "bipe_mail_notice_pin_changed");
 }
 
+/**
+ * ADR 0283 rule 13 (bipe#1350): a signed-in phone resets a forgotten PIN, for a person with no recovery email. The app
+ * ran the biometric owner check first. The reset is a pin_reset recovery with method device and the email path's
+ * delay, alerts, claim and cancel. One waiting PIN reset per account, by any method. Returns the claim secret once.
+ */
+export async function startPinReset(deps: AccountDeps, userId: string, newPin: string) {
+  checkPinRule(newPin);
+  const newPinHash = await deps.pins.hash(newPin);
+  const claim = newSecret();
+  const id = newRecoveryId();
+  const readyAt = await inTransaction(deps.db, async (client) => {
+    // The row lock serialises two requests of one account.
+    const { rows } = await client.query<{ pin_hash: string | null }>("SELECT pin_hash FROM account_secrets WHERE user_id = $1 FOR UPDATE", [userId]);
+    if (!rows[0]?.pin_hash) throw new ApiError("pin_not_set");
+    // A waiting reset counts until its claim window ends (shownState expired).
+    const { rows: waiting } = await client.query(
+      `SELECT 1 FROM recoveries WHERE user_id = $1 AND state = 'waiting' AND purpose = 'pin_reset'
+       AND ready_at > now() - make_interval(days => $2)`,
+      [userId, accountRules.recoveryClaimDays],
+    );
+    if (waiting.length > 0) throw new ApiError("pin_reset_pending");
+    const res = await client.query<{ ready_at: Date }>(
+      `INSERT INTO recoveries (id, user_id, method, purpose, state, claim_hash, new_pin_hash, started_at, ready_at)
+       VALUES ($1, $2, 'device', 'pin_reset', 'waiting', $3, $4, now(), now() + make_interval(hours => $5))
+       RETURNING ready_at`,
+      [id, userId, secretHash(claim), newPinHash, accountRules.recoveryDelayHours.email],
+    );
+    return res.rows[0]!.ready_at;
+  });
+  await notify(deps, userId, "bipe_mail_notice_pin_reset_started", readyAt);
+  await pushToDevices(deps.push, userId, "recovery_started", null);
+  return { recovery_id: id, claim_secret: claim, purpose: "pin_reset" as const, ready_at: readyAt.toISOString() };
+}
+
 // --- Credentials -------------------------------------------------------------------------------------
 
 /**
@@ -315,7 +349,9 @@ export async function accountStatus({ db }: AccountDeps, userId: string, maxAcco
     ...(pending ? { email_pending: pending } : {}),
     recoveries: recoveries.rows.map((r) => ({
       id: r.id,
-      method: r.method,
+      // bipe#1350: a reset that a signed-in phone started is method device here. Android builds before it fail on an
+      // unknown method, so the apps get email; the alert text depends only on the purpose.
+      method: r.method === "device" ? "email" : r.method,
       purpose: r.purpose,
       state: shownState(r, now),
       created_at: r.created_at.toISOString(),
