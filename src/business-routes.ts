@@ -38,7 +38,7 @@ export type BusinessDeps = {
   /** Reminders and alerts (bipe#320); absent in tests. */
   pushes?: BusinessPushes;
   /** People on a work account (ADR 0251); absent in tests of other routes. */
-  people?: { mas: members.MemberMas; attest: (attestation: z.infer<typeof AttestationBody>) => boolean; serverName: string; synapse: members.MemberDeps["synapse"] };
+  people?: { mas: members.MemberMas; attest: (attestation: z.infer<typeof AttestationBody>) => boolean; serverName: string; synapse: members.MemberDeps["synapse"]; sealer: members.RecoverySealer };
 };
 
 export const CATALOG_PHOTO_PATH = /^\/v1\/me\/business\/catalog\/items\/[^/]+\/photo$/;
@@ -180,7 +180,7 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     });
 
     // Interno: member identities (ADR 0284 phase B). Any device with a person.
-    const memberDeps: members.MemberDeps = { db, mas: people.mas, serverName: people.serverName, synapse: people.synapse };
+    const memberDeps: members.MemberDeps = { db, mas: people.mas, serverName: people.serverName, synapse: people.synapse, sealer: people.sealer };
     app.get("/v1/me/business/members", async (c) => {
       const { businessId, deviceId } = await seatCaller(c);
       return c.json(await members.listMembers(memberDeps, businessId, deviceId));
@@ -193,6 +193,12 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
       const { businessId, deviceId } = await seatCaller(c);
       const { room_id } = await parse(c, z.object({ room_id: RoomId }).strict());
       return c.json(await members.claimGeral(memberDeps, businessId, deviceId, room_id));
+    });
+    app.put("/v1/me/business/members/recovery", async (c) => {
+      const { businessId, deviceId } = await seatCaller(c);
+      const { recovery_key } = await parse(c, z.object({ recovery_key: z.string().min(1).max(256) }).strict());
+      await members.putRecovery(memberDeps, businessId, deviceId, recovery_key);
+      return c.body(null, 204);
     });
   }
 

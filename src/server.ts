@@ -23,7 +23,7 @@ import { ReachTiers, reachSettings } from "./reach-tiers.js";
 import { AttestationBody, checkAttestation, forgetSignupReplay, pruneSignupReplays, replaySignup, signup } from "./signup.js";
 import { requireOwnerDevice } from "./business-seats.js";
 import { forgetChat } from "./business-chats.js";
-import { isMemberId, retireMembers, sameAccount } from "./business-members.js";
+import { isMemberId, RecoverySealer, retireMembers, sameAccount } from "./business-members.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { recordAgeSignal } from "./age.js";
 import { blockMove, getDiscovery, loadPhoneKeys, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
@@ -1751,7 +1751,7 @@ staffGet("/v1/admin/reports", (c) => {
 });
 
 // Business tools: Catálogo, Agenda, Fila virtual, Orçamento, Pedidos (ADRs 0099 to 0107).
-app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp, stepEvents: growth, pushes: businessPushes(db, devicePush), people: { mas, attest: (attestation) => checkAttestation(accounts, attestation), serverName: config.SERVER_NAME, synapse: synapseAdmin } }));
+app.route("/", businessRoutes({ db, auth, apiUrl: config.PUBLIC_API_URL, siteUrl: config.PUBLIC_SITE_URL, webOrigin: config.WEB_CLIENT_ORIGIN, clientIp, stepEvents: growth, pushes: businessPushes(db, devicePush), people: { mas, attest: (attestation) => checkAttestation(accounts, attestation), serverName: config.SERVER_NAME, synapse: synapseAdmin, sealer: new RecoverySealer(phoneKeys.current, phoneKeys.previous) } }));
 setInterval(() => void refreshBusyImports(db).catch((e: Error) => console.error(`busy imports: ${e.name}`)), 15 * 60_000).unref();
 setInterval(() => void runBusinessPushes(db, devicePush).catch((e: Error) => console.error(`business pushes: ${e.name}`)), 60_000).unref();
 
