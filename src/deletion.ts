@@ -390,9 +390,13 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "profile_snapshots",
       "kept_media",
       "reach_daily",
+      "public_feed_posts",
+      "public_feeds",
     ]) {
       await q(`DELETE FROM ${table} WHERE user_id = $1`);
     }
+    // ADR 0280: a post the user wrote in another handle's feed stays there, without the author.
+    await q("UPDATE public_feed_posts SET author_id = NULL WHERE author_id = $1");
     await q("DELETE FROM business_stops WHERE customer_id = $1 OR business_id = $1");
     await q("DELETE FROM busy_imports WHERE business_id = $1");
     await q("DELETE FROM agenda_feeds WHERE business_id = $1");

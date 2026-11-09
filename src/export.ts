@@ -65,6 +65,9 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     work_hours: await one(db, "SELECT enabled, time_zone, days, updated_at FROM work_hours WHERE user_id = $1", userId),
     // bipe-chat/bipe#967: the join push switches.
     notification_prefs: await one(db, "SELECT invite_joined, group_link_joined, booking_reminders, work_alerts, work_summary, updated_at FROM notification_prefs WHERE user_id = $1", userId),
+    // ADR 0280: the public feed of the caller's handle and its posts, and the posts the caller wrote in other feeds.
+    public_feed: await one(db, "SELECT room_id, status, enabled, created_at, updated_at FROM public_feeds WHERE user_id = $1", userId),
+    public_feed_posts: await all(db, "SELECT id, body, created_at, removed_at FROM public_feed_posts WHERE user_id = $1 OR author_id = $1 ORDER BY created_at", userId),
     // ADR 0237: the work accounts this person stopped.
     business_stops: await all(db, "SELECT business_id, stopped_at FROM business_stops WHERE customer_id = $1 ORDER BY stopped_at", userId),
     // ADR 0096: the provider and the dates only. The subject hash is keyed and stays out.
