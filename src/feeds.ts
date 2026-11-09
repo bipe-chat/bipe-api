@@ -165,6 +165,43 @@ export async function removeOwnPost(db: Db, rooms: FeedRoomState, userId: string
   await db.query("UPDATE public_feed_posts SET removed_at = now(), removed_by = 'owner' WHERE id = $1", [id]);
 }
 
+// ---- Owner and composer (bipe-chat/bipe#1260) ---------------------------------------------------------------------
+
+export const MyFeedBody = z.object({ enabled: z.boolean() }).strict();
+const feedUrl = (siteUrl: string, handle: string) => `${siteUrl.replace(/\/$/, "")}/@${handle}`;
+
+/** GET /v1/me/feed: the caller's feed when staff linked one (the Public Canal gate is closed: nobody self-creates one). */
+export async function myFeed(db: Db, siteUrl: string, userId: string) {
+  const { rows } = await db.query<{ handle: string; room_id: string; enabled: boolean }>(
+    "SELECT h.handle, f.room_id, f.enabled FROM public_feeds f JOIN handles h ON h.user_id = f.user_id WHERE f.user_id = $1",
+    [userId],
+  );
+  const row = rows[0];
+  if (!row) throw new ApiError("not_found");
+  return { handle: row.handle, room_id: row.room_id, enabled: row.enabled, url: feedUrl(siteUrl, row.handle) };
+}
+
+/** PUT /v1/me/feed: off stops new posts and takes the page down; on brings it back (ADR 0280 point 7c). */
+export async function setMyFeed(db: Db, siteUrl: string, userId: string, enabled: boolean) {
+  const { rowCount } = await db.query("UPDATE public_feeds SET enabled = $2, updated_at = now() WHERE user_id = $1", [userId, enabled]);
+  if (!rowCount) throw new ApiError("not_found");
+  return myFeed(db, siteUrl, userId);
+}
+
+/** GET /v1/me/feed/rooms/{roomId}: the feed this group posts to, for a joined admin of the group. Else not_found. */
+export async function feedOfRoom(db: Db, rooms: FeedRoomState, siteUrl: string, userId: string, roomId: string) {
+  if (!roomId.startsWith("!") || roomId.length > 255) throw new ApiError("not_found");
+  const { rows } = await db.query<{ handle: string }>(
+    "SELECT h.handle FROM public_feeds f JOIN handles h ON h.user_id = f.user_id WHERE f.room_id = $1 AND f.enabled",
+    [roomId],
+  );
+  // ADR 0280 point 7c: one feed per group. A room linked to two feeds is refused, as in publish().
+  if (rows.length !== 1) throw new ApiError("not_found");
+  const facts = await rooms.roomState(roomId).then(roomFacts, () => null);
+  if (!facts || facts.membership(userId) !== "join" || facts.level(userId) < ADMIN_LEVEL) throw new ApiError("not_found");
+  return { handle: rows[0]!.handle, url: feedUrl(siteUrl, rows[0]!.handle) };
+}
+
 // ---- Staff (CLI) ------------------------------------------------------------------------------------------------
 
 /** Links a handle's feed to a room. Only `test` while the Public Canal gate is closed (ADR 0280 point 16). */
