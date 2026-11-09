@@ -2538,6 +2538,7 @@
     "bipe_web_account_unread_last_sync": "Mensagens não lidas na última sincronização",
     "bipe_web_account_cap_reached": "Este navegador já tem %1$s contas. É o limite.",
     "bipe_web_sign_out_all": "Sair de todas as contas deste navegador",
+    "bipe_web_signed_out_elsewhere": "A conta %1$s foi desconectada deste navegador em outro aparelho.",
     "bipe_app_assistant_reads": "Um assistente de %1$s lê esta conversa",
     "bipe_mac_accounts_title": "Contas neste Mac",
     "bipe_mac_work_overview": "Resumo do trabalho",
