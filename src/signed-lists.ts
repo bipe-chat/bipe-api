@@ -6,13 +6,19 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import { verifySignedList } from "./generated/lib/signed-lists.mjs";
+import { verifySignedList as verifyReference } from "./generated/lib/signed-lists.mjs";
 
 export type ListType = "operators" | "issuers";
 export const LIST_TYPES: readonly ListType[] = ["operators", "issuers"];
 
 const generated = fileURLToPath(new URL("../src/generated/", import.meta.url));
 export type SignerSet = { threshold: number; keys: Record<string, string> };
+type StoredList = { version: number; payload: string };
+// The reference is JavaScript: `stored = null` there would type the option as null only.
+const verifySignedList = verifyReference as (
+  envelope: unknown,
+  options: { typ: ListType; signerSet: SignerSet; now: number; stored: StoredList | null },
+) => { error?: string; payload?: { version: number } };
 const signers: SignerSet = JSON.parse(
   readFileSync(`${generated}registries/list-signers.json`, "utf8"),
 );
@@ -65,7 +71,7 @@ export async function publishList(db: Db, typ: ListType, text: string, now: numb
   }
   const newest = newestList(typ);
   const stored = newest === null ? null : { version: newestVersion(typ)!, payload: (JSON.parse(newest) as { payload: string }).payload };
-  const checked = verifySignedList(envelope, { typ, signerSet, now, stored }) as { error?: string; payload?: { version: number } };
+  const checked = verifySignedList(envelope, { typ, signerSet, now, stored });
   if (checked.error || !checked.payload) throw new ApiError("bad_request", checked.error ?? "malformed");
   const version = checked.payload.version;
   if (stored && version === stored.version) return version;
