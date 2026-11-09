@@ -27,7 +27,7 @@ const photoUrl = (apiUrl: string, handle: string, version: string) =>
   `${apiUrl.replace(/\/$/, "")}/v1/profiles/${encodeURIComponent(handle)}/photo?v=${version}`;
 
 /** Lowercase exact match; anything that is not a valid handle shape is simply not found. */
-function handleKey(raw: string): string {
+export function handleKey(raw: string): string {
   return raw.replace(/^@/, "").toLowerCase();
 }
 

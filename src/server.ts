@@ -73,6 +73,7 @@ import { businessPushes, runBusinessPushes } from "./business-pushes.js";
 import { orderHousekeeping } from "./orders.js";
 import { assistantFacts, oneAssistant } from "./assistants.js";
 import { handleMcp, MCP_MAX_BODY_BYTES } from "./mcp.js";
+import { FeedPostBody, type FeedRoomState, type FeedStatus, feedPageHtml, feedRss, postPageHtml, publicFeedJson, publish, readFeed, readPost, removeOwnPost } from "./feeds.js";
 import { queueHousekeeping } from "./queue.js";
 import { quoteHousekeeping } from "./quotes.js";
 import { businessRoutes, CATALOG_PHOTO_PATH } from "./business-routes.js";
@@ -174,6 +175,8 @@ const limits = {
   events: new RateLimiter(30, 3_600_000),
   profile: new RateLimiter(60, 60_000),
   profilePhoto: new RateLimiter(120, 60_000),
+  feed: new RateLimiter(120, 60_000),
+  feedPost: new RateLimiter(30, 3_600_000),
   badge: new RateLimiter(120, 60_000),
   accountType: new RateLimiter(300, 60_000),
   setProfile: new RateLimiter(30, 3_600_000),
@@ -1402,6 +1405,71 @@ app.get("/v1/profiles/:handle/photo", async (c) => {
     "cache-control": "public, max-age=300",
     "x-content-type-options": "nosniff",
   });
+});
+
+// Public feed at bipe.chat/@handle (ADR 0280, ADR 0281, bipe-chat/bipe#1177). Public reads set no cookie. The edge sends
+// /@handle, /@handle/p/{id} and /@handle/rss to the /v1/web/feed routes, and shows the static profile page on a 404.
+const feedRooms: FeedRoomState = {
+  roomState: async (roomId) => {
+    if (!synapseAdmin) throw new ApiError("internal", "feed_unavailable");
+    return synapseAdmin.roomState(roomId);
+  },
+};
+const feedHeaders = (c: Context, status: FeedStatus) => {
+  // Short cache, so a removed post leaves fast. A test feed is noindex (Public Canal gate closed).
+  c.header("cache-control", "public, max-age=30");
+  c.header("x-content-type-options", "nosniff");
+  if (status === "test") c.header("x-robots-tag", "noindex, nofollow");
+};
+
+app.use("/v1/feeds/*", cors({ origin: siteAndWeb, allowMethods: ["GET"] }));
+
+app.get("/v1/feeds/:handle", async (c) => {
+  limits.feed.check(clientIp(c));
+  const view = await readFeed(db, badges, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("handle"), c.req.query("before"));
+  feedHeaders(c, view.status);
+  return c.json(publicFeedJson(view));
+});
+
+app.get("/v1/feeds/:handle/posts/:id", async (c) => {
+  limits.feed.check(clientIp(c));
+  const view = await readPost(db, badges, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("handle"), c.req.param("id"));
+  feedHeaders(c, view.status);
+  return c.json(view.post);
+});
+
+app.get("/v1/web/feed/:handle", async (c) => {
+  limits.feed.check(clientIp(c));
+  const view = await readFeed(db, badges, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("handle"), c.req.query("before"));
+  feedHeaders(c, view.status);
+  return c.html(feedPageHtml(config.PUBLIC_SITE_URL, view));
+});
+
+app.get("/v1/web/feed/:handle/p/:id", async (c) => {
+  limits.feed.check(clientIp(c));
+  const view = await readPost(db, badges, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("handle"), c.req.param("id"));
+  feedHeaders(c, view.status);
+  return c.html(postPageHtml(config.PUBLIC_SITE_URL, view));
+});
+
+app.get("/v1/web/feed/:handle/rss", async (c) => {
+  limits.feed.check(clientIp(c));
+  const view = await readFeed(db, badges, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("handle"));
+  feedHeaders(c, view.status);
+  return c.body(feedRss(config.PUBLIC_SITE_URL, view), 200, { "content-type": "application/rss+xml; charset=utf-8" });
+});
+
+app.post("/v1/me/feed/posts", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  limits.feedPost.check(userId);
+  const body = await parse(c, FeedPostBody);
+  return c.json(await publish(db, feedRooms, config.PUBLIC_SITE_URL, userId, body.text), 201);
+});
+
+app.delete("/v1/me/feed/posts/:id", async (c) => {
+  const userId = await auth.userId(c.req.header("authorization"));
+  await removeOwnPost(db, feedRooms, userId, c.req.param("id"));
+  return c.body(null, 204);
 });
 
 // Badges (bipe#399, ADR 0123). Public: anyone who sees a message may check the sender's seal. Apps verify the

@@ -1144,6 +1144,27 @@ export const MIGRATIONS: readonly string[] = [
   // Interno recovery key (ADR 0284 point 34, bipe#1294): the member identity's matrix-sdk recovery key, sealed with
   // RecoverySealer. It goes with the row when retireMembers() deletes it.
   `ALTER TABLE business_members ADD COLUMN recovery_enc bytea;`,
+  // Public feed at bipe.chat/@handle (ADR 0280, bipe-chat/bipe#1177): one feed per handle owner, linked to one group.
+  // Posts are the plain copies that a group admin's app sends. author_id is the admin who posted, never shown.
+  `CREATE TABLE public_feeds (
+     user_id text PRIMARY KEY,
+     room_id text NOT NULL,
+     status text NOT NULL DEFAULT 'test' CHECK (status IN ('test', 'live')),
+     enabled boolean NOT NULL DEFAULT true,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   CREATE TABLE public_feed_posts (
+     id text PRIMARY KEY,
+     user_id text NOT NULL,
+     author_id text,
+     body text NOT NULL CHECK (length(body) BETWEEN 1 AND 4000),
+     created_at timestamptz NOT NULL DEFAULT now(),
+     removed_at timestamptz,
+     removed_by text CHECK (removed_by IN ('owner', 'staff'))
+   );
+   CREATE INDEX public_feed_posts_page ON public_feed_posts (user_id, created_at DESC) WHERE removed_at IS NULL;
+   CREATE INDEX public_feed_posts_author ON public_feed_posts (author_id);`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
