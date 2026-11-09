@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { exportData } from "../dist/export.js";
-import { blockMove, linkPhone, loadPhoneKeys, lookupContacts, myPhone, PhoneHasher, recordProof, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "../dist/phones.js";
+import { blockMove, linkPhone, loadPhoneKeys, lookupContacts, myPhone, PhoneHasher, pruneLapsedLinks, recordProof, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "../dist/phones.js";
 import { ProfileFacts } from "../dist/profile-facts.js";
 import { phoneRules } from "../dist/registry.js";
 import { isolatedDatabase } from "./helpers/database.mjs";
@@ -79,6 +79,9 @@ const FINDER = "@finder:example.test";
 async function heldNumber(t) {
   const db = await isolatedDatabase(t);
   await linkPhone(db, hasher, HOLDER, NUMBER, false);
+  // Discovery is opt-in (bipe#402): both accounts allow it, so the lookup shows who holds the number.
+  await setDiscovery(db, HOLDER, true);
+  await setDiscovery(db, NEWCOMER, true);
   return db;
 }
 const holderOf = async (db) => (await lookupContacts(db, hasher, FINDER, [NUMBER])).matches[0]?.user_id;
@@ -235,4 +238,26 @@ test("a rotation re-keys links and moves, drops what cannot open, and a second r
   await runPhoneMoves(db, notify);
   assert.equal((await myPhone(db, next, NEWCOMER)).number, NUMBER);
   assert.equal((await lookupContacts(db, next, FINDER, [NUMBER])).matches[0].user_id, NEWCOMER);
+});
+
+// bipe#402: discovery is opt-in, and a link that stopped matching goes 30 days later.
+test("a linked number is not found until its owner allows discovery", { timeout: 30000 }, async (t) => {
+  const db = await isolatedDatabase(t);
+  const owner = "@owner:example.test";
+  await linkPhone(db, hasher, owner, NUMBER, false);
+  assert.equal((await lookupContacts(db, hasher, "@finder:example.test", [NUMBER])).matches.length, 0);
+  assert.equal((await myPhone(db, hasher, owner)).discoverable_by_phone, false);
+  await setDiscovery(db, owner, true);
+  assert.equal((await lookupContacts(db, hasher, "@finder:example.test", [NUMBER])).matches.length, 1);
+});
+
+test("a lapsed link stays 30 days, then the prune deletes it", { timeout: 30000 }, async (t) => {
+  const db = await isolatedDatabase(t);
+  const owner = "@owner:example.test";
+  await linkPhone(db, hasher, owner, NUMBER, false);
+  await db.query("UPDATE phone_links SET confirmed_at = now() - make_interval(months => $1, days => 29) WHERE user_id = $2", [phoneRules.linkConfirmMonths, owner]);
+  assert.equal(await pruneLapsedLinks(db), 0);
+  await db.query("UPDATE phone_links SET confirmed_at = now() - make_interval(months => $1, days => 31) WHERE user_id = $2", [phoneRules.linkConfirmMonths, owner]);
+  assert.equal(await pruneLapsedLinks(db), 1);
+  assert.equal((await myPhone(db, hasher, owner)).linked, false);
 });

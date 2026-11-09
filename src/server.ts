@@ -10,7 +10,7 @@ import { loadConfig } from "./config.js";
 import { migrate, openDb } from "./db.js";
 import { ApiError } from "./errors.js";
 import { availability, claimHandleMove, handleChanges, lookup, myHandle, pruneHandleChanges, removeHandle, resolve, setHandle, startHandleMove } from "./handles.js";
-import { createPersonalInvite, inviteConnections, inviterReport, myInvites, nameInvite, previewInvite, revokePersonalInvite } from "./invites.js";
+import { createPersonalInvite, inviteConnections, inviterReport, myInvites, nameInvite, previewInvite, pruneUnusedInvites, revokePersonalInvite } from "./invites.js";
 import { Mas } from "./mas.js";
 import { betaLogin } from "./beta-login.js";
 import { RateLimiter } from "./ratelimit.js";
@@ -26,7 +26,7 @@ import { forgetChat } from "./business-chats.js";
 import { isMemberId, RecoverySealer, retireMembers, sameAccount } from "./business-members.js";
 import { checkTermsVersion, recordTerms } from "./terms.js";
 import { recordAgeSignal } from "./age.js";
-import { blockMove, getDiscovery, loadPhoneKeys, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
+import { blockMove, getDiscovery, loadPhoneKeys, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, pruneLapsedLinks, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
 import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
@@ -258,6 +258,13 @@ const pruneGovbr = () =>
     .catch((e) => console.error(`govbr prune failed: ${(e as Error).message}`));
 pruneGovbr();
 setInterval(pruneGovbr, 24 * 3_600_000).unref();
+// Retention limits of bipe#402 (mz, 9 November 2026): lapsed phone links and invites nobody used.
+const pruneRetention = () =>
+  void Promise.all([pruneLapsedLinks(db), pruneUnusedInvites(db)])
+    .then(([links, invites]) => (links > 0 || invites > 0) && console.log(`retention: ${links} lapsed phone links, ${invites} unused invites pruned`))
+    .catch((e) => console.error(`retention prune failed: ${(e as Error).message}`));
+pruneRetention();
+setInterval(pruneRetention, 24 * 3_600_000).unref();
 // Signed list versions that came in after this image was built (bipe-chat/bipe#1242), and those a second pod took.
 const loadLists = () => void loadStoredLists(db).catch((e) => console.error(`signed list load failed: ${(e as Error).message}`));
 await loadStoredLists(db);
