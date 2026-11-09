@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import pg from "pg";
 import type { Db } from "./db.js";
-import { growthRules } from "./registry.js";
+import { accountRules, growthRules } from "./registry.js";
 
 // Server-side growth events (ADR 0098, bipe#67). The apps send no telemetry. The event list is
 // bipe-shared registries/growth-events.json. One row per pseudonymous user, event and day, with a count:
@@ -217,7 +217,11 @@ export class Growth {
     );
     const assistants = await this.db.query<{ user_id: string }>("SELECT user_id FROM assistant_accounts");
     const skip = new Set([...this.skipUsers, ...assistants.rows.map((r) => r.user_id)]);
-    return new Set(rows.map((r) => r.name).filter((n) => n.endsWith(this.serverSuffix) && !skip.has(n)));
+    // Member identities (ADR 0284) are second users of a work account, not people who signed up.
+    const member = `@${accountRules.memberLocalpartPrefix}`;
+    return new Set(
+      rows.map((r) => r.name).filter((n) => n.endsWith(this.serverSuffix) && !skip.has(n) && !n.startsWith(member)),
+    );
   }
 
   /** active_day, first_message_sent and call_started from new events, in stream order. */
