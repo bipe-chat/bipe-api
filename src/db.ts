@@ -1141,6 +1141,9 @@ export const MIGRATIONS: readonly string[] = [
      received_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (typ, version)
    );`,
+  // Interno recovery key (ADR 0284 point 34, bipe#1294): the member identity's matrix-sdk recovery key, sealed with
+  // RecoverySealer. It goes with the row when retireMembers() deletes it.
+  `ALTER TABLE business_members ADD COLUMN recovery_enc bytea;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

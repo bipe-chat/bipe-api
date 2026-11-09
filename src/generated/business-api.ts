@@ -269,8 +269,11 @@ export type WorkMember = { "seat_id": string; "user_id": string; "name": string 
 /** The member identities of the account and its Geral room. me: the member identity of the caller's seat, or null when it has none yet. geral_room_id: null until a member's app makes Geral and claims it. */
 export type WorkMembers = { "members": Array<WorkMember>; "me": (string | null); "geral_room_id": (string | null) };
 
-/** Sign-in for the caller's member identity. password is new on every call, works for one m.login.password sign-in, and the app never stores it (ADR 0284, ADR 0283). The Matrix device of that sign-in belongs to this device's person. */
-export type WorkMemberSession = { "user_id": string; "password": string };
+/** Sign-in for the caller's member identity. password is new on every call, works for one m.login.password sign-in, and the app never stores it (ADR 0284, ADR 0283). The Matrix device of that sign-in belongs to this device's person. recovery_key is the member identity's recovery key when a device of this person stored one (PUT .../members/recovery): the app uses it with encryption.recover right after the sign-in, so the new device gets the history, and never stores it. */
+export type WorkMemberSession = { "user_id": string; "password": string; "recovery_key"?: string };
 
 /** The Geral room that a member's app made. */
 export type WorkGeral = { "room_id": string };
+
+/** The recovery key of the caller's member identity (matrix-sdk enableRecovery output). Never logged. */
+export type WorkMemberRecovery = { "recovery_key": string };
