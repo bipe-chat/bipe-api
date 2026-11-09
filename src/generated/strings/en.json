@@ -1301,6 +1301,7 @@
     "bipe_notifications_account_footer": "These choices are for the account %1$s.",
     "bipe_notifications_preview": "Show the message text",
     "bipe_notifications_preview_footer": "Off, a notification only says that a message arrived.",
+    "bipe_notifications_open_system": "Open notification settings",
     "bipe_focus_filter_title": "Bipe accounts",
     "bipe_focus_filter_description": "Choose which Bipe accounts can notify in this Focus.",
     "bipe_focus_filter_accounts": "Accounts",
