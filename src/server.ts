@@ -63,6 +63,7 @@ import { groupLinkPreviewHtml, invitePreviewHtml } from "./invite-preview.js";
 import { GroupLinks, MatrixGroupRooms, pruneGroupLinks } from "./group-links.js";
 import { MEDIA_ID, VoiceMedia } from "./voice-media.js";
 import { type DevicePushDeps, pushToDevices } from "./device-push.js";
+import { NOTIFY_PATH, relayNotify } from "./push-filter.js";
 import { getWorkHours, setWorkHours } from "./work-hours.js";
 import { getNotificationPrefs, pushJoin, setNotificationPrefs } from "./notification-prefs.js";
 import { APP_IDS, finishWebFlow, isProvider, linkAccount, Links, type LinkDeps, newNonce, pruneLinks, recoverWithLink, startWebFlow, unlinkAccount, type Provider } from "./links.js";
@@ -1069,6 +1070,12 @@ app.post(BUG_REPORT_PATH, async (c) => {
   });
   return c.json(await submitBugReport(bugReports, userId, form));
 });
+
+// Push gateway in front of Sygnal (bipe#1063 point 3, ADR 0284 point 23): the edge sends Synapse's pushes for
+// push.bipe.net.br here. No auth, like Sygnal: the filter only drops devices, it never adds one.
+app.post(NOTIFY_PATH, async (c) =>
+  relayNotify({ db, pushers: devicePush.pushers, sygnalUrl: devicePush.sygnalUrl }, await c.req.text()),
+);
 
 // Called by the Synapse module before every invite. Caddy does not route /internal/*.
 app.post("/internal/v1/may-invite", async (c) => {
