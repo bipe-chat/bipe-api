@@ -1568,13 +1568,15 @@ export function forwardCount(content, reg) {
 
 /**
  * The content a forward sends: newContent (the m.new_content of the latest edit) or else the original content, without
- * m.relates_to, m.new_content and m.mentions, with forwardKey set to { count: forwardCount(original) + 1 }.
+ * m.relates_to, m.new_content, m.mentions and the public feed mark, with forwardKey set to { count: forwardCount(original) + 1 }.
  */
 export function forwardedContent(original, newContent, reg) {
   const base = { ...(newContent ?? original) };
   delete base["m.relates_to"];
   delete base["m.new_content"];
   delete base["m.mentions"];
+  // bipe-chat/bipe#1260: a copy in another chat is not the public feed post.
+  delete base[reg.groupPowerLevels.publicationOnly.feedPostKey];
   base[reg.voiceMedia.forwardKey] = { count: Math.min(forwardCount(original, reg) + 1, FORWARD_COUNT_MAX) };
   return base;
 }

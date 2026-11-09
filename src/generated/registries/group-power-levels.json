@@ -3,11 +3,12 @@
   "version": 1,
   "roles": { "admin": 100, "moderator": 50, "member": 0 },
   "publicationOnly": {
-    "$comment": "bipe ADR 0280, bipe-chat/bipe#1263. A group with this state event and enabled true: members below minPostLevel send only a thread reply, an edit, a reaction or a redaction. bipe-infra compose/synapse-modules/bipe_messaging.py enforces it with the same values: change both.",
+    "$comment": "bipe ADR 0280, bipe-chat/bipe#1263. A group with this state event and enabled true: members below minPostLevel send only a thread reply, an edit, a reaction or a redaction. bipe-infra compose/synapse-modules/bipe_messaging.py enforces it with the same values: change both. feedPostKey (bipe-chat/bipe#1260): a group post that the admin's app also sent to the public feed at bipe.chat/@handle carries this top-level object, {id, url} of the feed post. The app shows Público on it and deletes the feed post when the message is deleted. A forward drops it.",
     "stateEvent": "chat.bipe.publication_only",
     "minPostLevel": 50,
     "memberRelations": ["m.thread", "m.replace"],
-    "memberEventTypes": ["m.reaction", "m.room.redaction"]
+    "memberEventTypes": ["m.reaction", "m.room.redaction"],
+    "feedPostKey": "chat.bipe.feed_post"
   },
   "usersDefault": 0,
   "eventsDefault": 0,
