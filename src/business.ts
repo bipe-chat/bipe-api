@@ -192,12 +192,6 @@ export function runScan(db: Db, config: Config, mode: "pending" | "all", log: (s
             e?.cnaeMain ?? null, e?.cnaeSecondary ?? []],
         );
       }
-      for (const [root, partners] of found.partners) {
-        await client.query("DELETE FROM cnpj_partners WHERE root = $1", [root]);
-        for (const p of partners) {
-          await client.query("INSERT INTO cnpj_partners (root, kind, name, doc, qualification, release_month) VALUES ($1, $2, $3, $4, $5, $6)", [root, p.kind, p.name, p.doc, p.qualification, release.month]);
-        }
-      }
       for (const c of claims) {
         const active = found.establishments.get(c.cnpj)?.active ?? false;
         const notFound = !found.establishments.has(c.cnpj);

@@ -7,6 +7,7 @@ import { recordProfileChange } from "./profile-facts.js";
 import { coreProvesPhone, normalizePhone, phoneRules, profileFactRules } from "./registry.js";
 
 // Phone-number discovery, phase 0 (bipe/docs/phone-link.md). Lookup compares HMAC-SHA256 with a server secret.
+// Being found by number is opt-in (bipe#402, mz 9 November 2026): no discovery_settings row means off.
 // The linked number itself is stored only encrypted (number_enc, ADR 0191) and goes back only to its owner in
 // GET /v1/me/phone and the data export. Numbers are never logged.
 // Linking from the apps needs a proof (Pix phone key or SMS code, phases 1 and 2); until then
@@ -126,7 +127,7 @@ export async function lookupContacts(db: Db, hasher: PhoneHasher, userId: string
      LEFT JOIN discovery_settings d ON d.user_id = p.user_id
      WHERE p.phone_hmac = ANY($1) AND p.user_id <> $2
        AND p.confirmed_at > now() - make_interval(months => $3)
-       AND COALESCE(d.by_phone, true)`,
+       AND COALESCE(d.by_phone, false)`,
     [[...byHash.keys()], userId, CONFIRM_MONTHS, profileFactRules.windowDays],
   );
   return {
@@ -314,8 +315,21 @@ export async function runPhoneMoves(db: Db, notify: MoveNotify): Promise<void> {
 
 async function discoverableByPhone(db: Db, userId: string): Promise<boolean> {
   const { rows } = await db.query<{ by_phone: boolean }>("SELECT by_phone FROM discovery_settings WHERE user_id = $1", [userId]);
-  return rows[0]?.by_phone ?? true;
+  return rows[0]?.by_phone ?? false;
 }
+
+/**
+ * Deletes phone links that stopped matching (no proof for linkConfirmMonths) more than 30 days ago
+ * (bipe#402, mz 9 November 2026). The owner links the number again with a new proof.
+ */
+export async function pruneLapsedLinks(db: Db): Promise<number> {
+  const { rowCount } = await db.query(
+    "DELETE FROM phone_links WHERE confirmed_at < now() - make_interval(months => $1, days => $2)",
+    [CONFIRM_MONTHS, LAPSED_LINK_KEEP_DAYS],
+  );
+  return rowCount ?? 0;
+}
+const LAPSED_LINK_KEEP_DAYS = 30;
 
 export async function setDiscovery(db: Db, userId: string, byPhone: boolean) {
   await db.query(

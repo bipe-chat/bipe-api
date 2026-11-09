@@ -288,3 +288,20 @@ export async function inviterReport(db: Db, limit: number, serverName: string): 
   );
   return rows;
 }
+
+/**
+ * Deletes invites nobody used, 90 days after they expired or were revoked (bipe#402, mz 9 November 2026).
+ * A used invite stays while the account it brought in exists: the first-contact rule and the growth report
+ * read who invited whom, and account deletion clears the inviter.
+ */
+export async function pruneUnusedInvites(db: Db): Promise<number> {
+  const { rowCount } = await db.query(
+    `DELETE FROM invites i
+     WHERE COALESCE(LEAST(i.expires_at, i.revoked_at), i.expires_at) < now() - make_interval(days => $1)
+       AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.invite_id = i.id)
+       AND NOT EXISTS (SELECT 1 FROM waitlist w WHERE w.invite_id = i.id)`,
+    [UNUSED_INVITE_KEEP_DAYS],
+  );
+  return rowCount ?? 0;
+}
+const UNUSED_INVITE_KEEP_DAYS = 90;

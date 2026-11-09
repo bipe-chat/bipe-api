@@ -2,10 +2,10 @@
 // for the CNPJs that have a claim. No third party sees which CNPJs we check, and nothing loads 60 million
 // rows into Postgres: a scan streams the zip files and keeps only the matching rows.
 //
-// Files: Estabelecimentos*.zip (one row per establishment), Empresas*.zip (one row per company root),
-// Socios*.zip (partners per company root). ";"-separated, quoted, ISO-8859-1. Column order from
+// Files: Estabelecimentos*.zip (one row per establishment), Empresas*.zip (one row per company root).
+// ";"-separated, quoted, ISO-8859-1. Column order from
 // Receita's metadata (cnpj-metadados.pdf).
-import { createReadStream, createWriteStream, existsSync, mkdirSync, openSync, readSync, closeSync, readdirSync, renameSync, statSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, openSync, readSync, closeSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
@@ -16,12 +16,10 @@ import { createInflateRaw } from "node:zlib";
 const ACTIVE = 2;
 
 export type Establishment = { cnpj: string; tradeName: string | null; statusCode: number; active: boolean; cnaeMain: string | null; cnaeSecondary: string[] };
-export type Partner = { root: string; kind: number; name: string; doc: string; qualification: number };
 export type ScanResult = {
   month: string;
   establishments: Map<string, Establishment>;
   legalNames: Map<string, string>;
-  partners: Map<string, Partner[]>;
 };
 
 // --- Zip ---------------------------------------------------------------------------------------------
@@ -79,13 +77,15 @@ async function forEachRow(files: string[], onRow: (cols: string[]) => void): Pro
 
 // --- Release on disk ---------------------------------------------------------------------------------
 
-const FAMILIES = ["Estabelecimentos", "Empresas", "Socios"] as const;
+// No Socios files: Bipe keeps no records of company partners, who are not Bipe users (bipe#402, mz 9 November 2026).
+const FAMILIES = ["Estabelecimentos", "Empresas"] as const;
+const RELEASE_FILES = FAMILIES.length * 10;
 
 function familyFiles(dir: string, family: (typeof FAMILIES)[number]): string[] {
   return readdirSync(dir).filter((f) => new RegExp(`^${family}\\d\\.zip$`).test(f)).sort().map((f) => join(dir, f));
 }
 
-/** The newest complete release under baseDir (a YYYY-MM folder with all 30 files), or null. */
+/** The newest complete release under baseDir (a YYYY-MM folder with all RELEASE_FILES files), or null. */
 export function latestRelease(baseDir: string): { month: string; dir: string } | null {
   if (!existsSync(baseDir)) return null;
   const months = readdirSync(baseDir).filter((d) => /^\d{4}-\d{2}$/.test(d)).sort().reverse();
@@ -98,12 +98,12 @@ export function latestRelease(baseDir: string): { month: string; dir: string } |
 
 /**
  * Finds the given CNPJs (14 characters, normalised) in one release: their establishment rows, the legal
- * name of each company root, and the partners of each root. Unknown CNPJs are simply absent.
+ * name of each company root. Unknown CNPJs are simply absent.
  */
 export async function scanRelease(release: { month: string; dir: string }, cnpjs: Iterable<string>): Promise<ScanResult> {
   const wanted = new Set(cnpjs);
   const roots = new Set([...wanted].map((c) => c.slice(0, 8)));
-  const result: ScanResult = { month: release.month, establishments: new Map(), legalNames: new Map(), partners: new Map() };
+  const result: ScanResult = { month: release.month, establishments: new Map(), legalNames: new Map() };
   if (wanted.size === 0) return result;
 
   // Estabelecimentos: 0 cnpj_basico, 1 cnpj_ordem, 2 cnpj_dv, 3 matriz/filial, 4 nome_fantasia, 5 situacao_cadastral,
@@ -120,13 +120,6 @@ export async function scanRelease(release: { month: string; dir: string }, cnpjs
   // Empresas: 0 cnpj_basico, 1 razao_social
   await forEachRow(familyFiles(release.dir, "Empresas"), (c) => {
     if (roots.has(c[0]!)) result.legalNames.set(c[0]!, c[1]!.trim());
-  });
-  // Socios: 0 cnpj_basico, 1 identificador (1 PJ, 2 PF, 3 estrangeiro), 2 nome, 3 cpf mascarado ou cnpj, 4 qualificação
-  await forEachRow(familyFiles(release.dir, "Socios"), (c) => {
-    if (!roots.has(c[0]!)) return;
-    const list = result.partners.get(c[0]!) ?? [];
-    list.push({ root: c[0]!, kind: Number(c[1]), name: c[2]!.trim(), doc: c[3]!.trim(), qualification: Number(c[4]) });
-    result.partners.set(c[0]!, list);
   });
   return result;
 }
@@ -161,14 +154,14 @@ export async function newestMonth(baseUrl: string, token: string): Promise<strin
 }
 
 /**
- * Downloads the 30 files verification needs for one month into baseDir/month. Files already complete on disk
+ * Downloads the RELEASE_FILES files verification needs for one month into baseDir/month. Files already complete on disk
  * are skipped. Each file is written to a .part name first, then renamed, so a half file never counts.
  */
 export async function downloadRelease(baseUrl: string, token: string, baseDir: string, month: string, log: (s: string) => void): Promise<string> {
   const dir = join(baseDir, month);
   mkdirSync(dir, { recursive: true });
   const entries = (await propfind(baseUrl, token, `${month}/`)).filter((e) => FAMILIES.some((f) => new RegExp(`^${f}\\d\\.zip$`).test(e.name)));
-  if (entries.length !== 30) throw new Error(`${month}: expected 30 files, found ${entries.length}`);
+  if (entries.length !== RELEASE_FILES) throw new Error(`${month}: expected ${RELEASE_FILES} files, found ${entries.length}`);
   for (const e of entries) {
     const target = join(dir, e.name);
     if (existsSync(target) && statSync(target).size === e.size) continue;
@@ -181,5 +174,16 @@ export async function downloadRelease(baseUrl: string, token: string, baseDir: s
     if (statSync(`${target}.part`).size !== e.size) throw new Error(`${e.name}: size mismatch`);
     renameSync(`${target}.part`, target);
   }
+  pruneOldReleases(baseDir, month);
   return dir;
+}
+
+/**
+ * Keeps only the given release on disk (bipe#402, mz 9 November 2026). Older month folders go once a newer
+ * release is complete.
+ */
+export function pruneOldReleases(baseDir: string, keep: string): string[] {
+  const old = readdirSync(baseDir).filter((d) => /^\d{4}-\d{2}$/.test(d) && d !== keep);
+  for (const d of old) rmSync(join(baseDir, d), { recursive: true, force: true });
+  return old;
 }

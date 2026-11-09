@@ -1171,6 +1171,8 @@ export const MIGRATIONS: readonly string[] = [
      code_hash text NOT NULL UNIQUE,
      expires_at timestamptz NOT NULL
    );`,
+  // bipe#402 (mz, 9 November 2026): Bipe keeps no records of company partners, who are not Bipe users.
+  `DROP TABLE IF EXISTS cnpj_partners;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
