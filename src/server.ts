@@ -1,4 +1,4 @@
-import { listVersion, newestList } from "./signed-lists.js";
+import { LIST_TYPES, listVersion, loadStoredLists, newestList, publishList } from "./signed-lists.js";
 import { serve } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import pg from "pg";
@@ -221,6 +221,7 @@ const limits = {
   starlingsReply: new RateLimiter(600, 3_600_000),
   banner: new RateLimiter(120, 60_000),
   signedLists: new RateLimiter(120, 60_000),
+  signedListPosts: new RateLimiter(10, 60_000),
   assistant: new RateLimiter(120, 60_000),
   assistantResolve: new RateLimiter(60, 60_000),
   mcp: new RateLimiter(60, 60_000),
@@ -253,6 +254,10 @@ const pruneGovbr = () =>
     .catch((e) => console.error(`govbr prune failed: ${(e as Error).message}`));
 pruneGovbr();
 setInterval(pruneGovbr, 24 * 3_600_000).unref();
+// Signed list versions that came in after this image was built (bipe-chat/bipe#1242), and those a second pod took.
+const loadLists = () => void loadStoredLists(db).catch((e) => console.error(`signed list load failed: ${(e as Error).message}`));
+await loadStoredLists(db);
+setInterval(loadLists, 5 * 60_000).unref();
 const pruneLinkRows = () =>
   void pruneLinks(db).catch((e) => console.error(`link prune failed: ${(e as Error).message}`));
 pruneLinkRows();
@@ -578,7 +583,15 @@ app.get("/v1/signup/config", (c) => {
 });
 
 // Signed lists (bipe#645, bipe-shared docs/signed-lists.md). No auth: anyone can read the lists and their public log.
-for (const typ of ["operators", "issuers"] as const) {
+// A list is at most a few KB; the apps refuse more than 256 KB.
+const listBody = bodyLimit({ maxSize: 256 * 1024, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
+for (const typ of LIST_TYPES) {
+  // No auth: only the list signers can make an envelope that passes (bipe-chat/bipe#1242).
+  app.post(`/v1/${typ}`, listBody, async (c) => {
+    limits.signedListPosts.check(clientIp(c));
+    const version = await publishList(db, typ, await c.req.text(), Math.floor(Date.now() / 1000));
+    return c.json({ version });
+  });
   app.get(`/v1/${typ}`, (c) => {
     limits.signedLists.check(clientIp(c));
     const envelope = newestList(typ);
