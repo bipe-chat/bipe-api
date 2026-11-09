@@ -15,11 +15,11 @@ const generated = fileURLToPath(new URL("../src/generated/", import.meta.url));
 export type SignerSet = { threshold: number; keys: Record<string, string> };
 type StoredList = { version: number; payload: string };
 // The reference is JavaScript: `stored = null` there would type the option as null only.
-const verifySignedList = verifyReference as unknown as (
+export const verifySignedList = verifyReference as unknown as (
   envelope: unknown,
   options: { typ: ListType; signerSet: SignerSet; now: number; stored: StoredList | null },
-) => { error?: string; payload?: { version: number } };
-const signers: SignerSet = JSON.parse(
+) => { error?: string; payload?: { version: number; operators?: { server_name: string; status: string }[] } };
+export const signers: SignerSet = JSON.parse(
   readFileSync(`${generated}registries/list-signers.json`, "utf8"),
 );
 
