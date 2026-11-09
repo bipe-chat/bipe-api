@@ -75,7 +75,7 @@ test("a theft mark empties both answers", async (t) => {
 test("a revoked company claim empties both answers", async (t) => {
   const { db, badges } = await setup(t);
   await proof(db, "pix");
-  await db.query("INSERT INTO business_claims (user_id, cnpj, status, challenge, reason) VALUES ($1, '11222333000181', 'revoked', 'x', 'staff')", [ANA]);
+  await db.query("INSERT INTO business_claims (user_id, scheme, org_id, status, challenge, reason) VALUES ($1, 'br.cnpj', '11222333000181', 'revoked', 'x', 'staff')", [ANA]);
   assert.deepEqual(await badges.proofsFor(ANA), []);
   assert.deepEqual(await badges.forUser(ANA), { status: 410, reason: "staff" });
 });
@@ -102,9 +102,9 @@ test("a proof with no name or no master key signs nothing (fail closed)", async 
 
 test("one CPF, one account: a second account with the same hash fails on the index", async (t) => {
   const { db } = await setup(t);
-  await db.query("INSERT INTO person_identities (user_id, cpf_hash) VALUES ($1, 'h')", [ANA]);
+  await db.query("INSERT INTO person_identities (user_id, scheme, dedupe_hash) VALUES ($1, 'br.govbr', 'h')", [ANA]);
   await assert.rejects(
-    db.query("INSERT INTO person_identities (user_id, cpf_hash) VALUES ('@bia:example.test', 'h')"),
+    db.query("INSERT INTO person_identities (user_id, scheme, dedupe_hash) VALUES ('@bia:example.test', 'br.govbr', 'h')"),
     (e) => e.code === "23505",
   );
 });

@@ -1173,6 +1173,21 @@ export const MIGRATIONS: readonly string[] = [
    );`,
   // bipe#402 (mz, 9 November 2026): Bipe keeps no records of company partners, who are not Bipe users.
   `DROP TABLE IF EXISTS cnpj_partners;`,
+  // Verification schemes (ADR 0272, bipe-chat/bipe#1194): a claim and a dedupe key name their scheme. Every existing row is
+  // Brazilian. One verified account per organisation and one account per person stay, now inside one scheme. The
+  // existing CPF hashes stay valid: br.govbr keeps BIPE_CPF_HMAC_SECRET as its dedupe secret.
+  `ALTER TABLE business_claims RENAME COLUMN cnpj TO org_id;
+   ALTER TABLE business_claims ADD COLUMN scheme text NOT NULL DEFAULT 'br.cnpj';
+   ALTER TABLE business_claims ALTER COLUMN scheme DROP DEFAULT;
+   DROP INDEX business_claims_one_verified;
+   CREATE UNIQUE INDEX business_claims_one_verified ON business_claims (scheme, org_id) WHERE status = 'verified';
+   DROP INDEX business_claims_cnpj;
+   CREATE INDEX business_claims_org ON business_claims (scheme, org_id);
+   ALTER TABLE person_identities RENAME COLUMN cpf_hash TO dedupe_hash;
+   ALTER TABLE person_identities ADD COLUMN scheme text NOT NULL DEFAULT 'br.govbr';
+   ALTER TABLE person_identities ALTER COLUMN scheme DROP DEFAULT;
+   ALTER TABLE person_identities DROP CONSTRAINT person_identities_cpf_hash_key, ADD UNIQUE (scheme, dedupe_hash);
+   ALTER TABLE person_identities DROP CONSTRAINT person_identities_pkey, ADD PRIMARY KEY (user_id, scheme);`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

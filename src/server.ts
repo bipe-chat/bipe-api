@@ -29,9 +29,10 @@ import { recordAgeSignal } from "./age.js";
 import { blockMove, getDiscovery, loadPhoneKeys, LOOKUP_MAX_PER_REQUEST, lookupContacts, myPhone, PhoneHasher, pruneLapsedLinks, rekeyPhones, runPhoneMoves, setDiscovery, unlinkPhone } from "./phones.js";
 import { joinWaitlist, pruneWaitlist, WaitlistBody } from "./waitlist.js";
 import { countEvent, ExperimentEventBody } from "./experiments.js";
-import { addDomain, checkDomain, createClaim, getClaim, proveWithEcnpj, runScan, withdrawClaim } from "./business.js";
+import { addDomain, checkDomain, createClaim, getClaim, proveControl, runScan, withdrawClaim } from "./business.js";
 import { loadPinnedCertificates } from "./cms.js";
 import { loadIcpBrasilRoots } from "./ecnpj.js";
+import { ecnpjProof } from "./schemes-br.js";
 import { createGovbrChallenge, GOVBR_PDF_MAX_BYTES, pruneGovbrChallenges, submitGovbrDocument } from "./govbr.js";
 import { ProfileFacts } from "./profile-facts.js";
 import { Theft } from "./theft.js";
@@ -248,6 +249,7 @@ const limits = {
 
 // CNPJ verification (ADR 0042): pinned ICP-Brasil roots, and a registry scan for claims waiting on it.
 const icpBrasilRoots = loadIcpBrasilRoots(config.ICP_BRASIL_ROOTS_DIR);
+const ecnpj = ecnpjProof(icpBrasilRoots);
 console.log(`icp-brasil roots: ${icpBrasilRoots.length}`);
 // gov.br signed challenge (bipe#543): pinned gov.br roots, not ICP-Brasil.
 const govbrRoots = loadPinnedCertificates(config.GOVBR_ROOTS_DIR);
@@ -1682,7 +1684,7 @@ app.delete("/v1/me/business", async (c) => {
 app.post("/v1/me/business/ecnpj", async (c) => {
   const userId = await ownerOf(c);
   limits.businessProof.check(userId);
-  return c.json(await proveWithEcnpj(db, userId, (await parse(c, EcnpjBody)).signature, icpBrasilRoots));
+  return c.json(await proveControl(db, userId, (await parse(c, EcnpjBody)).signature, ecnpj));
 });
 
 app.post("/v1/me/business/domains", async (c) => {
@@ -1716,7 +1718,7 @@ app.put("/v1/verifications/govbr/:id/document", async (c) => {
     db,
     {
       roots: govbrRoots,
-      cpfSecret: config.BIPE_CPF_HMAC_SECRET,
+      dedupeSecret: config.BIPE_CPF_HMAC_SECRET,
       badgeOf: async (id) => {
         const r = await badges.forUser(id);
         return r.status === 200 ? r.envelope : null;

@@ -27,7 +27,7 @@ async function setup(t) {
   const brands = [[BRAND, "11222333000181", "Doces da Ana"], ...OTHER_BRANDS.map((b, i) => [b, `2233344400010${i}`, `Marca ${i + 2}`])];
   for (const [id, cnpj, name] of brands) {
     await db.query("INSERT INTO cnpj_registry (cnpj, active, legal_name, trade_name, release_month) VALUES ($1, true, $2, $3, '2026-09')", [cnpj, `${name} Ltda`, name]);
-    await db.query("INSERT INTO business_claims (user_id, cnpj, status, challenge, method, verified_at) VALUES ($1, $2, 'verified', 'x', 'ecnpj', now())", [id, cnpj]);
+    await db.query("INSERT INTO business_claims (user_id, scheme, org_id, status, challenge, method, verified_at) VALUES ($1, 'br.cnpj', $2, 'verified', 'x', 'ecnpj', now())", [id, cnpj]);
   }
   // The Synapse table the badge code reads, in the same isolated schema.
   const { rows: [{ schema }] } = await db.query("SELECT current_schema() AS schema");

@@ -236,9 +236,9 @@ try {
     await runScan(db, { RECEITA_DIR: process.env.RECEITA_DIR ?? "/data/receita" } as Config, values.all ? "all" : "pending");
   } else if (group === "business" && command === "list") {
     const { rows } = await db.query(
-      `SELECT c.user_id, c.cnpj, c.status, c.reason, c.method, c.verified_at, r.legal_name, r.release_month,
+      `SELECT c.user_id, c.scheme, c.org_id, c.status, c.reason, c.method, c.verified_at, r.legal_name, r.release_month,
               (SELECT count(*) FROM business_domains d WHERE d.user_id = c.user_id AND d.verified_at IS NOT NULL) AS domains
-         FROM business_claims c LEFT JOIN cnpj_registry r ON r.cnpj = c.cnpj ORDER BY c.created_at`,
+         FROM business_claims c LEFT JOIN cnpj_registry r ON c.scheme = 'br.cnpj' AND r.cnpj = c.org_id ORDER BY c.created_at`,
     );
     console.table(rows);
   } else if (group === "feed" && command === "create" && arg && arg2) {

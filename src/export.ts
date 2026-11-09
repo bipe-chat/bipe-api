@@ -112,10 +112,10 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     invite_connections: (await inviteConnections(db, userId)).user_ids,
     business: await one(
       db,
-      "SELECT cnpj, status, reason, method, created_at, verified_at, ended_at FROM business_claims WHERE user_id = $1",
+      "SELECT org_id AS cnpj, status, reason, method, created_at, verified_at, ended_at FROM business_claims WHERE user_id = $1",
       userId,
     ),
-    // The CPF hash stays out (a hash); the CPF, the signed PDF and the certificate are never stored.
+    // The dedupe hash stays out (a hash); the CPF, the signed PDF and the certificate are never stored.
     person_verifications: await all(
       db,
       "SELECT level, verified_name, verified_at FROM person_verifications WHERE user_id = $1 ORDER BY verified_at",
