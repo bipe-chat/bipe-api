@@ -106,6 +106,8 @@ const Env = z.object({
   // Problem reports (bipe#367): files on disk, 90 days. Starlings app intake: text and metadata only.
   // Without STARLINGS_APP_INTAKE_KEY reports are stored but not relayed.
   BUG_REPORTS_DIR: z.string().default("/data/bug-reports"),
+  // Deletion log outside the database (bipe#1355): one line per finished account deletion, 40 days, for the restore replay.
+  DELETION_LOG_DIR: z.string().default("/data/deletion-log"),
   STARLINGS_INTAKE_URL: z.url().default("https://bipe.starlings.work/api/support/app-intake"),
   STARLINGS_APP_INTAKE_KEY: emptyAsUnset(z.string().regex(/^[0-9a-fA-F]{64}$/, "64 hex characters")),
   // Support DM (ADR 0114, ADR 0115). The bot is off without the token and the store passphrase.
