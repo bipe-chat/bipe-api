@@ -75,7 +75,6 @@ const CustomerBody = z.union([
 export const OwnerBookingBody = z.object({ service_id: Id, agenda_id: Id, start: Instant, customer: CustomerBody }).strict();
 export const HoldBody = z.object({ service_id: Id, agenda_id: Id, start: Instant }).strict();
 export const MoveBody = z.object({ agenda_id: Id, start: Instant }).strict();
-export const RangeQuery = z.object({ date_from: Day, date_to: Day });
 
 // ---- Rows ---------------------------------------------------------------------------------------------------------
 

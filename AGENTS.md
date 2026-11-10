@@ -5,7 +5,7 @@ Bipe API: invite sign-up, device-first accounts and the handle directory (docs/u
 - Stack: Node 24, TypeScript, Hono, pg, Zod. pnpm only. Exact versions in package.json.
 - Green gate: `pnpm build`.
 - `src/generated/` comes from `../bipe-shared` (`pnpm gen`). Never edit it. Handle rules and normalisation live in bipe-shared and must match its test vectors.
-- Runs on the dev node in Docker Compose (`../bipe-infra/compose`, service `api`, host `api.bipe.chat`). Postgres database `bipe` on the shared Postgres.
+- Runs on the production node in K3s (`../bipe-infra/k8s/bipe/api.yaml`, host `api.bipe.net.br`). Postgres database `bipe` on the shared Postgres.
 - MAS admin API: client_credentials with scope `urn:mas:admin`. The client ID and secret come from `.env` on the node; never log or print them. MAS cannot delete users: a failed sign-up deactivates the MAS user and refunds the invite use.
 - Never log request bodies, emails, passwords, tokens or invite codes. Invite codes are stored only as SHA-256 hashes.
 - Rate limits are in memory: one instance only.

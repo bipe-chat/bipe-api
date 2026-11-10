@@ -7,7 +7,7 @@ import { profileFactRules } from "./registry.js";
 // dates only: a change row (user, kind, source, time) for windowDays, and per account one HMAC digest of the current
 // display name and avatar URL to notice a change. Never a name, a photo or an avatar URL. Matrix profile changes come
 // from the Synapse database through the read-only role bipe_growth: it needs SELECT on profiles (user_id, displayname,
-// avatar_url) and users (name, creation_ts) (bipe-infra scripts/setup-growth-role.sh). Public profile edits (ADR 0041)
+// avatar_url) and users (name, creation_ts) (bipe-infra scripts/setup-growth.sh). Public profile edits (ADR 0041)
 // are written by profiles.ts. Never log a user ID next to a change.
 
 const LOCK = 7140211;

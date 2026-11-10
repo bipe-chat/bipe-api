@@ -8,7 +8,7 @@ import { accountRules, growthRules } from "./registry.js";
 // the user is HMAC-SHA256(BIPE_GROWTH_HMAC_SECRET, Matrix ID). No content, no Matrix ID, no room ID, no IP.
 // The platform events (ADR 0124) keep ios, android or web only: the user agent string is dropped after platformOf().
 // Synapse-side events come from the Synapse database through the read-only role bipe_growth. That role has
-// SELECT only on the columns these queries name (bipe-infra scripts/setup-growth-role.sh). Change both together.
+// SELECT only on the columns these queries name (bipe-infra scripts/setup-growth.sh). Change both together.
 
 const TZ = "America/Sao_Paulo";
 const BATCH = 5000;

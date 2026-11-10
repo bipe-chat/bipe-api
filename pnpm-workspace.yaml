@@ -1,2 +1,2 @@
 allowBuilds:
-  '@matrix-org/matrix-sdk-crypto-nodejs': set this to true or false
+  '@matrix-org/matrix-sdk-crypto-nodejs': true

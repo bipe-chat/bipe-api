@@ -68,7 +68,7 @@ pnpm test:scheduling
 
 The hand-authored cases live in bipe-shared. Its `node tools/gen-test-vectors.mjs` generates `test/fixtures/scheduling.json`, including a source hash. Do not edit the generated snapshot. Shared drift checks verify the copy. API CI runs it under UTC and Pacific/Auckland without Postgres, MAS or cross-repository credentials. The shared README defines the vector format and boundary rules.
 
-Booking storage, fresh-snapshot hold transactions, authorization, rate limits, retention, routes and notifications remain in bipe#318 and its related issues. No scheduling route is live from this calculation module alone.
+Booking storage, holds, authorization, rate limits, retention, routes and notifications are in `src/agenda.ts` and the business routes (AGENTS.md, "Agenda").
 
 ## Recovery integration tests
 
