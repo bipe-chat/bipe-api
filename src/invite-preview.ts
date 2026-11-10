@@ -38,7 +38,7 @@ export async function invitePreviewHtml(db: Db, siteUrl: string, apiUrl: string,
     : null;
   const image = photo
     ? `<meta property="og:image" content="${escape(photo)}">\n<meta property="og:image:type" content="image/jpeg">`
-    : `<meta property="og:image" content="${site}/og/convite.png">\n<meta property="og:image:type" content="image/png">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">`;
+    : `<meta property="og:image" content="${site}/og/convite.jpg">\n<meta property="og:image:type" content="image/jpeg">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">`;
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -83,8 +83,8 @@ export function groupLinkPreviewHtml(siteUrl: string, preview: { valid: boolean;
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Bipe">
 <meta property="og:locale" content="pt_BR">
-<meta property="og:image" content="${site}/og/convite.png">
-<meta property="og:image:type" content="image/png">
+<meta property="og:image" content="${site}/og/grupo.jpg">
+<meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="${escape(title)}">
