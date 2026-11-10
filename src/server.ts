@@ -531,7 +531,10 @@ const govbrBody = bodyLimit({ maxSize: GOVBR_PDF_MAX_BYTES, onError: (c) => c.js
 // An ignore list (bipe#845) can hold many IDs; only the Synapse module calls this route.
 const ignoredBody = bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.json({ error: "bad_request", reason: "too_large" }, 413) });
 const photoBody = bodyLimit({ maxSize: profileRules.photoMaxBytes, onError: (c) => c.json({ error: "photo_invalid", reason: "too_large" }, 413) });
+// Routes with a body limit of their own: the 16 KB default ran first and refused a larger body (10 Nov audit, bipe#1361).
+const OWN_BODY_LIMIT_PATHS = new Set([...LIST_TYPES.map((typ) => `/v1/${typ}`), "/v1/mcp"]);
 app.use("*", (c, next) => {
+  if (OWN_BODY_LIMIT_PATHS.has(c.req.path)) return next();
   if (c.req.path === BUG_REPORT_PATH) return reportBody(c, next);
   if (c.req.path === "/v1/me/business/ecnpj") return signatureBody(c, next);
   if (c.req.path === PHOTO_PATH || CATALOG_PHOTO_PATH.test(c.req.path)) return photoBody(c, next);
