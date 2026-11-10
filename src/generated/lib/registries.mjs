@@ -984,10 +984,16 @@ export function personProofs(payloads, reg) {
     if (found?.class !== "person" || proofs.has(found.scheme)) continue;
     const rank = order.findIndex((a) => a.id === found.assurance);
     if (rank < 0) continue;
-    proofs.set(found.scheme, { rank, scheme: found.scheme, assurance: found.assurance, mark: order[rank].mark });
+    proofs.set(found.scheme, { rank, country: found.country, scheme: found.scheme, assurance: found.assurance, mark: order[rank].mark });
   }
-  return [...proofs.values()].sort((a, b) => a.rank - b.rank).map(({ rank, ...proof }) => proof);
+  // Brazilian proofs first, then other countries' (ADR 0272 decision 7: a foreign seal does not equal a Brazilian one).
+  // Inside each group, strongest first; the sort is stable, so the badge order breaks ties.
+  const home = (proof) => (proof.country === HOME_COUNTRY ? 0 : 1);
+  return [...proofs.values()].sort((a, b) => home(a) - home(b) || a.rank - b.rank).map(({ rank, country, ...proof }) => proof);
 }
+
+// The country of Bipe's own schemes (ADR 0272). personProofs puts its proofs first.
+export const HOME_COUNTRY = "BR";
 
 // ADR 0197, ADR 0272: the region of a user ID in the signed issuer registry, or null. The server name is everything
 // after the first ':'.
