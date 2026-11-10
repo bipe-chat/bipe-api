@@ -329,7 +329,7 @@ ${status === "test" ? '<meta name="robots" content="noindex,nofollow">\n' : ""}<
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Bipe">
 <meta property="og:locale" content="pt_BR">
-${profile.photo_url ? `<meta property="og:image" content="${escape(profile.photo_url)}">\n` : ""}<style>${STYLE}</style>
+${profile.photo_url ? `<meta property="og:image" content="${escape(profile.photo_url)}">\n` : `<meta property="og:image" content="${site}/og/perfil.jpg">\n<meta property="og:image:type" content="image/jpeg">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta name="twitter:card" content="summary_large_image">\n`}<style>${STYLE}</style>
 </head>
 <body><main>
 <header>${photo}<div><h1><a href="${site}/@${escape(profile.handle)}" style="color:inherit;text-decoration:none">${escape(profile.name)}</a>${verified}</h1>
