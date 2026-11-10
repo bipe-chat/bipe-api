@@ -104,7 +104,7 @@
       "class": "metadata",
       "writes": "state",
       "scope": "conversations:write",
-      "en": "Set the status of a conversation: open, waiting or done.",
+      "en": "Set the status of a conversation: open, waiting or solved.",
       "pt": "Muda o status de uma conversa: aberta, aguardando ou resolvida."
     },
     {
