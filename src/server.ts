@@ -1640,7 +1640,7 @@ app.put("/v1/me/profile", async (c) => {
 });
 
 app.put(PHOTO_PATH, async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   limits.setProfilePhoto.check(userId);
   if (c.req.header("content-type")?.split(";")[0]?.trim() !== "image/jpeg") throw new ApiError("photo_invalid", "not_jpeg");
   const body = new Uint8Array(await c.req.arrayBuffer());
@@ -1648,7 +1648,7 @@ app.put(PHOTO_PATH, async (c) => {
 });
 
 app.delete(PHOTO_PATH, async (c) => {
-  const userId = await auth.userId(c.req.header("authorization"));
+  const userId = await ownerOf(c);
   return c.json(await deletePhoto(db, config.PUBLIC_API_URL, userId));
 });
 
