@@ -111,15 +111,7 @@ export function ecnpjProof(roots: pkijs.Certificate[]): ControlProof {
 export const brGovbr: PersonProof = {
   scheme: "br.govbr",
   level: "govbr",
+  country: "BR",
+  assurance: "state",
   dedupeHash: (secret, cpf) => createHmac("sha256", secret).update(cpf).digest("hex"),
 };
-
-/** The org schemes this core runs, by ID. A claim row names its scheme. */
-export const orgSchemes: ReadonlyMap<string, RegistryLookup> = new Map([[brCnpj.scheme, brCnpj]]);
-
-/** The adapter of a stored claim. Fails closed on a scheme this core does not run. */
-export function orgScheme(id: string): RegistryLookup {
-  const scheme = orgSchemes.get(id);
-  if (!scheme) throw new ApiError("internal", "unknown_scheme");
-  return scheme;
-}

@@ -13,6 +13,7 @@ import type { BadgeEnvelope } from "./badges.js";
 import { commonName, otherNames, verifyCms, type CmsFailure } from "./cms.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
+import { recordPersonProof } from "./person-proof.js";
 import { brGovbr } from "./schemes-br.js";
 
 const LIFE_MS = 30 * 60_000;
@@ -110,7 +111,6 @@ export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: strin
   if (!person.name) return reject("not_govbr");
   // Fail closed and loud: a gov.br certificate without a CPF we can read means personOf needs the #542 answer.
   if (!person.cpf) throw new ApiError("internal", "govbr_cpf_missing");
-  const dedupeHash = brGovbr.dedupeHash(deps.dedupeSecret, person.cpf);
   const masterKey = await deps.masterKeyOf(userId);
   if (!masterKey) throw new ApiError("internal", "master_key_unavailable");
 
@@ -121,22 +121,16 @@ export async function submitGovbrDocument(db: Db, deps: GovbrDeps, userId: strin
     if (used.rowCount !== 1) throw new ApiError("not_found");
     // The challenge in the URL ends with the one that matched: the app asked for it, and it must not verify again.
     if (match.id !== id) await client.query("UPDATE govbr_challenges SET used_at = $2 WHERE id = $1 AND used_at IS NULL", [id, now]);
-    // Another CPF on this account means another person: the older proofs stop counting. A CPF of another account fails
-    // on the unique index (cpf_in_use). The dedupe key stays inside its scheme (ADR 0272 decision 8).
-    await client.query(
-      "DELETE FROM person_verifications WHERE user_id = $1 AND EXISTS (SELECT 1 FROM person_identities i WHERE i.user_id = $1 AND i.scheme = $3 AND i.dedupe_hash <> $2)",
-      [userId, dedupeHash, brGovbr.scheme],
-    );
-    await client.query(
-      "INSERT INTO person_identities (user_id, scheme, dedupe_hash) VALUES ($1, $3, $2) ON CONFLICT (user_id, scheme) DO UPDATE SET dedupe_hash = $2",
-      [userId, dedupeHash, brGovbr.scheme],
-    );
-    await client.query(
-      `INSERT INTO person_verifications (user_id, level, verified_name, master_key, verified_at)
-       VALUES ($1, 'govbr', $2, $3, $4)
-       ON CONFLICT (user_id, level) DO UPDATE SET verified_name = $2, master_key = $3, verified_at = $4`,
-      [userId, person.name, masterKey, now],
-    );
+    // Another CPF on this account means another person, and a CPF of another account is cpf_in_use (person-proof.ts).
+    await recordPersonProof(client, {
+      proof: brGovbr,
+      secret: deps.dedupeSecret,
+      subject: person.cpf,
+      userId,
+      verifiedName: person.name,
+      masterKey,
+      now,
+    });
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});

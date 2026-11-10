@@ -5,6 +5,8 @@
 import type pg from "pg";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
+import { ApiError } from "./errors.js";
+import { brCnpj, brGovbr } from "./schemes-br.js";
 
 /** What a registry says about one organisation. */
 export type RegistryRecord = {
@@ -60,8 +62,39 @@ export interface ControlProof {
 /** A person rail (ADR 0272 "PersonProof"): gov.br and Pix for Brazil. */
 export interface PersonProof {
   readonly scheme: string;
-  /** The level that person_verifications and the badge use (the alias in registries/schemes.json). */
+  /** The level that person_verifications and the badge use: the alias in registries/schemes.json, else `person`. */
   readonly level: string;
+  /** ISO 3166-1 alpha-2 country of the scheme. A `person` badge carries it. */
+  readonly country: string;
+  /** `bank` or `state` (registries/schemes.json). A `person` badge carries it. */
+  readonly assurance: string;
   /** The keyed hash that keeps one person on one account inside this scheme (ADR 0272 decisions 5 and 8). */
   dedupeHash(secret: string, subject: string): string;
+}
+
+// --- The schemes this core runs -------------------------------------------------------------------------------------
+
+const orgs = new Map<string, RegistryLookup>([[brCnpj.scheme, brCnpj]]);
+const persons = new Map<string, PersonProof>([[brGovbr.scheme, brGovbr]]);
+
+/** The adapter of a stored claim. Fails closed on a scheme this core does not run. */
+export function orgScheme(id: string): RegistryLookup {
+  const scheme = orgs.get(id);
+  if (!scheme) throw new ApiError("internal", "unknown_scheme");
+  return scheme;
+}
+
+/** The adapter of a stored person proof, or null when this core does not run the scheme (no badge, fail closed). */
+export function personScheme(id: string): PersonProof | null {
+  return persons.get(id) ?? null;
+}
+
+/**
+ * Tests only (bipe-chat/bipe#1195): adds an adapter of the test-only region zz, to run a person and a company through
+ * the generic flow. Any other scheme throws, so no code path can add a fake adapter for a real country.
+ */
+export function registerTestScheme(adapter: RegistryLookup | PersonProof): void {
+  if (!adapter.scheme.startsWith("zz.")) throw new Error(`registerTestScheme: ${adapter.scheme} is not a zz test scheme`);
+  if ("dedupeHash" in adapter) persons.set(adapter.scheme, adapter);
+  else orgs.set(adapter.scheme, adapter);
 }

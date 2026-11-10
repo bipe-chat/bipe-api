@@ -9,8 +9,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import type { Db } from "./db.js";
-import { orgScheme } from "./schemes-br.js";
-import { badgeRules, brandMarkRules, personLevels, theftRules } from "./registry.js";
+import { orgScheme, personScheme } from "./schemes.js";
+import { badgeRules, brandMarkRules, personAssuranceOrder, personLevels, theftRules } from "./registry.js";
 
 const KID = /^prod-\d{4}-(0[1-9]|1[0-2])$/;
 // Matrix unpadded base64 of a 32-byte Ed25519 key (master key and device key).
@@ -180,23 +180,31 @@ export class Badges {
    */
   private async personBadges(userId: string, now: number): Promise<BadgeEnvelope[]> {
     if (!this.key) return [];
-    const { rows } = await this.db.query<{ level: string; verified_name: string; master_key: string; verified_at: Date }>(
-      "SELECT level, verified_name, master_key, verified_at FROM person_verifications WHERE user_id = $1 AND verified_name <> '' AND master_key <> ''",
+    const { rows } = await this.db.query<{ level: string; scheme: string | null; verified_name: string; master_key: string; verified_at: Date }>(
+      "SELECT level, scheme, verified_name, master_key, verified_at FROM person_verifications WHERE user_id = $1 AND verified_name <> '' AND master_key <> ''",
       [userId],
     );
+    // The Brazilian aliases first, strongest first. Then a scheme of another country (lvl person, ADR 0272), state
+    // before bank. A scheme this core does not run gives no badge (fail closed).
+    const aliases = personLevels.flatMap((level) => rows.filter((row) => row.level === level));
+    const others = rows
+      .filter((row) => row.level === "person" && row.scheme && personScheme(row.scheme))
+      .sort((a, b) => personAssuranceOrder(personScheme(a.scheme!)!.assurance) - personAssuranceOrder(personScheme(b.scheme!)!.assurance));
     const envelopes: BadgeEnvelope[] = [];
-    for (const level of personLevels) {
-      const person = rows.find((row) => row.level === level);
-      if (!person) continue;
-      const cacheKey = JSON.stringify([person.level, person.verified_name, person.master_key, person.verified_at.toISOString(), this.key.kid]);
-      const cacheId = `person:${userId}:${level}`;
+    for (const person of [...aliases, ...others]) {
+      const level = person.level;
+      const scheme = person.scheme ? personScheme(person.scheme) : null;
+      const cacheKey = JSON.stringify([person.level, person.scheme, person.verified_name, person.master_key, person.verified_at.toISOString(), this.key.kid]);
+      const cacheId = `person:${userId}:${level}:${person.scheme ?? ""}`;
       const cached = this.cache.get(cacheId);
       if (cached && cached.key === cacheKey && now < cached.exp - badgeRules.renewDaysBeforeExpiry * DAY) {
         envelopes.push(cached.envelope);
         continue;
       }
       const exp = now + badgeRules.lifeDays * DAY;
-      const payload = { sub: userId, lvl: person.level, name: person.verified_name, msk: person.master_key, iat: now, exp };
+      const payload = scheme
+        ? { sub: userId, lvl: "person", country: scheme.country, scheme: scheme.scheme, assurance: scheme.assurance, name: person.verified_name, msk: person.master_key, iat: now, exp }
+        : { sub: userId, lvl: person.level, name: person.verified_name, msk: person.master_key, iat: now, exp };
       const envelope = this.signPayload(payload);
       this.cache.set(cacheId, { key: cacheKey, exp, envelope });
       envelopes.push(envelope);
