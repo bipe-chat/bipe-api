@@ -164,7 +164,7 @@ function eventBusy(props: Prop[], window: BusyInterval, zone: string): BusyInter
     .map((at) => ({ start: at, end: at + length }));
 }
 
-const escapeText = (text: string) => text.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+const escapeText = (text: string) => text.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 const utc = (iso: Date) => iso.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
 
 /** A calendar of bookings. `summary` is Agendado, or the first name when the owner turned it on. */

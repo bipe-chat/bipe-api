@@ -95,13 +95,13 @@ await migrate(db);
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { now: { type: "boolean" }, uses: { type: "string", default: "1" }, days: { type: "string", default: "14" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" }, since: { type: "string", default: "2026-01-01" }, "password-stdin": { type: "boolean", default: false } },
+  options: { now: { type: "boolean" }, uses: { type: "string", default: "1" }, days: { type: "string" }, count: { type: "string" }, note: { type: "string" }, force: { type: "boolean", default: false }, all: { type: "boolean", default: false }, limit: { type: "string", default: "50" }, since: { type: "string", default: "2026-01-01" }, "password-stdin": { type: "boolean", default: false } },
 });
 const [group, command, arg, arg2] = positionals;
 
 try {
   if (group === "invite" && command === "create") {
-    const uses = Number(values.uses), days = Number(values.days);
+    const uses = Number(values.uses), days = Number(values.days ?? "14");
     if (!(Number.isInteger(uses) && uses > 0 && Number.isInteger(days) && days > 0)) throw new Error("--uses and --days must be positive integers");
     // The code is printed once and stored only as a hash.
     console.log((await createInvite(db, uses, days, values.note)).code);
@@ -112,13 +112,13 @@ try {
     await setSharedPassword(db, password);
     console.log(values["password-stdin"] ? "password set; every session ended" : password);
   } else if (group === "proposta" && command === "visits") {
-    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    const days = Number(values.days ?? "30");
     if (!(Number.isInteger(days) && days > 0 && days <= 365)) throw new Error("--days must be 1 to 365");
     const report = await propostaReport(db, days);
     console.table(report.visitors.map((r) => ({ id: r.id, email: r.email, last_seen: r.last_seen_at, page_views: r.page_views, max_slide: r.max_slide })));
     console.table(report.visits.map((v) => ({ at: v.at.slice(0, 16), visitor: v.visitor_id, kind: v.kind, path: v.path, slide: v.slide, referrer: v.referrer, utm: Object.values(v.utm).join(" ") || null, place: [v.city, v.region, v.country].filter(Boolean).join(", ") || null })));
   } else if (group === "proposta" && command === "sessions") {
-    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    const days = Number(values.days ?? "30");
     if (!(Number.isInteger(days) && days > 0 && days <= 365)) throw new Error("--days must be 1 to 365");
     for (const s of await sittings(db, days)) {
       console.log(`\n${s.startedAt.toISOString().slice(0, 16)}  ${s.email}  ${clock(s.ms)}  ${s.place ?? "-"}  ${s.referrer ?? "-"}  ${Object.values(s.utm).join(" ")}`);
@@ -160,7 +160,7 @@ try {
     console.log(`deleted ${rowCount} rows`);
   } else if (group === "waitlist" && command === "release" && arg) {
     const platform = WaitlistBody.shape.platform.parse(arg);
-    const count = Number(values.count), days = Number(values.days);
+    const count = Number(values.count), days = Number(values.days ?? "14");
     if (!(Number.isInteger(count) && count > 0 && Number.isInteger(days) && days > 0)) throw new Error("--count and --days must be positive integers");
     const mail = loadMailConfig();
     const r = await releaseWaitlist(db, new Mailer(mail), mail.PUBLIC_SITE_URL, platform, count, days);
@@ -328,7 +328,7 @@ try {
     console.table(report.contacts);
   } else if (group === "reach" && command === "show" && arg?.startsWith("@")) {
     // --days defaults to 14 for invites; this report's window is 30 days unless --days is given.
-    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    const days = Number(values.days ?? "30");
     if (!(Number.isInteger(days) && days >= 1 && days <= 90)) throw new Error("--days must be 1 to 90");
     const config = loadConfig();
     const userId = await existingAccount(db, new Mas(config), config.SERVER_NAME, arg);
@@ -341,7 +341,7 @@ try {
     if (status.failing.length > 0) console.table(status.failing);
   } else if (group === "transfer" && command === "report") {
     // --days defaults to 14 for invites; this report's window is 30 days unless --days is given.
-    const days = process.argv.includes("--days") ? Number(values.days) : 30;
+    const days = Number(values.days ?? "30");
     if (!(Number.isInteger(days) && days >= 1 && days <= 90)) throw new Error("--days must be 1 to 90");
     const synapseUrl = process.env.SYNAPSE_DATABASE_URL?.trim();
     if (!synapseUrl) throw new Error("SYNAPSE_DATABASE_URL is not set");

@@ -40,5 +40,5 @@ test("recurring events expand inside the window, with COUNT, UNTIL, BYDAY and EX
 test("a feed holds times and the summary, and escapes text", () => {
   const ics = writeFeed([{ id: "b1", start: new Date(Date.UTC(2030, 0, 1, 9)), end: new Date(Date.UTC(2030, 0, 1, 10)), summary: "Zé, o; primeiro", cancelled: false }], new Date(0));
   assert.match(ics, /DTSTART:20300101T090000Z/);
-  assert.match(ics, /SUMMARY:Zé\\, o\; primeiro/);
+  assert.match(ics, /SUMMARY:Zé\\, o\\; primeiro/);
 });

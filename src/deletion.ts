@@ -304,6 +304,10 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q("DELETE FROM orders WHERE business_id = $1");
     await q("DELETE FROM order_settings WHERE business_id = $1");
     await q("DELETE FROM catalog_items WHERE business_id = $1");
+    await q("DELETE FROM business_tool_states WHERE business_id = $1");
+    await q("DELETE FROM business_work_settings WHERE business_id = $1");
+    await q("DELETE FROM business_suggestion_dismissals WHERE business_id = $1");
+    await q("DELETE FROM shop_tokens WHERE business_id = $1");
     // The user as a customer of other businesses: they keep the record without the account (product/data.json).
     await q(
       `UPDATE bookings SET customer_id = NULL, customer_name = $2, updated_at = now(),

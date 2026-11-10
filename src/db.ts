@@ -1191,6 +1191,10 @@ export const MIGRATIONS: readonly string[] = [
   // ADR 0283 rule 13 (bipe#1350): a signed-in phone resets a forgotten PIN, method device.
   `ALTER TABLE recoveries DROP CONSTRAINT recoveries_method_check;
    ALTER TABLE recoveries ADD CONSTRAINT recoveries_method_check CHECK (method IN ('token', 'email', 'guardian', 'cpf', 'apple', 'google', 'device'));`,
+  // Indexes for two hot lookups: the push filter reads business_chats by room on every push
+  // (push-filter.ts), and the invite reports and the invites foreign key read signups by invite.
+  `CREATE INDEX business_chats_room ON business_chats (room_id) WHERE assignee_seat_id IS NOT NULL;
+   CREATE INDEX signups_invite ON signups (invite_id) WHERE invite_id IS NOT NULL;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
