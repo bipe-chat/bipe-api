@@ -105,7 +105,7 @@
       "id": "platform_web",
       "once": false,
       "source": "synapse_db",
-      "detail": "A device of the user was last seen that day with a browser user agent (Element Web at chat.bipe.net.br). Same source and rule as platform_ios. n = 1.",
+      "detail": "A device of the user was last seen that day with a browser user agent (the web client at web.bipe.chat). Same source and rule as platform_ios. n = 1.",
       "content": "none"
     },
     {
