@@ -68,3 +68,11 @@ test("a zip with several CSVs: the source takes its _pj file", () => {
   assert.equal(parseRegister(adm, sourceText(adm, body))[0].category, "gestor de recursos");
   assert.throws(() => sourceText(intermed, zip({ "a.csv": "x", "b.csv": "y" })), /expected one CSV/);
 });
+
+test("every zip source names its CSV: the live zips carry extra _resp and _socios files", () => {
+  for (const [id, main, extra] of [["intermed", "cad_intermed.csv", "cad_intermed_resp.csv"], ["crowdfunding", "cad_crowdfunding.csv", "cad_crowdfunding_socios.csv"], ["coord_oferta", "cad_coord_oferta.csv", "cad_coord_oferta_resp.csv"]]) {
+    const source = CVM_SOURCES.find((s) => s.id === id);
+    assert.equal(sourceText(source, zip({ [main]: "main", [extra]: "extra" })), "main", id);
+  }
+  for (const source of CVM_SOURCES.filter((s) => s.path.endsWith(".zip"))) assert.ok(source.entry, source.id);
+});
