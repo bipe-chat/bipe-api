@@ -77,6 +77,7 @@ import { orderHousekeeping } from "./orders.js";
 import { assistantFacts, oneAssistant } from "./assistants.js";
 import { handleMcp, MCP_MAX_BODY_BYTES } from "./mcp.js";
 import { FeedPostBody, feedOfRoom, MyFeedBody, myFeed, setMyFeed, type FeedRoomState, type FeedStatus, feedPageHtml, feedRss, postPageHtml, publicFeedJson, publish, readFeed, readPost, removeOwnPost } from "./feeds.js";
+import { SiteChromeCache } from "./site-chrome.js";
 import { queueHousekeeping } from "./queue.js";
 import { quoteHousekeeping } from "./quotes.js";
 import { businessRoutes, CATALOG_PHOTO_PATH } from "./business-routes.js";
@@ -135,6 +136,7 @@ console.log(`badges: ${badges.state}`);
 // Reach tiers and the first-contact budget (bipe#851). Budgets and thresholds: REACH_* in the environment.
 const reachTiers = new ReachTiers(db, reach, reachSettings(config), (id) => badges.verifiedBrand(id));
 console.log(`first-contact budget: ${reachTiers.state}`);
+const siteChrome = new SiteChromeCache(config.PUBLIC_SITE_URL);
 const brandMarks = new BrandMarks(db, (id) => badges.verifiedBrand(id), config.PUBLIC_SITE_URL);
 console.log(`problem reports: stored; starlings intake: ${intake.enabled ? "on" : "off (no STARLINGS_APP_INTAKE_KEY)"}`);
 console.log(`visit report: ${visits.enabled ? "on" : "off (no UMAMI_DATABASE_URL)"}`);
@@ -1475,14 +1477,14 @@ app.get("/v1/web/feed/:handle", async (c) => {
   limits.feed.check(clientIp(c));
   const view = await readFeed(db, badges, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("handle"), c.req.query("before"));
   feedHeaders(c, view.status);
-  return c.html(feedPageHtml(config.PUBLIC_SITE_URL, view));
+  return c.html(feedPageHtml(config.PUBLIC_SITE_URL, view, await siteChrome.get()));
 });
 
 app.get("/v1/web/feed/:handle/p/:id", async (c) => {
   limits.feed.check(clientIp(c));
   const view = await readPost(db, badges, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("handle"), c.req.param("id"));
   feedHeaders(c, view.status);
-  return c.html(postPageHtml(config.PUBLIC_SITE_URL, view));
+  return c.html(postPageHtml(config.PUBLIC_SITE_URL, view, await siteChrome.get()));
 });
 
 app.get("/v1/web/feed/:handle/rss", async (c) => {
