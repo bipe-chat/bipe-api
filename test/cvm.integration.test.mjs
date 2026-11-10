@@ -17,7 +17,8 @@ function files({ stop = true, broken = false } = {}) {
     let text = csv([`${BROKER};A;EM FUNCIONAMENTO NORMAL;CORRETORA;Gestor de Recursos;2001-01-01;`]);
     if (s.id === "intermed") text = csv([`${BROKER};A;EM FUNCIONAMENTO NORMAL;CORRETORA;;2001-01-01;`, `${CANCELLED};B;CANCELADA;DISTRIBUIDORA;;1999-01-01;2010-05-06`, `${STOPPED};C;EM FUNCIONAMENTO NORMAL;CORRETORA;;2001-01-01;`]);
     if (broken && s.id === "crowdfunding") text = "CNPJ;NOME\r\n1;2";
-    const entry = s.entry ? "cad_pj.csv" : "cad.csv";
+    const base = s.path.split("/").pop().replace(/\.zip$/, "");
+    const entry = [`${base}.csv`, `${base}_pj.csv`].find((n) => !s.entry || s.entry.test(n));
     out[s.path] = s.path.endsWith(".zip") ? zip({ [entry]: text }) : Buffer.from(text, "latin1");
   }
   out[CVM_STOP_ORDERS] = Buffer.from([
