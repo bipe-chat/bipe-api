@@ -101,7 +101,7 @@ export class StaffReports {
 
   /**
    * User reports (bipe#380): Synapse event_reports, newest first. Only what the reporter sent (reason and score)
-   * and the room, to look it up in Element Admin. No reporter, no event, no message content.
+   * and the room. No reporter, no event, no message content.
    * Role bipe_growth has SELECT on these columns only (bipe-infra scripts/setup-growth.sh).
    */
   async reports(days: number) {

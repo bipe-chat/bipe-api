@@ -108,7 +108,7 @@ function serverOf(userId: string): string | null {
   return userId.startsWith("@") && colon >= 2 ? userId.slice(colon + 1) : null;
 }
 
-// Staff routes (ADR 0056): the caller must be a MAS admin, the same gate as Element Admin (ADR 0027).
+// Staff routes (ADR 0056): the caller must be a MAS admin (mas-cli manage promote-admin).
 // Everyone else gets not_found, so the routes do not show that they exist.
 export class StaffGate {
   private cache = new Map<string, { admin: boolean; until: number }>();
