@@ -6,8 +6,8 @@ import { resolveTxt } from "node:dns/promises";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
-import type { ControlProof, RegistryLookup } from "./schemes.js";
-import { brCnpj, orgScheme } from "./schemes-br.js";
+import { orgScheme, type ControlProof, type RegistryLookup } from "./schemes.js";
+import { brCnpj } from "./schemes-br.js";
 
 const MAX_DOMAINS = 5;
 const DOMAIN = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;

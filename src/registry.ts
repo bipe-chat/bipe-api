@@ -23,6 +23,12 @@ const schemeRules = reg.schemes as {
   personAssurance: { id: string }[];
   schemes: { class: string; assurance: string; alias?: string }[];
 };
+/** The rank of a person assurance, strongest first (registries/schemes.json personAssurance). Unknown: last. */
+export function personAssuranceOrder(assurance: string): number {
+  const i = schemeRules.personAssurance.findIndex((a) => a.id === assurance);
+  return i < 0 ? schemeRules.personAssurance.length : i;
+}
+
 /** The person badge levels, strongest first (ADR 0275, registries/schemes.json). */
 export const personLevels: string[] = schemeRules.personAssurance.flatMap((a) =>
   schemeRules.schemes.filter((s) => s.class === "person" && s.assurance === a.id && s.alias).map((s) => s.alias!),

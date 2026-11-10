@@ -1195,6 +1195,14 @@ export const MIGRATIONS: readonly string[] = [
   // (push-filter.ts), and the invite reports and the invites foreign key read signups by invite.
   `CREATE INDEX business_chats_room ON business_chats (room_id) WHERE assignee_seat_id IS NOT NULL;
    CREATE INDEX signups_invite ON signups (invite_id) WHERE invite_id IS NOT NULL;`,
+  // A person proof of any scheme (ADR 0272, bipe-chat/bipe#1195). The Brazilian levels pix and govbr name their scheme
+  // and keep scheme NULL; level person stores its scheme. One row per level and scheme.
+  `ALTER TABLE person_verifications ADD COLUMN scheme text;
+   ALTER TABLE person_verifications DROP CONSTRAINT person_verifications_level_check;
+   ALTER TABLE person_verifications ADD CONSTRAINT person_verifications_level_check CHECK (level IN ('pix', 'govbr', 'person'));
+   ALTER TABLE person_verifications ADD CONSTRAINT person_verifications_scheme_check CHECK ((level = 'person') = (scheme IS NOT NULL));
+   ALTER TABLE person_verifications DROP CONSTRAINT person_verifications_pkey;
+   CREATE UNIQUE INDEX person_verifications_proof ON person_verifications (user_id, level, (coalesce(scheme, '')));`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
