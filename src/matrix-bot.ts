@@ -108,7 +108,8 @@ export abstract class EncryptedBot {
       this.account.passphrase,
     );
     await this.processOutgoing();
-    // Element X sends room keys only to devices that their owner cross-signed. The first upload needs no
+    // A client that shares room keys only with devices their owner cross-signed (a matrix-rust-sdk setting)
+    // sends none to an unsigned bot device. The first upload needs no
     // re-authentication because the account has no cross-signing keys yet.
     const status = await this.machine.crossSigningStatus();
     if (!status.hasMaster) {
@@ -119,7 +120,7 @@ export abstract class EncryptedBot {
       console.log(`${this.account.label}: cross-signing keys uploaded`);
       return;
     }
-    // A device that the self-signing key did not sign gets no room keys from Element X. Before the
+    // A device that the self-signing key did not sign gets no room keys from such a client. Before the
     // signed_keys fix the first boot uploaded the keys and lost the device signature. With reset false
     // the machine keeps its keys and signs the device again; the signing keys on the server stay.
     const own = await this.machine.getDevice(new sdk.UserId(this.userId), new sdk.DeviceId(who.device_id));

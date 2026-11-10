@@ -16,7 +16,7 @@ export const BODY_MAX_BYTES = 50 * 1024 * 1024;
 const TEXT_MAX = 5000;
 // The Starlings intake line: a long report is cut, the full text stays in the staff view.
 const INTAKE_TEXT_MAX = 4000;
-// Element X sends one gzip part per log file, and a phone can hold many rotated logs. Over the limit the report
+// The apps send one gzip part per log file, and a phone can hold many rotated logs. Over the limit the report
 // keeps the first MAX_LOGS and is not refused: BODY_MAX_BYTES caps the size.
 const MAX_LOGS = 100;
 const MAX_SHOTS = 10;
