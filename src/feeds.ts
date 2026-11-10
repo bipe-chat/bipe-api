@@ -11,6 +11,7 @@ import { ApiError } from "./errors.js";
 import { roomFacts, type RoomStateEvent } from "./group-links.js";
 import { handleKey, publicProfile } from "./profiles.js";
 import { appString } from "./registry.js";
+import type { SiteChrome } from "./site-chrome.js";
 
 export const PAGE_SIZE = 20;
 const ADMIN_LEVEL = 50;
@@ -290,7 +291,7 @@ export function postHtml(text: string): string {
       out += escape(m[0]);
       continue;
     }
-    out += `<a href="${escape(m[0])}" rel="nofollow ugc noopener noreferrer">${escape(m[0])}</a> <span class="domain">${escape(host.replace(/^www\./, ""))}</span>`;
+    out += `<a href="${escape(m[0])}" rel="nofollow ugc noopener noreferrer">${escape(m[0])}</a> <span class="feed-domain">${escape(host.replace(/^www\./, ""))}</span>`;
   }
   out += escape(text.slice(last));
   return out.replace(/\n/g, "<br>");
@@ -299,25 +300,16 @@ export function postHtml(text: string): string {
 const dateLabel = (iso: string) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 
-const STYLE = `:root{color-scheme:light dark;--bg:#fff;--fg:#101317;--muted:#5b6470;--line:#e4e7eb;--accent:#5b2a86}
-@media (prefers-color-scheme:dark){:root{--bg:#101317;--fg:#eef0f3;--muted:#a3abb6;--line:#262b31;--accent:#c9a3f0}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:640px;margin:0 auto;padding:24px 16px 48px}header{display:flex;gap:14px;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--line)}
-header img{width:64px;height:64px;border-radius:50%;object-fit:cover}h1{font-size:1.25rem;margin:0}.handle{color:var(--muted);margin:0}
-.seal{color:var(--accent);font-weight:600}.label{display:inline-block;font-size:.75rem;border:1px solid var(--line);border-radius:999px;padding:0 8px;color:var(--muted);margin-top:4px}
-article{padding:16px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}article p{margin:0 0 8px}a{color:var(--accent)}
-.domain{font-size:.8rem;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px}time a{color:var(--muted);font-size:.85rem;text-decoration:none}
-.empty,.more{color:var(--muted);padding:16px 0}.cta{margin-top:24px;padding:16px;border:1px solid var(--line);border-radius:12px}`;
 
-function page(opts: { siteUrl: string; view: { status: FeedStatus; profile: FeedView["profile"] }; title: string; canonical: string; body: string; description: string }): string {
+type PageView = { status: FeedStatus; profile: FeedView["profile"] };
+type PageOpts = { siteUrl: string; view: PageView; title: string; canonical: string; description: string; chrome: SiteChrome | null };
+/** The parts between the profile head and the install card: bio, posts, links. */
+type PageBody = { bio: boolean; posts: string; more: string };
+
+function headTags(opts: PageOpts): string {
   const { profile, status } = opts.view;
   const site = opts.siteUrl.replace(/\/$/, "");
-  const verified = profile.badge ? ` <span class="seal">✓</span>` : "";
-  const photo = profile.photo_url ? `<img src="${escape(profile.photo_url)}" alt="">` : "";
-  return `<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
+  return `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 ${status === "test" ? '<meta name="robots" content="noindex,nofollow">\n' : ""}<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>${escape(opts.title)}</title>
@@ -329,20 +321,74 @@ ${status === "test" ? '<meta name="robots" content="noindex,nofollow">\n' : ""}<
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Bipe">
 <meta property="og:locale" content="pt_BR">
-${profile.photo_url ? `<meta property="og:image" content="${escape(profile.photo_url)}">\n` : `<meta property="og:image" content="${site}/og/perfil.jpg">\n<meta property="og:image:type" content="image/jpeg">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta name="twitter:card" content="summary_large_image">\n`}<style>${STYLE}</style>
+${profile.photo_url ? `<meta property="og:image" content="${escape(profile.photo_url)}">\n` : `<meta property="og:image" content="${site}/og/perfil.jpg">\n<meta property="og:image:type" content="image/jpeg">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta name="twitter:card" content="summary_large_image">\n`}`;
+}
+
+/** Inside the site chrome (src/site-chrome.ts): the same classes as the site's /@handle profile page. */
+function sitePage(opts: PageOpts, chrome: SiteChrome, body: PageBody): string {
+  const { profile } = opts.view;
+  const site = opts.siteUrl.replace(/\/$/, "");
+  const photo = profile.photo_url
+    ? `<img class="profile-photo" src="${escape(profile.photo_url)}" alt="" width="112" height="112" referrerpolicy="no-referrer">`
+    : "";
+  const seal = profile.badge ? ` ${chrome.companySeal}` : "";
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+${headTags(opts)}${chrome.head}
+</head>
+<body>
+${chrome.before}<section class="wrap narrow section profile">
+${photo}<h1 style="overflow-wrap:anywhere"><a href="${site}/@${escape(profile.handle)}" style="color:inherit;text-decoration:none">${escape(profile.name)}</a>${seal}</h1>
+<p class="profile-handle">@${escape(profile.handle)}</p>
+<p class="feed-label"><span class="chip policy">${escape(appString("pt", "bipe_feed_public_label"))}</span></p>
+${body.bio && profile.bio ? `<p class="profile-bio">${escape(profile.bio)}</p>\n` : ""}${body.posts}
+${body.more}
+<div class="link-card"><div><p><a href="${site}/baixar/">${escape(appString("pt", "bipe_feed_notify", profile.name))}</a></p></div></div>
+</section>${chrome.after}
+</body>
+</html>
+`;
+}
+
+const STANDALONE_STYLE = `:root{color-scheme:light dark;--bg:#fff;--fg:#101317;--muted:#5b6470;--line:#e4e7eb;--accent:#5b2a86}
+@media (prefers-color-scheme:dark){:root{--bg:#101317;--fg:#eef0f3;--muted:#a3abb6;--line:#262b31;--accent:#c9a3f0}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:24px 16px 48px}header{display:flex;gap:14px;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--line)}
+header img{width:64px;height:64px;border-radius:50%;object-fit:cover}h1{font-size:1.25rem;margin:0}.handle{color:var(--muted);margin:0}
+.seal{color:var(--accent);font-weight:600}.label{display:inline-block;font-size:.75rem;border:1px solid var(--line);border-radius:999px;padding:0 8px;color:var(--muted);margin-top:4px}
+ol{list-style:none;margin:0;padding:0}article{padding:16px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}article p{margin:0 0 8px}a{color:var(--accent)}
+.feed-domain{font-size:.8rem;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px}time a{color:var(--muted);font-size:.85rem;text-decoration:none}
+.feed-empty,.feed-more{color:var(--muted);padding:16px 0;margin:0}.link-card{margin-top:24px;padding:16px;border:1px solid var(--line);border-radius:12px}.link-card p{margin:0}`;
+
+/** Without the site chrome (no fetch has worked yet): the page carries its own small style. */
+function standalonePage(opts: PageOpts, body: PageBody): string {
+  const { profile } = opts.view;
+  const site = opts.siteUrl.replace(/\/$/, "");
+  const verified = profile.badge ? ` <span class="seal">✓</span>` : "";
+  const photo = profile.photo_url ? `<img src="${escape(profile.photo_url)}" alt="">` : "";
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+${headTags(opts)}<style>${STANDALONE_STYLE}</style>
 </head>
 <body><main>
 <header>${photo}<div><h1><a href="${site}/@${escape(profile.handle)}" style="color:inherit;text-decoration:none">${escape(profile.name)}</a>${verified}</h1>
 <p class="handle">@${escape(profile.handle)}</p><span class="label">${escape(appString("pt", "bipe_feed_public_label"))}</span></div></header>
-${opts.body}
-<p class="cta"><a href="${site}/baixar/">${escape(appString("pt", "bipe_feed_notify", profile.name))}</a></p>
+${body.bio && profile.bio ? `<p>${escape(profile.bio)}</p>\n` : ""}${body.posts}
+${body.more}
+<div class="link-card"><p><a href="${site}/baixar/">${escape(appString("pt", "bipe_feed_notify", profile.name))}</a></p></div>
 </main></body>
 </html>
 `;
 }
 
+function page(opts: PageOpts, body: PageBody): string {
+  return opts.chrome ? sitePage(opts, opts.chrome, body) : standalonePage(opts, body);
+}
+
 function articleHtml(post: { id: string; text: string; created_at: string; url: string }): string {
-  return `<article><p>${postHtml(post.text)}</p><time datetime="${post.created_at}"><a href="${escape(post.url)}">${escape(dateLabel(post.created_at))}</a></time></article>`;
+  return `<li><article class="feed-post"><p>${postHtml(post.text)}</p><time datetime="${post.created_at}"><a href="${escape(post.url)}">${escape(dateLabel(post.created_at))}</a></time></article></li>`;
 }
 
 const snippet = (text: string, max = 160) => {
@@ -350,37 +396,43 @@ const snippet = (text: string, max = 160) => {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 };
 
-export function feedPageHtml(siteUrl: string, view: FeedView): string {
+const moreLink = (href: string, label: string) =>
+  `<p class="feed-more"><a class="button secondary compact" href="${escape(href)}">${escape(label)}</a></p>`;
+
+export function feedPageHtml(siteUrl: string, view: FeedView, chrome: SiteChrome | null = null): string {
   const site = siteUrl.replace(/\/$/, "");
   const h = view.profile.handle;
-  const list = view.posts.length
-    ? view.posts.map(articleHtml).join("\n")
-    : `<p class="empty">${escape(appString("pt", "bipe_feed_empty"))}</p>`;
-  const more = view.next_before
-    ? `<p class="more"><a href="${site}/@${escape(h)}?before=${encodeURIComponent(view.next_before)}">${escape(appString("pt", "bipe_feed_older"))}</a></p>`
-    : "";
-  const bio = view.profile.bio ? escape(view.profile.bio) : appString("pt", "bipe_feed_page_title", view.profile.name);
-  return page({
-    siteUrl,
-    view,
-    title: appString("pt", "bipe_feed_page_title", view.profile.name),
-    canonical: `${site}/@${h}`,
-    description: view.profile.bio ?? appString("pt", "bipe_feed_page_title", view.profile.name),
-    body: `${view.profile.bio ? `<p>${bio}</p>` : ""}\n${list}\n${more}`,
-  });
+  const posts = view.posts.length
+    ? `<ol class="feed-posts">\n${view.posts.map(articleHtml).join("\n")}\n</ol>`
+    : `<p class="feed-empty">${escape(appString("pt", "bipe_feed_empty"))}</p>`;
+  const more = view.next_before ? moreLink(`${site}/@${h}?before=${encodeURIComponent(view.next_before)}`, appString("pt", "bipe_feed_older")) : "";
+  return page(
+    {
+      siteUrl,
+      view,
+      chrome,
+      title: appString("pt", "bipe_feed_page_title", view.profile.name),
+      canonical: `${site}/@${h}`,
+      description: view.profile.bio ?? appString("pt", "bipe_feed_page_title", view.profile.name),
+    },
+    { bio: true, posts, more },
+  );
 }
 
-export function postPageHtml(siteUrl: string, view: Awaited<ReturnType<typeof readPost>>): string {
+export function postPageHtml(siteUrl: string, view: Awaited<ReturnType<typeof readPost>>, chrome: SiteChrome | null = null): string {
   const site = siteUrl.replace(/\/$/, "");
   const h = view.profile.handle;
-  return page({
-    siteUrl,
-    view,
-    title: `${view.profile.name}: ${snippet(view.post.text, 60)}`,
-    canonical: view.post.url,
-    description: snippet(view.post.text),
-    body: `${articleHtml(view.post)}\n<p class="more"><a href="${site}/@${escape(h)}">${escape(appString("pt", "bipe_feed_all_posts"))}</a></p>`,
-  });
+  return page(
+    {
+      siteUrl,
+      view,
+      chrome,
+      title: `${view.profile.name}: ${snippet(view.post.text, 60)}`,
+      canonical: view.post.url,
+      description: snippet(view.post.text),
+    },
+    { bio: false, posts: `<ol class="feed-posts">\n${articleHtml(view.post)}\n</ol>`, more: moreLink(`${site}/@${h}`, appString("pt", "bipe_feed_all_posts")) },
+  );
 }
 
 const xml = (s: string) => escape(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
