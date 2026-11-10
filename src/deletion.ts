@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { notify, verifyPin, type AccountDeps } from "./accounts.js";
 import { forgetBugReports } from "./bug-reports.js";
+import { appendDeletionLog, type LoggedDeletion } from "./deletion-log.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { removeHandle } from "./handles.js";
@@ -24,6 +25,8 @@ export interface DeletionDeps extends AccountDeps {
   bugReportsDir: string;
   /** Accounts that never get a room handed over (the support and news bots). */
   serviceUsers?: string[];
+  /** The deletion log outside the database (bipe#1355, deletion-log.ts). Unset: no log line. */
+  deletionLogDir?: string;
 }
 
 type Ready = DeletionDeps & { synapse: SynapseAdminApi };
@@ -161,6 +164,10 @@ async function runOne(deps: Ready, row: DeletionRow): Promise<boolean> {
       await runStep(deps, row, step);
       await deps.db.query("UPDATE account_deletions SET step = $2, last_error = NULL WHERE id = $1", [row.id, step]);
       row.step = step;
+    }
+    // The log line goes before the row is done: a failed write keeps the request open, and the job tries again.
+    if (deps.deletionLogDir) {
+      await appendDeletionLog(deps.deletionLogDir, { user_id: row.user_id, done_at: new Date().toISOString(), redact: row.redact_messages });
     }
     await deps.db.query(
       `UPDATE account_deletions SET state = 'done', done_at = now(), device_id = NULL, redact_id = NULL, next_try_at = NULL,
@@ -457,3 +464,47 @@ export async function deletionStatus(db: Db) {
 }
 
 export const DELETION_TICK_MS = 60_000;
+
+/**
+ * Restore replay (bipe#1355, CLI `deletion replay --since <dump time>`): queues again each logged deletion that finished
+ * after the dump, so the job runs every step again on the restored data. A request still open in the dump is made due
+ * now. A request already done in the dump is left alone. Returns the request ids to wait for.
+ */
+export async function requeueLogged(db: Db, entries: LoggedDeletion[], since: Date): Promise<string[]> {
+  const latest = new Map<string, LoggedDeletion>();
+  for (const e of entries) {
+    if (Date.parse(e.done_at) <= since.getTime()) continue;
+    const seen = latest.get(e.user_id);
+    latest.set(e.user_id, { ...e, redact: e.redact || (seen?.redact ?? false) });
+  }
+  const ids: string[] = [];
+  for (const e of latest.values()) {
+    const open = await db.query<{ id: string }>(
+      `UPDATE account_deletions SET due_at = least(due_at, now()), next_try_at = NULL, redact_messages = redact_messages OR $2
+       WHERE user_id = $1 AND state IN ('waiting', 'running') RETURNING id`,
+      [e.user_id, e.redact],
+    );
+    if (open.rows[0]) {
+      ids.push(open.rows[0].id);
+      continue;
+    }
+    const done = await db.query("SELECT 1 FROM account_deletions WHERE user_id = $1 AND state = 'done'", [e.user_id]);
+    if (done.rows.length > 0) continue;
+    const id = newId();
+    await db.query(
+      "INSERT INTO account_deletions (id, user_id, device_id, redact_messages, state, due_at) VALUES ($1, $2, NULL, $3, 'waiting', now())",
+      [id, e.user_id, e.redact],
+    );
+    ids.push(id);
+  }
+  return ids;
+}
+
+/** How many of the replayed requests are not done yet, and the failing ones. No user IDs. */
+export async function replayProgress(db: Db, ids: string[]) {
+  const { rows } = await db.query<{ id: string; state: string; step: string | null; last_error: string | null }>(
+    "SELECT id, state, step, last_error FROM account_deletions WHERE id = ANY($1)",
+    [ids],
+  );
+  return { open: rows.filter((r) => r.state !== "done").length, failing: rows.filter((r) => r.state !== "done" && r.last_error) };
+}

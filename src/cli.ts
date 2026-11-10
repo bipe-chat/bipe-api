@@ -55,6 +55,8 @@
 //   node dist/cli.js assistant list
 //   node dist/cli.js reach show <user_id|@handle> [--days 30]   (bipe#845: first contacts sent, accepted, declined, ignored, blocked, reported per day)
 //   node dist/cli.js deletion status                 (ADR 0140: requests per state, and the ids, steps and errors of failing ones; no user IDs)
+//   node dist/cli.js deletion replay --since <ISO time of the dump>   (bipe#1355, after a restore and before users come back: queues the
+//                                                    logged deletions again and waits until the running API's job finishes them)
 import { parseArgs } from "node:util";
 import { migrate, openDb } from "./db.js";
 import { createInvite, grantInvites, inviterReport, revokeAllOf } from "./invites.js";
@@ -84,7 +86,8 @@ import { newSecret } from "./secrets.js";
 import { loadConfig } from "./config.js";
 import { Mas } from "./mas.js";
 import { Theft } from "./theft.js";
-import { deletionStatus } from "./deletion.js";
+import { deletionStatus, replayProgress, requeueLogged } from "./deletion.js";
+import { readDeletionLog } from "./deletion-log.js";
 import { Reach } from "./reach.js";
 import { staffCreateFeed, staffListFeeds, staffRemovePost, staffSetFeedEnabled, staffTestPost } from "./feeds.js";
 
@@ -335,6 +338,29 @@ try {
     const reach = new Reach(db, { serverName: config.SERVER_NAME });
     console.log(`First contacts by ${userId}, per day in Brazil. Ignored settles when a first contact is ${reachRules.recipientDays} days old.`);
     console.table(await reach.daily(userId, days));
+  } else if (group === "deletion" && command === "replay") {
+    // --since has a default for other commands, so the replay asks for it on the command line.
+    if (!process.argv.includes("--since")) throw new Error("deletion replay needs --since <ISO time of the restored dump>");
+    const since = new Date(values.since!);
+    if (Number.isNaN(since.getTime())) throw new Error("--since must be an ISO time, for example 2026-11-10T03:17:00Z");
+    const log = await readDeletionLog(process.env.DELETION_LOG_DIR ?? "/data/deletion-log");
+    if (log.unreadable > 0) console.error(`WARNING: ${log.unreadable} unreadable lines in the deletion log: check the file by hand`);
+    const ids = await requeueLogged(db, log.entries, since);
+    console.log(`queued ${ids.length} deletions again; the API's deletion job runs them`);
+    // Waits up to 30 minutes. The API must run (its job does the steps) with users kept out.
+    for (let i = 0; ids.length > 0; i++) {
+      const p = await replayProgress(db, ids);
+      if (p.open === 0) {
+        console.log("replay done: every logged deletion is done again");
+        break;
+      }
+      if (i >= 180) {
+        console.table(p.failing);
+        throw new Error(`${p.open} replayed deletions are not done after 30 minutes: see deletion status`);
+      }
+      if (i % 6 === 0) console.log(`${p.open} not done yet${p.failing.length > 0 ? `, ${p.failing.length} failing` : ""}`);
+      await new Promise((r) => setTimeout(r, 10_000));
+    }
   } else if (group === "deletion" && command === "status") {
     const status = await deletionStatus(db);
     console.table(status.counts);
@@ -378,7 +404,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | handle move HANDLE|@from @to | feed create HANDLE !room:server | feed list | feed off|on HANDLE | feed test-post HANDLE TEXT | feed remove-post ID | experiment report ID | growth report [--since YYYY-MM-DD] | account count | account number @user | transfer report [--days N] | reach show @user [--days N] | deletion status | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | handle move HANDLE|@from @to | feed create HANDLE !room:server | feed list | feed off|on HANDLE | feed test-post HANDLE TEXT | feed remove-post ID | experiment report ID | growth report [--since YYYY-MM-DD] | account count | account number @user | transfer report [--days N] | reach show @user [--days N] | deletion status | deletion replay --since ISO | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
     process.exitCode = 2;
   }
 } finally {
