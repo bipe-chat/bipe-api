@@ -11,16 +11,17 @@ const BASE = "https://dados.cvm.gov.br/dados";
 const UA = "Mozilla/5.0 (compatible; bipe-api; +https://bipe.chat)";
 export const CVM_MAX_AGE_MS = 7 * 86_400_000;
 
-/** One provider register (ADR 0077 table). `label`: the category when the file has no category column. */
+/** One provider register (ADR 0077 table). `entry`: the CSV to read when the zip holds more than one (since
+ *  November 2026 every CVM zip also carries _resp, _socios or _diretor files). `label`: the category when the file has no category column. */
 export type CvmSource = { id: string; path: string; entry?: RegExp; categoryColumn?: string; label?: string };
 
 export const CVM_SOURCES: CvmSource[] = [
-  { id: "intermed", path: "INTERMED/CAD/DADOS/cad_intermed.zip", categoryColumn: "TP_PARTIC" },
+  { id: "intermed", path: "INTERMED/CAD/DADOS/cad_intermed.zip", entry: /^cad_intermed\.csv$/i, categoryColumn: "TP_PARTIC" },
   { id: "adm_cart", path: "ADM_CART/CAD/DADOS/cad_adm_cart.zip", entry: /_pj\.csv$/i, categoryColumn: "CATEG_REG" },
   { id: "consultor", path: "CONSULTOR_VLMOB/CAD/DADOS/cad_consultor_vlmob.zip", entry: /_pj\.csv$/i, label: "consultora de valores mobiliários" },
   { id: "agente_auton", path: "AGENTE_AUTON/CAD/DADOS/cad_agente_auton.zip", entry: /_pj\.csv$/i, label: "assessora de investimento" },
-  { id: "crowdfunding", path: "CROWDFUNDING/CAD/DADOS/cad_crowdfunding.zip", label: "plataforma de investimento participativo" },
-  { id: "coord_oferta", path: "COORD_OFERTA/CAD/DADOS/cad_coord_oferta.zip", label: "coordenadora de ofertas" },
+  { id: "crowdfunding", path: "CROWDFUNDING/CAD/DADOS/cad_crowdfunding.zip", entry: /^cad_crowdfunding\.csv$/i, label: "plataforma de investimento participativo" },
+  { id: "coord_oferta", path: "COORD_OFERTA/CAD/DADOS/cad_coord_oferta.zip", entry: /^cad_coord_oferta\.csv$/i, label: "coordenadora de ofertas" },
   { id: "adm_fii", path: "ADM_FII/CAD/DADOS/cad_adm_fii.csv", label: "administradora de fundos imobiliários" },
 ];
 export const CVM_STOP_ORDERS = "ATO_DECLR/INTERMED/DADOS/ato_declr.csv";
