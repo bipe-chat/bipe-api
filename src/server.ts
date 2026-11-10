@@ -48,6 +48,7 @@ import { finishWebLink, Geo, signOutWebLinks } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
+import { pruneDeletionLog } from "./deletion-log.js";
 import { deleteLocalMedia, SynapseAdmin } from "./synapse-admin.js";
 import { CAPACITY_SAMPLE_PATH, CapacitySample, capacityReport, checkAlerts, pruneCapacity, recordSample } from "./capacity.js";
 import { accountCount, businessReport, experimentsReport, StaffReports, waitlistReport } from "./staff-reports.js";
@@ -380,13 +381,14 @@ const deletions: DeletionDeps = {
   synapse: synapseAdmin,
   bugReportsDir: config.BUG_REPORTS_DIR,
   serviceUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID, config.GROUPS_USER_ID],
+  deletionLogDir: config.DELETION_LOG_DIR,
 };
 console.log(`account deletion job: ${deletions.synapse ? "on" : "off (no SYNAPSE_ADMIN_TOKEN): requests wait"}`);
 const deletionJob = () => void runDueDeletions(deletions).catch((e) => console.error(`deletion job failed: ${(e as Error).message}`));
 setInterval(deletionJob, DELETION_TICK_MS).unref();
 const pruneDeletionRecords = () =>
-  void pruneDeletions(db)
-    .then((n) => n > 0 && console.log(`deletion records pruned: ${n}`))
+  void Promise.all([pruneDeletions(db), pruneDeletionLog(config.DELETION_LOG_DIR)])
+    .then(([n, lines]) => (n > 0 || lines > 0) && console.log(`deletion records pruned: ${n}, deletion log lines pruned: ${lines}`))
     .catch((e) => console.error(`deletion prune failed: ${(e as Error).message}`));
 pruneDeletionRecords();
 setInterval(pruneDeletionRecords, 24 * 3_600_000).unref();
