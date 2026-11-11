@@ -44,7 +44,7 @@ import { PinHasher, SECRET_PATTERN, secretHash } from "./secrets.js";
 import { Growth, growthNumbers } from "./growth.js";
 import { Visits } from "./visits.js";
 import { researchRoutes } from "./research/routes.js";
-import { finishWebLink, Geo, signOutWebLinks } from "./weblink.js";
+import { finishWebLink, Geo, signOutDevice, signOutOtherDevices, signOutWebLinks } from "./weblink.js";
 import { staffGrowth } from "./staff-report.js";
 import { recordKeychainMove } from "./transfer.js";
 import { cancelDeletion, DELETION_TICK_MS, pruneDeletions, requestDeletion, runDueDeletions, type DeletionDeps } from "./deletion.js";
@@ -223,6 +223,7 @@ const limits = {
   // Web sign-in approval (ADR 0118).
   webLinkFinish: new RateLimiter(20, 3_600_000),
   webLinkPlace: new RateLimiter(60, 3_600_000),
+  deviceSignOut: new RateLimiter(20, 3_600_000),
   // Problem reports (bipe#367).
   bugReport: new RateLimiter(10, 3_600_000),
   bugReportGlobal: new RateLimiter(500, 3_600_000),
@@ -739,6 +740,31 @@ app.post("/v1/web-link/sign-out", async (c) => {
   const { userId, deviceId } = await auth.session(c.req.header("authorization"));
   limits.webLinkFinish.check(userId);
   return c.json({ signed_out: await signOutWebLinks(mas, db, userId, deviceId) });
+});
+
+// Aparelhos e assistentes (ADR 0291, bipe#1480): the phone signs out one device or all others, after its biometric
+// check. Company accounts: owner only (ownerOf). Never log a device ID.
+const DeviceIdParam = z.string().min(1).max(255).regex(/^[\x21-\x7e]+$/);
+async function masIdOf(userId: string): Promise<string> {
+  const user = await mas.userByUsername(userId.slice(1).split(":")[0]!);
+  if (!user) throw new ApiError("unauthorized");
+  return user.id;
+}
+app.delete("/v1/me/devices/:deviceId", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  await requireOwnerDevice({ db, mas }, userId, deviceId);
+  limits.deviceSignOut.check(userId);
+  const target = DeviceIdParam.safeParse(c.req.param("deviceId"));
+  if (!target.success) throw new ApiError("bad_request", "device_id");
+  await signOutDevice(mas, db, await masIdOf(userId), userId, deviceId, target.data);
+  return c.body(null, 204);
+});
+
+app.post("/v1/me/devices/sign-out-others", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  await requireOwnerDevice({ db, mas }, userId, deviceId);
+  limits.deviceSignOut.check(userId);
+  return c.json({ signed_out: await signOutOtherDevices(mas, db, await masIdOf(userId), userId, deviceId) });
 });
 
 app.get("/v1/web-link/place", async (c) => {
