@@ -99,6 +99,50 @@ export async function signOutWebLinks(mas: Mas, db: Db, userId: string, deviceId
   return endWebLinks(mas, db, user.id, userId, deviceId);
 }
 
+/** True when the device is a web session that a phone of the account approved (table web_links). */
+async function isWebDevice(db: Db, userId: string, deviceId: string): Promise<boolean> {
+  const { rows } = await db.query("SELECT 1 FROM web_links WHERE user_id = $1 AND web_device_id = $2", [userId, deviceId]);
+  return rows.length > 0;
+}
+
+/** Only a phone signs devices out (ADR 0291): refuses a caller without a device or a caller that is a recorded web session. */
+async function requirePhoneCaller(db: Db, userId: string, callerDeviceId: string | null): Promise<string> {
+  if (!callerDeviceId) throw new ApiError("bad_request", "device");
+  if (await isWebDevice(db, userId, callerDeviceId)) throw new ApiError("bad_request", "web_device");
+  return callerDeviceId;
+}
+
+/**
+ * DELETE /v1/me/devices/{deviceId} (ADR 0291, bipe#1480): finishes every active MAS session of the account whose
+ * Matrix device is the target, then forgets the target's web sign-in record. Throws not_found when no active session
+ * has that device. The caller's own device is refused: that is sign-out.
+ */
+export async function signOutDevice(mas: WebLinkMas, db: Db, masId: string, userId: string, callerDeviceId: string | null, targetDeviceId: string): Promise<void> {
+  const caller = await requirePhoneCaller(db, userId, callerDeviceId);
+  if (targetDeviceId === caller) throw new ApiError("bad_request", "own_device");
+  const sessions = (await mas.activeSessions(masId)).filter((s) => s.deviceId === targetDeviceId);
+  if (sessions.length === 0) throw new ApiError("not_found");
+  for (const session of sessions) await mas.finishSession(session);
+  await db.query("DELETE FROM web_links WHERE user_id = $1 AND web_device_id = $2", [userId, targetDeviceId]);
+}
+
+/**
+ * POST /v1/me/devices/sign-out-others (ADR 0291, bipe#1480): finishes every active MAS session of the account except
+ * the caller device's sessions. MAS browser sessions with no device are finished too: one of them can approve a new
+ * device. Forgets the web sign-in records of the devices it signed out. Returns the number of devices signed out.
+ */
+export async function signOutOtherDevices(mas: WebLinkMas, db: Db, masId: string, userId: string, callerDeviceId: string | null): Promise<number> {
+  const caller = await requirePhoneCaller(db, userId, callerDeviceId);
+  const ended = new Set<string>();
+  for (const session of await mas.activeSessions(masId)) {
+    if (session.deviceId === caller) continue;
+    await mas.finishSession(session);
+    if (session.deviceId) ended.add(session.deviceId);
+  }
+  if (ended.size > 0) await db.query("DELETE FROM web_links WHERE user_id = $1 AND web_device_id = ANY($2::text[])", [userId, [...ended]]);
+  return ended.size;
+}
+
 export type Place = { city?: string; region?: string; country?: string };
 
 /**
