@@ -372,6 +372,9 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q("DELETE FROM group_link_joins WHERE user_id = $1");
     await q("DELETE FROM phone_moves WHERE from_user = $1 OR to_user = $1");
     await q("DELETE FROM handle_moves WHERE from_user = $1");
+    // bipe#1180: reports on the owner's posts go with the posts; the action log keeps its lines without the owner.
+    await q("DELETE FROM public_feed_reports WHERE post_id IN (SELECT id FROM public_feed_posts WHERE user_id = $1)");
+    await q("UPDATE public_feed_actions SET owner_id = NULL, handle = NULL WHERE owner_id = $1");
     for (const table of [
       "signups",
       "account_secrets",
