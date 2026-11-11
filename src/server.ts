@@ -76,7 +76,8 @@ import { businessPushes, runBusinessPushes } from "./business-pushes.js";
 import { orderHousekeeping } from "./orders.js";
 import { assistantFacts, oneAssistant } from "./assistants.js";
 import { handleMcp, MCP_MAX_BODY_BYTES } from "./mcp.js";
-import { FeedPostBody, feedOfRoom, MyFeedBody, myFeed, setMyFeed, type FeedRoomState, type FeedStatus, feedPageHtml, feedRss, postPageHtml, publicFeedJson, publish, readFeed, readPost, removeOwnPost } from "./feeds.js";
+import { FeedReportForm, pruneFeedReports, reportAlert, reportPost } from "./feed-reports.js";
+import { FeedPostBody, feedOfRoom, MyFeedBody, myFeed, setMyFeed, type FeedRoomState, type FeedStatus, feedPageHtml, feedRss, postPageHtml, postUrl, publicFeedJson, publish, readFeed, readPost, removeOwnPost } from "./feeds.js";
 import { SiteChromeCache } from "./site-chrome.js";
 import { queueHousekeeping } from "./queue.js";
 import { quoteHousekeeping } from "./quotes.js";
@@ -182,6 +183,7 @@ const limits = {
   profilePhoto: new RateLimiter(120, 60_000),
   feed: new RateLimiter(120, 60_000),
   feedPost: new RateLimiter(30, 3_600_000),
+  feedReport: new RateLimiter(10, 3_600_000),
   badge: new RateLimiter(120, 60_000),
   accountType: new RateLimiter(300, 60_000),
   setProfile: new RateLimiter(30, 3_600_000),
@@ -271,6 +273,10 @@ const pruneRetention = () =>
     .catch((e) => console.error(`retention prune failed: ${(e as Error).message}`));
 pruneRetention();
 setInterval(pruneRetention, 24 * 3_600_000).unref();
+// Feed reports and the action log go after 2 years (bipe#1180).
+const pruneFeedReportRows = () => void pruneFeedReports(db).catch((e) => console.error(`feed report prune failed: ${(e as Error).message}`));
+pruneFeedReportRows();
+setInterval(pruneFeedReportRows, 24 * 3_600_000).unref();
 // Signed list versions that came in after this image was built (bipe-chat/bipe#1242), and those a second pod took.
 const loadLists = () => void loadStoredLists(db).catch((e) => console.error(`signed list load failed: ${(e as Error).message}`));
 await loadStoredLists(db);
@@ -1484,7 +1490,22 @@ app.get("/v1/web/feed/:handle/p/:id", async (c) => {
   limits.feed.check(clientIp(c));
   const view = await readPost(db, badges, config.PUBLIC_SITE_URL, config.PUBLIC_API_URL, c.req.param("handle"), c.req.param("id"));
   feedHeaders(c, view.status);
-  return c.html(postPageHtml(config.PUBLIC_SITE_URL, view, await siteChrome.get()));
+  const report = { apiUrl: config.PUBLIC_API_URL, reported: c.req.query("denuncia") === "1" };
+  return c.html(postPageHtml(config.PUBLIC_SITE_URL, view, await siteChrome.get(), report));
+});
+
+// A report from the post page (bipe#1180): a plain form post, 303 back to the post. No reporter, no address is kept.
+app.post("/v1/web/feed/:handle/p/:id/report", async (c) => {
+  limits.feedReport.check(clientIp(c));
+  const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+  const parsed = FeedReportForm.safeParse(form);
+  if (!parsed.success) throw new ApiError("bad_request", "reason");
+  const report = await reportPost(db, c.req.param("handle"), c.req.param("id"), parsed.data.reason);
+  if (support.enabled && config.CAPACITY_ALERT_USERS.length > 0) {
+    void support.staffAlert(config.CAPACITY_ALERT_USERS, reportAlert(config.PUBLIC_SITE_URL, report))
+      .catch((e) => console.error(`feed report alert failed: ${(e as Error).message}`));
+  }
+  return c.redirect(`${postUrl(config.PUBLIC_SITE_URL, report.handle, report.postId)}?denuncia=1`, 303);
 });
 
 app.get("/v1/web/feed/:handle/rss", async (c) => {

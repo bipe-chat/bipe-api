@@ -34,7 +34,11 @@
 //   node dist/cli.js feed list                         (handle, room, status, on or off, live posts)
 //   node dist/cli.js feed off <handle> | feed on <handle>
 //   node dist/cli.js feed test-post <handle> <text>    (test feeds only: a post as the handle owner, before the apps send posts, bipe#1260)
-//   node dist/cli.js feed remove-post <id>             (takedown: the post leaves the page at once)
+//   node dist/cli.js feed remove-post <id> [reason]    (takedown: the post leaves the page at once; logged for the transparency report)
+//   node dist/cli.js feed restore-post <id> [reason]   (bipe#1180: a granted appeal puts a post that staff removed back)
+//   node dist/cli.js feed reports [--all]              (bipe#1180: open reports, or all; no reporter is ever stored)
+//   node dist/cli.js feed decide <report> remove|keep <reason>   (closes every open report on that post, logged)
+//   node dist/cli.js feed log [--days 90]              (staff actions on feeds, newest first: the transparency report source)
 //   node dist/cli.js experiment report <experiment>  (for example headline-77: visitors, clicks, sign-ups per arm)
 //   node dist/cli.js banner set <file.json>          (ADR 0117: the remote critical banner; text through the humanizer first)
 //   node dist/cli.js banner show
@@ -89,7 +93,8 @@ import { Theft } from "./theft.js";
 import { deletionStatus, replayProgress, requeueLogged } from "./deletion.js";
 import { readDeletionLog } from "./deletion-log.js";
 import { Reach } from "./reach.js";
-import { staffCreateFeed, staffListFeeds, staffRemovePost, staffSetFeedEnabled, staffTestPost } from "./feeds.js";
+import { staffActionLog, staffDecideReport, staffListReports } from "./feed-reports.js";
+import { staffCreateFeed, staffListFeeds, staffRemovePost, staffRestorePost, staffSetFeedEnabled, staffTestPost } from "./feeds.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -249,12 +254,26 @@ try {
   } else if (group === "feed" && command === "list") {
     console.table(await staffListFeeds(db));
   } else if (group === "feed" && (command === "off" || command === "on") && arg) {
-    console.log((await staffSetFeedEnabled(db, arg, command === "on")) ? `feed ${command}` : "no feed for that handle");
+    console.log((await staffSetFeedEnabled(db, arg, command === "on", positionals.slice(3).join(" ") || undefined)) ? `feed ${command}` : "no feed for that handle");
   } else if (group === "feed" && command === "test-post" && arg && arg2) {
     const site = process.env.PUBLIC_SITE_URL ?? "https://bipe.chat";
     console.log((await staffTestPost(db, site, arg, positionals.slice(3).join(" "))).url);
   } else if (group === "feed" && command === "remove-post" && arg) {
-    console.log((await staffRemovePost(db, arg)) ? "removed" : "no live post with that id");
+    console.log((await staffRemovePost(db, arg, positionals.slice(3).join(" ") || undefined)) ? "removed" : "no live post with that id");
+  } else if (group === "feed" && command === "restore-post" && arg) {
+    console.log((await staffRestorePost(db, arg, positionals.slice(3).join(" ") || undefined)) ? "restored" : "no post that staff removed with that id");
+  } else if (group === "feed" && command === "reports") {
+    console.table(await staffListReports(db, arg === "--all"));
+  } else if (group === "feed" && command === "decide" && arg && (arg2 === "remove" || arg2 === "keep")) {
+    const note = positionals.slice(4).join(" ");
+    if (!note) {
+      console.error("refused: give the reason for the decision, for the transparency report");
+      process.exitCode = 1;
+    } else {
+      console.log((await staffDecideReport(db, arg, arg2, note)) ? `report ${arg}: ${arg2}` : "no open report with that id");
+    }
+  } else if (group === "feed" && command === "log") {
+    console.table(await staffActionLog(db, Number(values.days ?? 90)));
   } else if (group === "handle" && command === "move" && arg && arg2?.startsWith("@")) {
     const from = arg.startsWith("@") && arg.includes(":")
       ? arg
@@ -404,7 +423,7 @@ try {
     await unlinkPhone(db, arg);
     console.log(`unlinked ${arg}`);
   } else {
-    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | handle move HANDLE|@from @to | feed create HANDLE !room:server | feed list | feed off|on HANDLE | feed test-post HANDLE TEXT | feed remove-post ID | experiment report ID | growth report [--since YYYY-MM-DD] | account count | account number @user | transfer report [--days N] | reach show @user [--days N] | deletion status | deletion replay --since ISO | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
+    console.error("usage: invite create --uses N --days N [--note TEXT] | invite list | invite revoke ID | invite grant @user N | invite revoke-user @user | invite top [--limit N] | waitlist count | waitlist export PLATFORM | waitlist clear PLATFORM | waitlist forget EMAIL | waitlist release PLATFORM --count N [--days N] | handle set @user HANDLE | handle move HANDLE|@from @to | feed create HANDLE !room:server | feed list | feed off|on HANDLE [REASON] | feed test-post HANDLE TEXT | feed remove-post ID [REASON] | feed restore-post ID [REASON] | feed reports [--all] | feed decide REPORT remove|keep REASON | feed log [--days N] | experiment report ID | growth report [--since YYYY-MM-DD] | account count | account number @user | transfer report [--days N] | reach show @user [--days N] | deletion status | deletion replay --since ISO | registry fetch [YYYY-MM] | registry scan [--all] | business list | business claim @user CNPJ | business verify @user | business revoke @user | theft status @user | theft clear @user | assistant add @bot @operator brasil|fora|desconhecido | assistant end @bot | assistant list");
     process.exitCode = 2;
   }
 } finally {

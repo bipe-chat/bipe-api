@@ -10,6 +10,7 @@ import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { roomFacts, type RoomStateEvent } from "./group-links.js";
 import { handleKey, publicProfile } from "./profiles.js";
+import { FEED_REPORT_REASONS, feedOwner, logFeedAction, postOwner } from "./feed-reports.js";
 import { appString } from "./registry.js";
 import type { SiteChrome } from "./site-chrome.js";
 
@@ -220,18 +221,33 @@ export async function staffCreateFeed(db: Db, raw: string, roomId: string): Prom
   return owner.handle;
 }
 
-export async function staffSetFeedEnabled(db: Db, raw: string, enabled: boolean): Promise<boolean> {
+export async function staffSetFeedEnabled(db: Db, raw: string, enabled: boolean, note?: string): Promise<boolean> {
   const { rowCount } = await db.query(
     "UPDATE public_feeds SET enabled = $2, updated_at = now() WHERE user_id = (SELECT user_id FROM handles WHERE handle = $1)",
     [handleKey(raw), enabled],
   );
-  return (rowCount ?? 0) > 0;
+  if (!rowCount) return false;
+  const owner = await feedOwner(db, raw);
+  await logFeedAction(db, enabled ? "feed_on" : "feed_off", { ownerId: owner?.owner_id ?? null, handle: owner?.handle ?? null }, note);
+  return true;
 }
 
 /** Takedown (#1180): the post leaves the page at once. The row stays with removed_by = 'staff'. */
-export async function staffRemovePost(db: Db, id: string): Promise<boolean> {
+export async function staffRemovePost(db: Db, id: string, note?: string): Promise<boolean> {
   const { rowCount } = await db.query("UPDATE public_feed_posts SET removed_at = now(), removed_by = 'staff' WHERE id = $1 AND removed_at IS NULL", [id]);
-  return (rowCount ?? 0) > 0;
+  if (!rowCount) return false;
+  const owner = await postOwner(db, id);
+  await logFeedAction(db, "remove_post", { ownerId: owner?.owner_id ?? null, handle: owner?.handle ?? null, postId: id }, note);
+  return true;
+}
+
+/** An appeal that staff grant: a post that staff removed goes back on the page (bipe#1180). Owner removals stay. */
+export async function staffRestorePost(db: Db, id: string, note?: string): Promise<boolean> {
+  const { rowCount } = await db.query("UPDATE public_feed_posts SET removed_at = NULL, removed_by = NULL WHERE id = $1 AND removed_by = 'staff'", [id]);
+  if (!rowCount) return false;
+  const owner = await postOwner(db, id);
+  await logFeedAction(db, "restore_post", { ownerId: owner?.owner_id ?? null, handle: owner?.handle ?? null, postId: id }, note);
+  return true;
 }
 
 /** Test feeds only: a post as the handle owner, for a page check before the apps send posts (#1260). */
@@ -359,7 +375,7 @@ header img{width:64px;height:64px;border-radius:50%;object-fit:cover}h1{font-siz
 .seal{color:var(--accent);font-weight:600}.label{display:inline-block;font-size:.75rem;border:1px solid var(--line);border-radius:999px;padding:0 8px;color:var(--muted);margin-top:4px}
 ol{list-style:none;margin:0;padding:0}article{padding:16px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}article p{margin:0 0 8px}a{color:var(--accent)}
 .feed-domain{font-size:.8rem;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px}time a{color:var(--muted);font-size:.85rem;text-decoration:none}
-.feed-empty,.feed-more{color:var(--muted);padding:16px 0;margin:0}.link-card{margin-top:24px;padding:16px;border:1px solid var(--line);border-radius:12px}.link-card p{margin:0}`;
+.feed-empty,.feed-more{color:var(--muted);padding:16px 0;margin:0}.link-card{margin-top:24px;padding:16px;border:1px solid var(--line);border-radius:12px}.link-card p{margin:0}.feed-report{margin-top:8px;color:var(--muted)}.feed-report summary{cursor:pointer}.feed-report fieldset{border:0;padding:0;margin:12px 0}.feed-report label{display:block;padding:4px 0}.feed-report-done{color:var(--muted)}`;
 
 /** Without the site chrome (no fetch has worked yet): the page carries its own small style. */
 function standalonePage(opts: PageOpts, body: PageBody): string {
@@ -419,9 +435,27 @@ export function feedPageHtml(siteUrl: string, view: FeedView, chrome: SiteChrome
   );
 }
 
-export function postPageHtml(siteUrl: string, view: Awaited<ReturnType<typeof readPost>>, chrome: SiteChrome | null = null): string {
+/** The report form under a post (bipe#1180). A plain form, so it works with no script; the API answers 303 back here. */
+function reportHtml(apiUrl: string, handle: string, postId: string, reported: boolean): string {
+  if (reported) return `<p class="feed-report-done" role="status">${escape(appString("pt", "bipe_feed_report_done"))}</p>`;
+  const action = `${apiUrl.replace(/\/$/, "")}/v1/web/feed/${encodeURIComponent(handle)}/p/${encodeURIComponent(postId)}/report`;
+  const reasons = FEED_REPORT_REASONS.map((r) =>
+    `<label><input type="radio" name="reason" value="${r}" required> ${escape(appString("pt", `bipe_feed_report_${r}`))}</label>`).join("");
+  return `<details class="feed-report"><summary>${escape(appString("pt", "bipe_feed_report"))}</summary>` +
+    `<form method="post" action="${escape(action)}"><fieldset><legend>${escape(appString("pt", "bipe_feed_report_title"))}</legend>${reasons}</fieldset>` +
+    `<p>${escape(appString("pt", "bipe_feed_report_note"))}</p>` +
+    `<button type="submit" class="button secondary compact">${escape(appString("pt", "bipe_feed_report_send"))}</button></form></details>`;
+}
+
+export function postPageHtml(
+  siteUrl: string,
+  view: Awaited<ReturnType<typeof readPost>>,
+  chrome: SiteChrome | null = null,
+  report: { apiUrl: string; reported: boolean } | null = null,
+): string {
   const site = siteUrl.replace(/\/$/, "");
   const h = view.profile.handle;
+  const reportBlock = report ? reportHtml(report.apiUrl, h, view.post.id, report.reported) : "";
   return page(
     {
       siteUrl,
@@ -431,7 +465,7 @@ export function postPageHtml(siteUrl: string, view: Awaited<ReturnType<typeof re
       canonical: view.post.url,
       description: snippet(view.post.text),
     },
-    { bio: false, posts: `<ol class="feed-posts">\n${articleHtml(view.post)}\n</ol>`, more: moreLink(`${site}/@${h}`, appString("pt", "bipe_feed_all_posts")) },
+    { bio: false, posts: `<ol class="feed-posts">\n${articleHtml(view.post)}\n</ol>${reportBlock}`, more: moreLink(`${site}/@${h}`, appString("pt", "bipe_feed_all_posts")) },
   );
 }
 

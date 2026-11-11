@@ -68,6 +68,9 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     // ADR 0280: the public feed of the caller's handle and its posts, and the posts the caller wrote in other feeds.
     public_feed: await one(db, "SELECT room_id, status, enabled, created_at, updated_at FROM public_feeds WHERE user_id = $1", userId),
     public_feed_posts: await all(db, "SELECT id, body, created_at, removed_at FROM public_feed_posts WHERE user_id = $1 OR author_id = $1 ORDER BY created_at", userId),
+    // bipe#1180: reports on the caller's posts (never who reported) and staff actions on the caller's feed.
+    public_feed_reports: await all(db, "SELECT r.post_id, r.reason, r.state, r.created_at, r.decided_at FROM public_feed_reports r WHERE r.post_id IN (SELECT id FROM public_feed_posts WHERE user_id = $1) ORDER BY r.created_at", userId),
+    public_feed_actions: await all(db, "SELECT action, post_id, note, at FROM public_feed_actions WHERE owner_id = $1 ORDER BY at", userId),
     // ADR 0237: the work accounts this person stopped.
     business_stops: await all(db, "SELECT business_id, stopped_at FROM business_stops WHERE customer_id = $1 ORDER BY stopped_at", userId),
     // ADR 0096: the provider and the dates only. The subject hash is keyed and stays out.

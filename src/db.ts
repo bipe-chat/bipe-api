@@ -1203,6 +1203,29 @@ export const MIGRATIONS: readonly string[] = [
    ALTER TABLE person_verifications ADD CONSTRAINT person_verifications_scheme_check CHECK ((level = 'person') = (scheme IS NOT NULL));
    ALTER TABLE person_verifications DROP CONSTRAINT person_verifications_pkey;
    CREATE UNIQUE INDEX person_verifications_proof ON person_verifications (user_id, level, (coalesce(scheme, '')));`,
+  // Reports and takedown on the public feed (bipe#1180). A report keeps no reporter; actions feed the transparency report.
+  `CREATE TABLE public_feed_reports (
+     id text PRIMARY KEY,
+     post_id text NOT NULL,
+     reason text NOT NULL CHECK (reason IN ('scam', 'illegal', 'hate', 'privacy', 'other')),
+     state text NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'removed', 'kept')),
+     created_at timestamptz NOT NULL DEFAULT now(),
+     decided_at timestamptz
+   );
+   CREATE INDEX public_feed_reports_open ON public_feed_reports (state, created_at);
+   CREATE INDEX public_feed_reports_post ON public_feed_reports (post_id);
+   CREATE TABLE public_feed_actions (
+     id bigserial PRIMARY KEY,
+     at timestamptz NOT NULL DEFAULT now(),
+     action text NOT NULL CHECK (action IN ('remove_post', 'restore_post', 'feed_off', 'feed_on', 'report_kept')),
+     owner_id text,
+     handle text,
+     post_id text,
+     report_id text,
+     note text CHECK (length(note) <= 500)
+   );
+   CREATE INDEX public_feed_actions_at ON public_feed_actions (at);
+   CREATE INDEX public_feed_actions_owner ON public_feed_actions (owner_id);`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
