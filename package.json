@@ -19,7 +19,7 @@
     "@hono/node-server": "1.19.17",
     "@matrix-org/matrix-sdk-crypto-nodejs": "0.6.6",
     "asn1js": "3.0.10",
-    "hono": "4.13.13",
+    "hono": "4.13.16",
     "mmdb-lib": "3.0.3",
     "pg": "8.23.1",
     "pkijs": "3.4.1",
