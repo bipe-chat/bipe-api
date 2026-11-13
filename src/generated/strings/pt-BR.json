@@ -2424,6 +2424,7 @@
     "bipe_feed_report_send": "Enviar denúncia",
     "bipe_feed_report_note": "A denúncia não leva seu nome. O Bipe analisa cada uma.",
     "bipe_feed_report_done": "Recebemos sua denúncia. O Bipe vai analisar.",
+    "bipe_feed_rules": "Regras dos feeds",
     "bipe_handle_move_action": "Levar para a conta de trabalho",
     "bipe_handle_move_confirm_title": "Levar @%1$s para %2$s?",
     "bipe_handle_move_confirm_body": "O @ sai desta conta e vai para a conta de trabalho, com a página pública, se houver. Seu perfil, seu selo e suas conversas ficam aqui.",

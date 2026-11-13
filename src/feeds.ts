@@ -436,14 +436,16 @@ export function feedPageHtml(siteUrl: string, view: FeedView, chrome: SiteChrome
 }
 
 /** The report form under a post (bipe#1180). A plain form, so it works with no script; the API answers 303 back here. */
-function reportHtml(apiUrl: string, handle: string, postId: string, reported: boolean): string {
-  if (reported) return `<p class="feed-report-done" role="status">${escape(appString("pt", "bipe_feed_report_done"))}</p>`;
+function reportHtml(siteUrl: string, apiUrl: string, handle: string, postId: string, reported: boolean): string {
+  // The rule page (ADR 0293), linked from the form and from the done line.
+  const rules = `<a href="${escape(`${siteUrl.replace(/\/$/, "")}/regras-dos-feeds/`)}">${escape(appString("pt", "bipe_feed_rules"))}</a>`;
+  if (reported) return `<p class="feed-report-done" role="status">${escape(appString("pt", "bipe_feed_report_done"))} ${rules}</p>`;
   const action = `${apiUrl.replace(/\/$/, "")}/v1/web/feed/${encodeURIComponent(handle)}/p/${encodeURIComponent(postId)}/report`;
   const reasons = FEED_REPORT_REASONS.map((r) =>
     `<label><input type="radio" name="reason" value="${r}" required> ${escape(appString("pt", `bipe_feed_report_${r}`))}</label>`).join("");
   return `<details class="feed-report"><summary>${escape(appString("pt", "bipe_feed_report"))}</summary>` +
     `<form method="post" action="${escape(action)}"><fieldset><legend>${escape(appString("pt", "bipe_feed_report_title"))}</legend>${reasons}</fieldset>` +
-    `<p>${escape(appString("pt", "bipe_feed_report_note"))}</p>` +
+    `<p>${escape(appString("pt", "bipe_feed_report_note"))} ${rules}</p>` +
     `<button type="submit" class="button secondary compact">${escape(appString("pt", "bipe_feed_report_send"))}</button></form></details>`;
 }
 
@@ -455,7 +457,7 @@ export function postPageHtml(
 ): string {
   const site = siteUrl.replace(/\/$/, "");
   const h = view.profile.handle;
-  const reportBlock = report ? reportHtml(report.apiUrl, h, view.post.id, report.reported) : "";
+  const reportBlock = report ? reportHtml(siteUrl, report.apiUrl, h, view.post.id, report.reported) : "";
   return page(
     {
       siteUrl,
