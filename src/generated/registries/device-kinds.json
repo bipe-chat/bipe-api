@@ -1,7 +1,8 @@
 {
-  "$comment": "Device kinds and device entries (bipe ADR 0291, bipe-chat/bipe#1479). Every device of an account has a kind. A Bipe client, bipe-mcp and the Beeper bridge each write their own device entry: an end-to-end encrypted event of type eventType in the account's drafts room (registries/drafts.json, docs/drafts-room.md), with source \"self\". The phone that approves a new device may write an entry for it with source \"approval\", from the user agent on the consent screen (userAgents, browsers, systems). A self entry beats an approval entry; the newest of each wins. Text fields are at most fieldMaxLength characters. `section`: devices (Aparelhos) or programs (Assistentes e programas). `icon`: a Phosphor icon in bipe-app tools/phosphor.json. `leavesBrazil`: the row says fora do Brasil. unknownWarning: false until every Bipe writer ships (#1481 to #1485), so a Bipe device that has no entry yet is not flagged; while false, a device with no entry shows kind unknown with no warning. Rules: deviceInfoFromEvent, userAgentInfo, deviceRows in tools/lib/registries.mjs; test-vectors/device-kinds.json.",
+  "$comment": "Device kinds and device entries (bipe ADR 0291, bipe-chat/bipe#1479). Every device of an account has a kind. A Bipe client, bipe-mcp and the Beeper bridge each write their own device entry: an m.room.message with msgtype `msgtype` and the field `field`, end-to-end encrypted in the account's drafts room (registries/drafts.json, docs/drafts-room.md), with source \"self\". The phone that approves a new device may write an entry for it with source \"approval\", from the user agent on the consent screen (userAgents, browsers, systems). A self entry beats an approval entry; the newest of each wins. Text fields are at most fieldMaxLength characters. `section`: devices (Aparelhos) or programs (Assistentes e programas). `icon`: a Phosphor icon in bipe-app tools/phosphor.json. `leavesBrazil`: the row says fora do Brasil. unknownWarning: false until every Bipe writer ships (#1481 to #1485), so a Bipe device that has no entry yet is not flagged; while false, a device with no entry shows kind unknown with no warning. Rules: deviceInfoFromEvent, userAgentInfo, deviceRows in tools/lib/registries.mjs; test-vectors/device-kinds.json.",
   "version": 1,
-  "eventType": "chat.bipe.device_info",
+  "field": "chat.bipe.device_info",
+  "msgtype": "m.notice",
   "fieldMaxLength": 64,
   "unknownWarning": false,
   "kinds": [
@@ -13,9 +14,9 @@
     { "key": "unknown", "icon": "warning", "label": "bipe_device_kind_unknown", "section": "devices", "leavesBrazil": false }
   ],
   "userAgents": [
-    { "pattern": "^Bipe/([0-9][0-9.]*) \\(([^;()]+); (iOS [0-9.]+)\\)$", "kind": "phone", "app": "Bipe $1", "model": "$2", "os": "$3" },
-    { "pattern": "^Bipe/([0-9][0-9.]*) \\(([^;()]+); (Android [0-9.]+)\\)$", "kind": "phone", "app": "Bipe $1", "model": "$2", "os": "$3" },
-    { "pattern": "^Bipe/([0-9][0-9.]*) \\(([^;()]+); ((?:macOS|Windows) [0-9.]+)\\)$", "kind": "computer-app", "app": "Bipe $1", "model": "$2", "os": "$3" },
+    { "pattern": "^Bipe/([0-9][0-9.]*) \\(([A-Za-z0-9 ,._-]+); (iOS [0-9.]+)\\)$", "kind": "phone", "app": "Bipe $1", "model": "$2", "os": "$3" },
+    { "pattern": "^Bipe/([0-9][0-9.]*) \\(([A-Za-z0-9 ,._-]+); (Android [0-9.]+)\\)$", "kind": "phone", "app": "Bipe $1", "model": "$2", "os": "$3" },
+    { "pattern": "^Bipe/([0-9][0-9.]*) \\(([A-Za-z0-9 ,._-]+); ((?:macOS|Windows) [0-9.]+)\\)$", "kind": "computer-app", "app": "Bipe $1", "model": "$2", "os": "$3" },
     { "pattern": "^Mozilla/", "kind": "browser" }
   ],
   "browsers": [

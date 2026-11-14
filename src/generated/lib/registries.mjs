@@ -337,7 +337,7 @@ export function replyByFromEvent(event, ctx, reg) {
 export const DEVICE_KIND_KEYS = ["phone", "computer-app", "browser", "assistant", "bridge", "unknown"];
 export function validateDeviceKinds(d, phosphor) {
   if (d.version !== 1) fail("device-kinds: version must be 1");
-  if (d.eventType !== "chat.bipe.device_info") fail("device-kinds: unsupported ADR 0291 event type");
+  if (d.field !== "chat.bipe.device_info" || d.msgtype !== "m.notice") fail("device-kinds: unsupported ADR 0291 names");
   if (!Number.isInteger(d.fieldMaxLength) || d.fieldMaxLength < 16 || d.fieldMaxLength > 256) fail("device-kinds: fieldMaxLength must be an integer from 16 to 256");
   if (typeof d.unknownWarning !== "boolean") fail("device-kinds: unknownWarning must be a boolean");
   if (JSON.stringify(d.kinds.map((k) => k.key)) !== JSON.stringify(DEVICE_KIND_KEYS)) fail(`device-kinds: kinds must be exactly ${DEVICE_KIND_KEYS.join(", ")} in that order`);
@@ -388,24 +388,25 @@ export function userAgentInfo(userAgent, reg) {
 }
 
 /**
- * Whether a drafts room event is a valid device entry (ADR 0291).
- * event: { type, sender, redacted?, origin_server_ts, content }. ctx: { ownUserId, senderDevice, senderVerified }, from the
- * SDK's encryption info. A self entry describes its own sending device; an approval entry describes another device.
+ * Whether a drafts room event is a valid device entry (ADR 0291): an m.room.message with msgtype m.notice and the field
+ * chat.bipe.device_info. event: { type, sender, redacted?, origin_server_ts, content }. ctx: { ownUserId, senderVerified }:
+ * senderVerified is false when the SDK shows a shield on the event (an unverified or unknown sending device).
+ * A self entry is the writing device's own; an approval entry is written by the phone that approved the device. The
+ * SDK timeline does not give the sending device ID, so the rule cannot check which device wrote an entry.
  * Returns { ok: true, entry: { deviceId, source, kind, model, os, app, linkedAt, linkedBy, attested, ts } } or { ok: false, reason }.
  */
 export function deviceInfoFromEvent(event, ctx, reg) {
   const d = reg.deviceKinds;
   const no = (reason) => ({ ok: false, reason });
-  if (!event || event.type !== d.eventType) return no("type");
+  if (!event || event.type !== "m.room.message") return no("type");
   if (event.redacted) return no("redacted");
   if (event.sender !== ctx.ownUserId) return no("sender");
-  if (!ctx.senderVerified || typeof ctx.senderDevice !== "string" || !ctx.senderDevice) return no("unverified");
-  const c = event.content;
-  if (!isObject(c)) return no("content");
+  if (!ctx.senderVerified) return no("unverified");
+  if (!isObject(event.content) || event.content.msgtype !== d.msgtype) return no("content");
+  const c = event.content[d.field];
+  if (!isObject(c)) return no("field");
   if (typeof c.device_id !== "string" || !c.device_id) return no("device_id");
-  if (c.source === "self") { if (c.device_id !== ctx.senderDevice) return no("self_other_device"); }
-  else if (c.source === "approval") { if (c.device_id === ctx.senderDevice) return no("approval_own_device"); }
-  else return no("source");
+  if (c.source !== "self" && c.source !== "approval") return no("source");
   if (!DEVICE_KIND_KEYS.includes(c.kind) || c.kind === "unknown") return no("kind");
   const text = {};
   for (const f of ["model", "os", "app", "linked_by"]) {
@@ -417,7 +418,7 @@ export function deviceInfoFromEvent(event, ctx, reg) {
   if (c.attested !== undefined && typeof c.attested !== "boolean") return no("attested");
   return {
     ok: true,
-    entry: { deviceId: c.device_id, source: c.source, kind: c.kind, model: text.model, os: text.os, app: text.app, linkedAt: c.linked_at ?? null, linkedBy: text.linked_by, attested: c.attested ?? false, ts: event.origin_server_ts ?? 0 },
+    entry: { deviceId: c.device_id, source: c.source, kind: c.kind, model: text.model, os: text.os, app: text.app, linkedAt: c.linked_at ?? null, linkedBy: text.linked_by, attested: c.attested ?? false, ts: Number.isInteger(event.origin_server_ts) ? event.origin_server_ts : 0 },
   };
 }
 
