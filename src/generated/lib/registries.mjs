@@ -21,6 +21,7 @@ export function loadRegistries(root) {
     officialAccounts: read("registries/official-accounts.json"),
     profiles: read("registries/profiles.json"),
     inviteCodes: read("registries/invite-codes.json"),
+    groupLimits: read("registries/group-limits.json"),
     phones: read("registries/phone-numbers.json"),
     bipeServers: read("registries/bipe-servers.json"),
     regions: read("registries/regions.json"),

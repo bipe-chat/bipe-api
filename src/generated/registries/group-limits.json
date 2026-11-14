@@ -1,0 +1,5 @@
+{
+  "$comment": "ADR 0253, bipe-chat/bipe#1068: the size cap of a group until the E2EE measurement (bipe-chat/bipe#75) reports. maxMembers counts joined and invited members, the groups service account not counted. A group link signs up at most maxMembers people. bipe-infra compose/synapse-modules/bipe_messaging.py refuses a join or an invite into a full group with the same value: change both. Spaces are exempt. A group already above the cap keeps its members and takes no new ones.",
+  "version": 1,
+  "maxMembers": 256
+}

@@ -6,11 +6,12 @@ import type pg from "pg";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { extractInviteCode, inviteHash, newInviteCode } from "./invites.js";
+import { groupMaxMembers } from "./registry.js";
 
 /** ADR 0184: the same life as a waitlist invite (ADR 0089). */
 export const GROUP_LINK_DAYS = 14;
-/** ADR 0184: the room member limit until a group size ADR. communities.md proposes about 1,024 members. */
-export const GROUP_LINK_MAX_SIGNUPS = 1024;
+/** ADR 0253: a link signs up at most as many people as a group holds (registries/group-limits.json). */
+export const GROUP_LINK_MAX_SIGNUPS = groupMaxMembers;
 /** The power level of a group admin in Bipe (group-members admin role). */
 const ADMIN_LEVEL = 50;
 // Room previews are public: a short cache keeps crawler and page reads off Synapse.
@@ -80,6 +81,8 @@ export class MatrixGroupRooms implements GroupRooms {
 export interface RoomFacts {
   name: string | null;
   joined: string[];
+  /** Joined and invited members: what the group-limits cap counts. */
+  seated: string[];
   membership(userId: string): string | null;
   level(userId: string): number;
   inviteLevel: number;
@@ -109,11 +112,15 @@ export function roomFacts(events: RoomStateEvent[]): RoomFacts {
   return {
     name: typeof name === "string" && name.trim() !== "" ? name.trim() : null,
     joined: [...membership].filter(([, m]) => m === "join").map(([u]) => u),
+    seated: [...membership].filter(([, m]) => m === "join" || m === "invite").map(([u]) => u),
     membership: (userId) => membership.get(userId) ?? null,
     level: (userId) => (creators.has(userId) ? Number.POSITIVE_INFINITY : num(users[userId], usersDefault)),
     inviteLevel: num(pl["invite"], 0),
   };
 }
+
+/** ADR 0253: the group has groupMaxMembers joined and invited members, the service account not counted. */
+export const isFull = (facts: RoomFacts, serviceId: string) => facts.seated.filter((u) => u !== serviceId).length >= groupMaxMembers;
 
 const isAdmin = (facts: RoomFacts, userId: string) => facts.membership(userId) === "join" && facts.level(userId) >= ADMIN_LEVEL;
 
@@ -299,12 +306,14 @@ export class GroupLinks {
     const facts = await this.facts(link.room_id);
     if (!facts) return { valid: false };
     const inviter = link.created_by ? await inviterName(this.deps.db, link.created_by) : null;
+    const full = isFull(facts, this.deps.rooms.userId);
     return {
       valid: true,
       ...(facts.name ? { name: facts.name } : {}),
       members: facts.joined.filter((u) => u !== this.deps.rooms!.userId).length,
       ...(inviter ? { inviter_name: inviter } : {}),
-      signs_up: link.signs_up && link.signups < GROUP_LINK_MAX_SIGNUPS,
+      signs_up: link.signs_up && link.signups < GROUP_LINK_MAX_SIGNUPS && !full,
+      ...(full ? { full: true } : {}),
     };
   }
 
@@ -317,6 +326,7 @@ export class GroupLinks {
     if (!facts) throw new ApiError("not_found");
     const membership = facts.membership(userId);
     if (membership !== "join") {
+      if (membership !== "invite" && isFull(facts, rooms.userId)) throw new ApiError("group_full");
       try {
         if (membership !== "invite") await rooms.invite(link.room_id, userId);
       } catch (e) {
@@ -333,6 +343,9 @@ export class GroupLinks {
   /** After a sign-up with a group code: the new account gets the invite. Best effort; the app can call join again. */
   async inviteNewAccount(linkId: number, roomId: string, userId: string): Promise<boolean> {
     try {
+      // A group that filled up since the preview takes no one (ADR 0253). The account stays; the app shows the link.
+      const facts = await this.facts(roomId, true);
+      if (!facts || isFull(facts, this.rooms().userId)) return false;
       await this.rooms().invite(roomId, userId);
       await recordJoin(this.deps.db, String(linkId), userId, true);
       const { rows } = await this.deps.db.query<{ created_by: string | null }>("SELECT created_by FROM group_links WHERE id = $1", [linkId]);
