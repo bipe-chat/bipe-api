@@ -34,6 +34,9 @@ export const personLevels: string[] = schemeRules.personAssurance.flatMap((a) =>
   schemeRules.schemes.filter((s) => s.class === "person" && s.assurance === a.id && s.alias).map((s) => s.alias!),
 );
 
+/** The size cap of a group: joined and invited members, the groups service account not counted (ADR 0253, registries/group-limits.json). */
+export const groupMaxMembers = (reg.groupLimits as { maxMembers: number }).maxMembers;
+
 /** Brand marks for resellers (ADR 0162, registries/brand-marks.json). */
 export const brandMarkRules = reg.brandMarks as { labels: string[]; maxPerAccount: number; inviteDays: number; recheckMinutes: number };
 

@@ -35,6 +35,7 @@ export type ErrorId =
   | "deletion_pending"
   | "keep_limit"
   | "group_link_no_access"
+  | "group_full"
   | "pin_reset_pending"
   // Business tools (bipe-shared api/business-schemas.json AgendaError, BusinessToolError).
   | "slot_taken"
@@ -109,6 +110,7 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   pin_reset_pending: 409,
   keep_limit: 409,
   group_link_no_access: 409,
+  group_full: 409,
   slot_taken: 409,
   hold_expired: 409,
   too_many_open_bookings: 422,
