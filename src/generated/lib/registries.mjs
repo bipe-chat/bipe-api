@@ -66,6 +66,7 @@ export function loadRegistries(root) {
     mcpTools: read("registries/mcp-tools.json"),
     drafts: read("registries/drafts.json"),
     deviceKinds: read("registries/device-kinds.json"),
+    appleModels: read("registries/apple-models.json"),
     workNotes: read("registries/work-notes.json"),
     assistants: read("registries/assistants.json"),
     ageSignals: read("registries/age-signals.json"),
@@ -361,6 +362,20 @@ export function validateDeviceKinds(d, phosphor) {
   d.systems.forEach((r, i) => rule(`systems[${i}]`, r, ["pattern", "name"]));
 }
 
+// iPhone model names (bipe ADR 0291, bipe-chat/bipe#1517; registries/apple-models.json).
+export function validateAppleModels(a, deviceKinds) {
+  if (a.version !== 1 || !isObject(a.models)) fail("apple-models: version must be 1 with a models object");
+  for (const [id, name] of Object.entries(a.models)) {
+    if (!/^iPhone[0-9]+,[0-9]+$/.test(id)) fail(`apple-models: ${id} is not an iPhone identifier`);
+    if (typeof name !== "string" || name.trim() !== name || !name || name.length > deviceKinds.fieldMaxLength) fail(`apple-models: ${id} name`);
+  }
+}
+
+/** The product name of an iPhone identifier, or the text as it is (bipe-chat/bipe#1517). null stays null. */
+export function appleModelName(model, reg) {
+  return typeof model === "string" && Object.hasOwn(reg.appleModels.models, model) ? reg.appleModels.models[model] : model;
+}
+
 const deviceText = (v, max) => (typeof v === "string" && v.trim() && v.trim().length <= max ? v.trim() : null);
 const fillGroups = (template, m) => template.replace(/\$([1-9])/g, (_, n) => m[Number(n)] ?? "").trim();
 
@@ -449,8 +464,8 @@ export function deviceRows(input, reg) {
       label: kind.label,
       section: kind.section,
       leavesBrazil: kind.leavesBrazil,
-      name: e?.model ?? e?.app ?? deviceText(dev.display_name, d.fieldMaxLength),
-      model: e?.model ?? null,
+      name: appleModelName(e?.model ?? null, reg) ?? e?.app ?? deviceText(dev.display_name, d.fieldMaxLength),
+      model: appleModelName(e?.model ?? null, reg),
       os: e?.os ?? null,
       app: e?.app ?? null,
       lastSeen: dev.last_seen_ts ?? null,
@@ -775,6 +790,7 @@ function validate(reg, phosphor) {
   validateDrafts(reg.drafts);
   validateWorkNotes(reg.workNotes);
   validateDeviceKinds(reg.deviceKinds, phosphor);
+  validateAppleModels(reg.appleModels, reg.deviceKinds);
   const pxm = reg.pixMarks;
   if (pxm.eventType !== "chat.bipe.pix_mark" || pxm.relType !== "m.reference" || JSON.stringify(pxm.marks) !== '["sent","received","not_received"]' || pxm.txidMaxLength !== 25) fail("pix-marks: unsupported ADR 0046 schema");
   try { new RegExp(pxm.e2eIdPattern); } catch { fail("pix-marks: e2eIdPattern"); }
