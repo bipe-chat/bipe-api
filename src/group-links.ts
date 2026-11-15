@@ -9,7 +9,7 @@ import { extractInviteCode, inviteHash, newInviteCode } from "./invites.js";
 import { groupMaxMembers } from "./registry.js";
 
 /** ADR 0184: the same life as a waitlist invite (ADR 0089). */
-export const GROUP_LINK_DAYS = 14;
+export const GROUP_LINK_DAYS = 30;
 /** ADR 0253: a link signs up at most as many people as a group holds (registries/group-limits.json). */
 export const GROUP_LINK_MAX_SIGNUPS = groupMaxMembers;
 /** The power level of a group admin in Bipe (group-members admin role). */
