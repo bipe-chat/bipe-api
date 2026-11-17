@@ -2583,6 +2583,7 @@
     "bipe_desktop_pending_done_remote": "This device was signed out. Bipe cleared its unfinished setup from this computer.",
     "bipe_desktop_draft_load_error": "Could not load this chat's draft. Try again before typing.",
     "bipe_desktop_draft_save_error": "Could not save this draft on this computer. Keep Bipe open and try again.",
-    "bipe_desktop_draft_unsupported": "This chat has a reply, edit or attachment draft that this version cannot open. It has been kept."
+    "bipe_desktop_draft_unsupported": "This chat has a reply, edit or attachment draft that this version cannot open. It has been kept.",
+    "bipe_desktop_media_show": "Show"
   }
 }

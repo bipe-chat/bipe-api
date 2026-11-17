@@ -91,6 +91,30 @@ test("a second request while one waits is refused, also when the waiting one cam
   await assert.rejects(startPinReset(g.deps, g.user, OTHER_PIN), failsWith("pin_reset_pending"));
 });
 
+test("an email PIN reset is refused while one waits, and its link stays unused (bipe#1374)", { timeout: 30000 }, async (t) => {
+  const f = await fixture(t, { email: true });
+  const linkOf = async () => {
+    await requestRecoveryEmail(f.deps, f.address);
+    return /\/recuperar\/#([A-Za-z0-9_-]{43})/.exec(f.mailer.messages.findLast((m) => m.includes("/recuperar/#")))[1];
+  };
+  await startPinReset(f.deps, f.user, NEW_PIN);
+  const link = await linkOf();
+  await assert.rejects(confirmRecoveryEmail(f.deps, link, undefined, OTHER_PIN), failsWith("pin_reset_pending"));
+  const { rows } = await f.db.query("SELECT count(*)::int AS n FROM recoveries WHERE user_id = $1 AND state = 'waiting'", [f.user]);
+  assert.equal(rows[0].n, 1, "only the first reset waits");
+  // The refused link still works for access with the PIN.
+  const access = await confirmRecoveryEmail(f.deps, link, GOOD_PIN);
+  assert.equal(access.purpose, "access");
+  // Two email resets: the second is refused too.
+  const g = await fixture(t, { email: true });
+  const gLink = async () => {
+    await requestRecoveryEmail(g.deps, g.address);
+    return /\/recuperar\/#([A-Za-z0-9_-]{43})/.exec(g.mailer.messages.findLast((m) => m.includes("/recuperar/#")))[1];
+  };
+  await confirmRecoveryEmail(g.deps, await gLink(), undefined, NEW_PIN);
+  await assert.rejects(confirmRecoveryEmail(g.deps, await gLink(), undefined, OTHER_PIN), failsWith("pin_reset_pending"));
+});
+
 test("two requests at once make one reset", { timeout: 30000 }, async (t) => {
   const f = await fixture(t);
   const results = await Promise.allSettled([startPinReset(f.deps, f.user, NEW_PIN), startPinReset(f.deps, f.user, OTHER_PIN)]);
