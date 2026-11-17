@@ -1305,12 +1305,13 @@ const StarlingsReplyBody = z.object({
   author: z.object({ name: z.string().max(120) }),
 });
 app.post("/v1/support/starlings", async (c) => {
-  limits.starlingsReply.check("all");
   if (!config.STARLINGS_APP_INTAKE_KEY) throw new ApiError("support_unavailable");
   const raw = await c.req.text();
   if (!verifyIntakeSignature(config.STARLINGS_APP_INTAKE_KEY, "reply", c.req.header("x-starlings-timestamp"), c.req.header("x-starlings-signature"), raw)) {
     throw new ApiError("unauthorized");
   }
+  // After the signature (bipe-chat/bipe#1372): an unsigned request never uses the budget of signed replies.
+  limits.starlingsReply.check("all");
   let json: unknown;
   try {
     json = JSON.parse(raw);
