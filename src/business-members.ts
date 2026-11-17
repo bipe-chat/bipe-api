@@ -5,7 +5,7 @@
 // identity to retireMembers(), which deactivates it and keeps the history for the others.
 // The member identity's recovery key (ADR 0284 point 34) is stored sealed, so every device of the same person recovers
 // its keys and history with no step by hand. MZ chose this on 9 November 2026: Bipe can open Interno history.
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomInt } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import type { WorkMemberSession, WorkMembers } from "./generated/business-api.js";
 import { inTransaction, lockBusiness } from "./business-common.js";
 import { callerSeat, type SeatMas } from "./business-seats.js";
@@ -133,14 +133,43 @@ export async function memberSession(deps: MemberDeps, businessId: string, device
   return recoveryKey ? { user_id: userId, password, recovery_key: recoveryKey } : { user_id: userId, password };
 }
 
-/** PUT /v1/me/business/members/recovery: stores the seat's recovery key sealed, replacing an earlier one. */
-export async function putRecovery(deps: MemberDeps, businessId: string, deviceId: string | null, recoveryKey: string): Promise<void> {
+/** The SHA-256 (hex) of a recovery key, the value of replaces in PUT .../members/recovery. */
+export function recoveryKeyHash(recoveryKey: string): string {
+  return createHash("sha256").update(recoveryKey, "utf8").digest("hex");
+}
+
+/**
+ * PUT /v1/me/business/members/recovery: stores the seat's recovery key sealed. replaces (bipe#1471) is the hash of the
+ * key the caller saw, or null when it saw none: the key is stored only when that is still the stored key, else 409
+ * recovery_changed, so two devices that both made a backup cannot both win. A stored key that does not open counts as
+ * none, as in memberSession. replaces undefined is the body of apps before bipe#1471: it replaces with no check. Never
+ * logs a key or a hash.
+ */
+export async function putRecovery(
+  deps: MemberDeps,
+  businessId: string,
+  deviceId: string | null,
+  recoveryKey: string,
+  replaces?: string | null,
+): Promise<void> {
   const seat = await seatOrRefuse(deps, businessId, deviceId);
-  const { rowCount } = await deps.db.query(
-    "UPDATE business_members SET recovery_enc = $2 WHERE seat_id = $1::uuid AND business_id = $3 AND NOT retire",
-    [seat.id, deps.sealer.seal(recoveryKey), businessId],
-  );
-  if (!rowCount) throw new ApiError("not_found");
+  const sealed = deps.sealer.seal(recoveryKey);
+  await inTransaction(deps.db, async (client) => {
+    const { rows } = await client.query<{ recovery_enc: Buffer | null }>(
+      "SELECT recovery_enc FROM business_members WHERE seat_id = $1::uuid AND business_id = $2 AND NOT retire FOR UPDATE",
+      [seat.id, businessId],
+    );
+    if (!rows[0]) throw new ApiError("not_found");
+    if (replaces !== undefined) {
+      const stored = deps.sealer.open(rows[0].recovery_enc);
+      const storedHash = stored === null ? null : recoveryKeyHash(stored);
+      const same = storedHash === null || replaces === null
+        ? storedHash === replaces
+        : timingSafeEqual(Buffer.from(storedHash), Buffer.from(replaces));
+      if (!same) throw new ApiError("recovery_changed");
+    }
+    await client.query("UPDATE business_members SET recovery_enc = $2 WHERE seat_id = $1::uuid", [seat.id, sealed]);
+  });
 }
 
 /** PUT /v1/me/business/members/geral: the first claim wins. */

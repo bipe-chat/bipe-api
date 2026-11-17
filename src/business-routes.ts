@@ -196,8 +196,11 @@ export function businessRoutes({ db, auth, apiUrl, siteUrl, webOrigin, clientIp,
     });
     app.put("/v1/me/business/members/recovery", async (c) => {
       const { businessId, deviceId } = await seatCaller(c);
-      const { recovery_key } = await parse(c, z.object({ recovery_key: z.string().min(1).max(256) }).strict());
-      await members.putRecovery(memberDeps, businessId, deviceId, recovery_key);
+      const { recovery_key, replaces } = await parse(
+        c,
+        z.object({ recovery_key: z.string().min(1).max(256), replaces: z.string().regex(/^[0-9a-f]{64}$/).nullable().optional() }).strict(),
+      );
+      await members.putRecovery(memberDeps, businessId, deviceId, recovery_key, replaces);
       return c.body(null, 204);
     });
   }
