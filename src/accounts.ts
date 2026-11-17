@@ -631,12 +631,20 @@ function sendNotice(deps: AccountDeps, email: string, lang: Lang, key: string, w
   deps.mailer.sendLater(email, appString(lang, "bipe_mail_notice_subject"), mailBody(lang, text), "notice");
 }
 
-/** Security notice to the account's verified recovery email, when it has one. */
+/**
+ * Security notice to the account's verified recovery email, when it has one. Never throws (bipe-chat/bipe#1401): it runs
+ * after a commit, and a failure there must not turn a finished recovery into a 500 that loses the one-time credentials.
+ * A failure logs the notice key and the error name only.
+ */
 export async function notify(deps: AccountDeps, userId: string, key: string, when?: Date): Promise<void> {
   if (!deps.mailer.enabled) return;
-  const { rows } = await deps.db.query<{ email: string; lang: Lang }>(
-    "SELECT email, lang FROM recovery_emails WHERE user_id = $1 AND email IS NOT NULL",
-    [userId],
-  );
-  if (rows[0]) sendNotice(deps, rows[0].email, rows[0].lang, key, when);
+  try {
+    const { rows } = await deps.db.query<{ email: string; lang: Lang }>(
+      "SELECT email, lang FROM recovery_emails WHERE user_id = $1 AND email IS NOT NULL",
+      [userId],
+    );
+    if (rows[0]) sendNotice(deps, rows[0].email, rows[0].lang, key, when);
+  } catch (e) {
+    console.error(`accounts: notice ${key} failed: ${(e as Error).name}`);
+  }
 }

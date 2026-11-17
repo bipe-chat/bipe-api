@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomInt } from "node:crypto";
 import { z } from "zod";
+import type pg from "pg";
 import type { Db } from "./db.js";
 import { type AccountDeps, checkNewEmail, checkPinRule, normalizeEmail, startEmailVerification } from "./accounts.js";
 import { type Attestation, verifyAttestation } from "./attest.js";
@@ -207,6 +208,25 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
 
   let masUserId: string | null = null;
   let giveBack: (() => void) | null = null;
+  // bipe-chat/bipe#1402: every database write of the account goes in its sign-up transaction. After the COMMIT the
+  // account stands: no step there may fail the sign-up, or the undo below would leave a signups row and a user number.
+  let committed = false;
+  // Filled inside the transaction: the handle the account got, and the inviter of a personal invite.
+  const made: { handle?: string; inviter: string | null } = { inviter: null };
+  const accountRows = async (client: pg.PoolClient, userId: string) => {
+    if (wanted) {
+      // A race can take the handle between the check and here. The account still stands; the user picks again.
+      const res = await client.query(
+        "INSERT INTO handles (user_id, handle, skeleton) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        [userId, wanted.handle, wanted.skeleton],
+      );
+      if (res.rowCount === 1) made.handle = wanted.handle;
+    }
+    if (linkedInviteId !== null) {
+      const { rows } = await client.query<{ created_by: string | null }>("SELECT created_by FROM invites WHERE id = $1", [linkedInviteId]);
+      made.inviter = rows[0]?.created_by ?? null;
+    }
+  };
   try {
     // bipe#395: every proof above passed. Only now does the sign-up take one of the hour's account creations.
     giveBack = creation?.() ?? null;
@@ -235,7 +255,9 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
           attested,
         ]);
         if (termsVersion) await recordTerms(client, userId, termsVersion, "signup");
+        await accountRows(client, userId);
         await client.query("COMMIT");
+        committed = true;
       } catch (e) {
         await client.query("ROLLBACK").catch(() => {});
         throw e;
@@ -274,7 +296,9 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
             seal(signupKey, { password, recovery_token: token }),
           ]);
         }
+        await accountRows(client, userId);
         await client.query("COMMIT");
+        committed = true;
       } catch (e) {
         await client.query("ROLLBACK").catch(() => {});
         throw e;
@@ -284,33 +308,37 @@ async function createAccount(deps: AccountDeps, input: SignupInput, signupKey: s
       secrets = { password, recovery_token: token };
     }
 
-    let handle: string | undefined;
-    if (wanted) {
-      // A race can take the handle between the check and here. The account still stands; the user picks again.
-      const res = await db.query(
-        "INSERT INTO handles (user_id, handle, skeleton) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-        [userId, wanted.handle, wanted.skeleton],
-      );
-      if (res.rowCount === 1) handle = wanted.handle;
-    }
-    const inviter = linkedInviteId !== null ? await inviterOf(db, linkedInviteId) : null;
-    sendVerification?.();
+    // After the COMMIT: best effort only. Each step logs its own failure and never fails the sign-up.
+    const afterCommit = (what: string, step: () => void) => {
+      try { step(); } catch (e) { console.error(`signup: ${what} after commit failed: ${(e as Error).name}`); }
+    };
+    afterCommit("verification email", () => sendVerification?.());
     // A replayed sign-up (ADR 0094) does not come here, so it does not count again.
-    deps.growth?.record(userId, "signup_done");
-    deps.news?.welcome(userId);
-    if (inviter) deps.growth?.record(inviter, "invite_redeemed");
+    afterCommit("growth", () => deps.growth?.record(userId, "signup_done"));
+    afterCommit("news", () => deps.news?.welcome(userId));
+    const inviterId = made.inviter;
+    if (inviterId) afterCommit("growth", () => deps.growth?.record(inviterId, "invite_redeemed"));
     // The inviter learns of the join at once (bipe-chat/bipe#967). Best effort, not awaited: never slows the sign-up.
-    if (inviter) void pushJoin(deps.db, deps.push, inviter, "invite_joined");
+    if (inviterId) afterCommit("join push", () => void pushJoin(deps.db, deps.push, inviterId, "invite_joined").catch(() => {}));
     // The service account invites the new account; the app joins the group after sign-in.
-    const groupRoomId = group && (await deps.groupLinks?.inviteNewAccount(group.linkId, group.roomId, userId)) ? group.roomId : null;
+    let groupRoomId: string | null = null;
+    if (group) {
+      try {
+        if (await deps.groupLinks?.inviteNewAccount(group.linkId, group.roomId, userId)) groupRoomId = group.roomId;
+      } catch (e) {
+        console.error(`signup: group invite after commit failed: ${(e as Error).name}`);
+      }
+    }
     return {
       user_id: userId,
-      ...(handle ? { handle } : {}),
-      ...(inviter ? { inviter_user_id: inviter } : {}),
+      ...(made.handle ? { handle: made.handle } : {}),
+      ...(inviterId ? { inviter_user_id: inviterId } : {}),
       ...(groupRoomId ? { group_room_id: groupRoomId } : {}),
       ...(secrets ?? {}),
     };
   } catch (e) {
+    // Only a failure before the COMMIT gets here with committed false; after it every step is caught above.
+    if (committed) throw e;
     giveBack?.();
     // Undo: MAS users cannot be deleted, only deactivated. Give the invite use back.
     if (masUserId) await mas.deactivate(masUserId).catch(() => console.error("signup: deactivate after failure failed"));

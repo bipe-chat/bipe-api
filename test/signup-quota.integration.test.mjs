@@ -62,3 +62,19 @@ test("a replay with the same signup key takes no second creation", async (t) => 
   const again = await signup(f.deps, { invite_code: invite.code, signup_key: key }, f.limits.creation);
   assert.equal(again.user_id, made.user_id);
 });
+
+test("a failing step after the commit keeps the account, its credentials and its user number (bipe#1402)", async (t) => {
+  const f = await fixture(t, 2);
+  const invite = await createInvite(f.db, 1, 30, "test");
+  const boom = () => { throw new Error("down"); };
+  const deps = { ...f.deps, growth: { record: boom }, news: { welcome: boom } };
+  const made = await signup(deps, { invite_code: invite.code, handle: "contaok1402" }, f.limits.creation);
+  assert.ok(typeof made.password === "string", "the one-time credentials come back");
+  assert.equal(made.handle, "contaok1402", "the handle went in with the account");
+  assert.equal(f.stub.deactivated, 0, "the MAS user stays active");
+  assert.equal(await usesLeft(f.db, invite.id), 0, "the invite use stays spent");
+  const rows = await f.db.query("SELECT user_number FROM signups WHERE user_id = $1", [made.user_id]);
+  assert.equal(rows.rowCount, 1);
+  assert.ok(rows.rows[0].user_number !== null);
+  assert.equal((await f.db.query("SELECT 1 FROM handles WHERE user_id = $1", [made.user_id])).rowCount, 1);
+});
