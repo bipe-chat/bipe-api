@@ -538,14 +538,27 @@ export async function confirmRecoveryEmail(deps: AccountDeps, token: string, pin
 
   const claim = newSecret();
   const delayHours = accountRules.recoveryDelayHours.email;
-  const res = await deps.db.query<{ ready_at: Date }>(
-    `UPDATE recoveries SET state = 'waiting', purpose = $2, claim_hash = $3, new_pin_hash = $4, link_hash = NULL,
-       started_at = now(), ready_at = now() + make_interval(hours => $5)
-     WHERE id = $1 AND state = 'link_sent' AND link_hash = $6
-     RETURNING ready_at`,
-    [found.id, purpose, secretHash(claim), newPinHash, delayHours, linkHash],
-  );
-  const readyAt = res.rows[0]?.ready_at;
+  const readyAt = await inTransaction(deps.db, async (client) => {
+    if (purpose === "pin_reset") {
+      // One waiting PIN reset per account, by any method (bipe-chat/bipe#1374). The row lock serialises this with
+      // startPinReset and a second email link; the refusal leaves this link unused.
+      await client.query("SELECT 1 FROM account_secrets WHERE user_id = $1 FOR UPDATE", [found.user_id]);
+      const { rows: waiting } = await client.query(
+        `SELECT 1 FROM recoveries WHERE user_id = $1 AND state = 'waiting' AND purpose = 'pin_reset'
+         AND ready_at > now() - make_interval(days => $2)`,
+        [found.user_id, accountRules.recoveryClaimDays],
+      );
+      if (waiting.length > 0) throw new ApiError("pin_reset_pending");
+    }
+    const res = await client.query<{ ready_at: Date }>(
+      `UPDATE recoveries SET state = 'waiting', purpose = $2, claim_hash = $3, new_pin_hash = $4, link_hash = NULL,
+         started_at = now(), ready_at = now() + make_interval(hours => $5)
+       WHERE id = $1 AND state = 'link_sent' AND link_hash = $6
+       RETURNING ready_at`,
+      [found.id, purpose, secretHash(claim), newPinHash, delayHours, linkHash],
+    );
+    return res.rows[0]?.ready_at;
+  });
   // A second request with the same link got here first.
   if (!readyAt) throw new ApiError("recovery_invalid");
   await notify(deps, found.user_id, purpose === "access" ? "bipe_mail_notice_recovery_started" : "bipe_mail_notice_pin_reset_started", readyAt);
@@ -618,12 +631,20 @@ function sendNotice(deps: AccountDeps, email: string, lang: Lang, key: string, w
   deps.mailer.sendLater(email, appString(lang, "bipe_mail_notice_subject"), mailBody(lang, text), "notice");
 }
 
-/** Security notice to the account's verified recovery email, when it has one. */
+/**
+ * Security notice to the account's verified recovery email, when it has one. Never throws (bipe-chat/bipe#1401): it runs
+ * after a commit, and a failure there must not turn a finished recovery into a 500 that loses the one-time credentials.
+ * A failure logs the notice key and the error name only.
+ */
 export async function notify(deps: AccountDeps, userId: string, key: string, when?: Date): Promise<void> {
   if (!deps.mailer.enabled) return;
-  const { rows } = await deps.db.query<{ email: string; lang: Lang }>(
-    "SELECT email, lang FROM recovery_emails WHERE user_id = $1 AND email IS NOT NULL",
-    [userId],
-  );
-  if (rows[0]) sendNotice(deps, rows[0].email, rows[0].lang, key, when);
+  try {
+    const { rows } = await deps.db.query<{ email: string; lang: Lang }>(
+      "SELECT email, lang FROM recovery_emails WHERE user_id = $1 AND email IS NOT NULL",
+      [userId],
+    );
+    if (rows[0]) sendNotice(deps, rows[0].email, rows[0].lang, key, when);
+  } catch (e) {
+    console.error(`accounts: notice ${key} failed: ${(e as Error).name}`);
+  }
 }

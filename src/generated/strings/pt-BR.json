@@ -2583,6 +2583,7 @@
     "bipe_desktop_pending_done_remote": "Este aparelho saiu da conta. O Bipe apagou a configuração incompleta daqui.",
     "bipe_desktop_draft_load_error": "Não deu para abrir o rascunho desta conversa. Tente de novo antes de escrever.",
     "bipe_desktop_draft_save_error": "Não deu para salvar este rascunho no computador. Mantenha o Bipe aberto e tente de novo.",
-    "bipe_desktop_draft_unsupported": "Esta conversa tem um rascunho de resposta, edição ou anexo que esta versão ainda não abre. O rascunho foi mantido."
+    "bipe_desktop_draft_unsupported": "Esta conversa tem um rascunho de resposta, edição ou anexo que esta versão ainda não abre. O rascunho foi mantido.",
+    "bipe_desktop_media_show": "Mostrar"
   }
 }
