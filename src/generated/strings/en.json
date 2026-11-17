@@ -2569,6 +2569,20 @@
     "bipe_interno_error": "Could not open Interno. Try again.",
     "bipe_interno_empty": "Nobody else answers for this account yet.",
     "bipe_govbr_step_sign_file": "In the gov.br app, tap sign document and pick %1$s.",
-    "bipe_govbr_reason_wrong_document_file": "This is not the document of this check. Use the file %1$s."
+    "bipe_govbr_reason_wrong_document_file": "This is not the document of this check. Use the file %1$s.",
+    "bipe_desktop_pending_title": "Unfinished link",
+    "bipe_desktop_pending_body": "This link did not finish. Try signing out this device before starting again. Other accounts on this computer stay signed in.",
+    "bipe_desktop_pending_sign_out": "Sign out and clear this link",
+    "bipe_desktop_pending_forget": "Forget this link on this computer",
+    "bipe_desktop_pending_forget_title": "Forget this link here?",
+    "bipe_desktop_pending_forget_body": "This clears the unfinished setup on this computer. The device may still be signed in. Open Linked devices on your phone and sign it out there if it still appears.",
+    "bipe_desktop_pending_cleanup": "Finish local cleanup",
+    "bipe_desktop_pending_working": "Finishing the link cleanup…",
+    "bipe_desktop_pending_failed": "Cleanup did not finish. Try again.",
+    "bipe_desktop_pending_done_local": "The local setup was cleared. Check Linked devices on your phone; the device may still be signed in there.",
+    "bipe_desktop_pending_done_remote": "This device was signed out. Bipe cleared its unfinished setup from this computer.",
+    "bipe_desktop_draft_load_error": "Could not load this chat's draft. Try again before typing.",
+    "bipe_desktop_draft_save_error": "Could not save this draft on this computer. Keep Bipe open and try again.",
+    "bipe_desktop_draft_unsupported": "This chat has a reply, edit or attachment draft that this version cannot open. It has been kept."
   }
 }
