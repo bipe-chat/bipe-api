@@ -87,7 +87,7 @@ export type BusyImport = { "id": string; "agenda_id": string; /** UTC, with a tr
 
 export type AgendaError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed"); "reason"?: string };
 
-export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live" | "web_off" | "shop_token_invalid" | "owner_only" | "seat_limit" | "seat_window_open" | "seat_window_closed" | "attestation_invalid" | "seat_required" | "chat_taken" | "geral_exists"); "reason"?: string };
+export type BusinessToolError = { "error": ("bad_request" | "unauthorized" | "not_found" | "rate_limited" | "internal" | "slot_taken" | "hold_expired" | "too_many_open_bookings" | "outside_notice" | "outside_horizon" | "agenda_not_published" | "cancellation_window_closed" | "queue_closed" | "already_in_queue" | "place_not_active" | "quote_expired" | "quote_version_changed" | "quote_not_open" | "order_already_open" | "order_not_open" | "item_unavailable" | "price_not_fixed" | "orders_closed" | "payment_requires_verified_business" | "pix_charge_unavailable" | "tool_needs_catalog" | "tool_not_live" | "web_off" | "shop_token_invalid" | "owner_only" | "seat_limit" | "seat_window_open" | "seat_window_closed" | "attestation_invalid" | "seat_required" | "chat_taken" | "geral_exists" | "recovery_changed"); "reason"?: string };
 
 export type EmptyBusinessRequest = Record<string, never>;
 
@@ -275,5 +275,5 @@ export type WorkMemberSession = { "user_id": string; "password": string; "recove
 /** The Geral room that a member's app made. */
 export type WorkGeral = { "room_id": string };
 
-/** The recovery key of the caller's member identity (matrix-sdk enableRecovery output). Never logged. */
-export type WorkMemberRecovery = { "recovery_key": string };
+/** The recovery key of the caller's member identity (matrix-sdk enableRecovery output). Never logged. replaces is the SHA-256 (64 lower-case hex characters) of the UTF-8 recovery key that the caller last got from POST .../members/session, or null when it got none. Apps before bipe#1471 send no replaces; the server then replaces the stored key with no check. */
+export type WorkMemberRecovery = { "recovery_key": string; "replaces"?: (string | null) };
