@@ -186,7 +186,7 @@ try {
     console.log(`news item ${item.id} queued (${item.importance}); the server sends it within a few minutes`);
   } else if (group === "news" && command === "list") {
     const report = await newsList(db);
-    console.log(`rooms ${report.rooms}, opted out ${report.opted_out}`);
+    console.log(`rooms ${report.rooms} (pt ${report.rooms_pt}, en ${report.rooms_en}), opted out ${report.opted_out}`);
     for (const i of report.items) console.log(`${i.id}  ${i.importance}  queued ${i.created_at.toISOString().slice(0, 16)}  ${i.done_at ? "done" : "sending"}  sent ${i.sent}  failed ${i.failed}`);
   } else if (group === "news" && command === "backfill") {
     await requestNewsBackfill(db);

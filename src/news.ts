@@ -10,7 +10,8 @@ import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import { ApiError } from "./errors.js";
 import { EncryptedBot, enc, type MatrixEvent } from "./matrix-bot.js";
-import { appString } from "./registry.js";
+import { appString, type Lang } from "./registry.js";
+import { userLanguage } from "./user-language.js";
 
 const TICK_MS = 60_000;
 /** Rooms made per tick for the backfill, below the send rate so a tick also delivers. */
@@ -22,14 +23,21 @@ const MAX_SEND_TRIES = 3;
 export const NewsItemFile = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, "lower-case letters, digits and dashes"),
   text: z.string().trim().min(1).max(2_000).refine((t) => !t.includes("—"), "no em dash"),
+  /** ADR 0298: the English text, for users whose app is in English. Without it they get `text`. */
+  text_en: z.string().trim().min(1).max(2_000).refine((t) => !t.includes("—"), "no em dash").optional(),
   link: z.url().refine((u) => /^https:\/\/bipe\.chat\//.test(u), "an https://bipe.chat/ page").optional(),
   importance: z.enum(["normal", "important"]),
 });
 export type NewsItemFile = z.infer<typeof NewsItemFile>;
 
-/** The message body: the text, the optional link, then the line that points to Suporte Bipe. */
-export function newsBody(item: { body: string; link: string | null }): string {
-  return [item.body, item.link, appString("pt", "bipe_news_support_line")].filter(Boolean).join("\n\n");
+/**
+ * The message body in the user's language (ADR 0298): the text, the optional link, then the line that points to
+ * Suporte Bipe. An item with no English text goes out in pt-BR, with the pt-BR line, so the message stays in one language.
+ */
+export function newsBody(item: { body: string; body_en?: string | null; link: string | null }, lang: Lang = "pt"): string {
+  const useEn = lang === "en" && !!item.body_en;
+  const text = useEn ? item.body_en! : item.body;
+  return [text, item.link, appString(useEn ? "en" : "pt", "bipe_news_support_line")].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -145,18 +153,35 @@ export class NewsBot extends EncryptedBot {
     }
   }
 
+  /**
+   * ADR 0298: the user's language changed. A news room the user has gets the name and topic in that language. Runs in
+   * the background; a failure is logged and the next change tries again.
+   */
+  relabel(userId: string, lang: Lang): void {
+    if (!this.enabled) return;
+    void (async () => {
+      await this.ready;
+      const { rows } = await this.db.query<{ room_id: string }>("SELECT room_id FROM news_rooms WHERE user_id = $1 AND NOT opted_out", [userId]);
+      const roomId = rows[0]?.room_id;
+      if (!roomId) return;
+      await this.matrix("PUT", `/rooms/${enc(roomId)}/state/m.room.name`, { name: appString(lang, "bipe_news_room_name") });
+      await this.matrix("PUT", `/rooms/${enc(roomId)}/state/m.room.topic`, { topic: appString(lang, "bipe_news_room_topic") });
+    })().catch((e) => console.error(`news bot: room rename failed: ${(e as Error).message}`));
+  }
+
   private async createRoom(userId: string): Promise<string> {
+    const lang = await userLanguage(this.db, userId);
     const created = await this.matrix<{ room_id: string }>("POST", "/createRoom", {
       preset: "private_chat",
       room_version: NEWS_ROOM_VERSION,
       // Not a DM (bipe#809): the room has a name, and a DM shows the other person's name (ADR 0141).
       invite: [userId],
-      name: appString("pt", "bipe_news_room_name"),
-      topic: appString("pt", "bipe_news_room_topic"),
+      name: appString(lang, "bipe_news_room_name"),
+      topic: appString(lang, "bipe_news_room_topic"),
       power_level_content_override: newsPowerLevels(userId),
       initial_state: [{ type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } }],
     });
-    await this.sendText(created.room_id, appString("pt", "bipe_news_welcome"), "m.notice");
+    await this.sendText(created.room_id, appString(lang, "bipe_news_welcome"), "m.notice");
     return created.room_id;
   }
 
@@ -224,13 +249,14 @@ export class NewsBot extends EncryptedBot {
 
   /** Sends the oldest open item to at most `limit` rooms that existed when it was queued and do not have it. */
   private async deliver(limit: number): Promise<void> {
-    const { rows: items } = await this.db.query<{ id: string; body: string; link: string | null; importance: string; created_at: Date }>(
-      "SELECT id, body, link, importance, created_at FROM news_items WHERE done_at IS NULL ORDER BY created_at LIMIT 1",
+    const { rows: items } = await this.db.query<{ id: string; body: string; body_en: string | null; link: string | null; importance: string; created_at: Date }>(
+      "SELECT id, body, body_en, link, importance, created_at FROM news_items WHERE done_at IS NULL ORDER BY created_at LIMIT 1",
     );
     const item = items[0];
     if (!item) return;
-    const { rows: rooms } = await this.db.query<{ user_id: string; room_id: string }>(
-      `SELECT n.user_id, n.room_id FROM news_rooms n
+    const { rows: rooms } = await this.db.query<{ user_id: string; room_id: string; lang: Lang }>(
+      `SELECT n.user_id, n.room_id, coalesce(l.lang, 'pt') AS lang FROM news_rooms n
+       LEFT JOIN user_languages l ON l.user_id = n.user_id
        WHERE NOT n.opted_out AND n.created_at <= $2
          AND NOT EXISTS (SELECT 1 FROM news_deliveries d WHERE d.item_id = $1 AND d.user_id = n.user_id)
        ORDER BY n.created_at LIMIT $3`,
@@ -243,11 +269,10 @@ export class NewsBot extends EncryptedBot {
     }
     // normal: m.notice, so the default push rule .m.rule.suppress_notices sends no push. important: m.text.
     const msgtype = item.importance === "important" ? "m.text" : "m.notice";
-    const body = newsBody(item);
     for (const room of rooms) {
       const key = `${item.id}\n${room.user_id}`;
       try {
-        await this.sendText(room.room_id, body, msgtype, newsTxnId(item.id, room.room_id));
+        await this.sendText(room.room_id, newsBody(item, room.lang), msgtype, newsTxnId(item.id, room.room_id));
         await this.db.query("INSERT INTO news_deliveries (item_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [item.id, room.user_id]);
         this.failures.delete(key);
       } catch (e) {
@@ -275,8 +300,8 @@ export function newsTxnId(itemId: string, roomId: string): string {
 export async function queueNewsItem(db: Db, input: unknown): Promise<NewsItemFile> {
   const item = NewsItemFile.parse(input);
   const res = await db.query(
-    "INSERT INTO news_items (id, body, link, importance) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING",
-    [item.id, item.text, item.link ?? null, item.importance],
+    "INSERT INTO news_items (id, body, body_en, link, importance) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING",
+    [item.id, item.text, item.text_en ?? null, item.link ?? null, item.importance],
   );
   if (!res.rowCount) throw new Error(`news item ${item.id} exists already`);
   return item;
@@ -291,8 +316,11 @@ export async function newsList(db: Db) {
      FROM news_items i LEFT JOIN news_deliveries d ON d.item_id = i.id
      GROUP BY i.id ORDER BY i.created_at DESC`,
   );
-  const { rows: rooms } = await db.query<{ rooms: number; opted_out: number }>(
-    "SELECT count(*)::int AS rooms, count(*) FILTER (WHERE opted_out)::int AS opted_out FROM news_rooms",
+  const { rows: rooms } = await db.query<{ rooms: number; opted_out: number; rooms_pt: number; rooms_en: number }>(
+    `SELECT count(*)::int AS rooms, count(*) FILTER (WHERE n.opted_out)::int AS opted_out,
+            count(*) FILTER (WHERE coalesce(l.lang, 'pt') = 'pt')::int AS rooms_pt,
+            count(*) FILTER (WHERE l.lang = 'en')::int AS rooms_en
+     FROM news_rooms n LEFT JOIN user_languages l ON l.user_id = n.user_id`,
   );
   return { items: rows, ...rooms[0]! };
 }

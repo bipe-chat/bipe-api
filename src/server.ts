@@ -59,6 +59,7 @@ import { BODY_MAX_BYTES, getBugReport, listBugReports, pruneBugReports, readBugR
 import { Intake, verifyIntakeSignature } from "./intake.js";
 import { SupportBot } from "./support.js";
 import { NewsBot } from "./news.js";
+import { langFromHeader, UserLanguages } from "./user-language.js";
 import { startCvmRefresh } from "./cvm.js";
 import { currentBanner } from "./banner.js";
 import { groupLinkPreviewHtml, invitePreviewHtml } from "./invite-preview.js";
@@ -100,6 +101,8 @@ if (phoneKeys.current && phoneKeys.previous && phoneKeys.current !== phoneKeys.p
 const invitePolicy = { perUser: config.INVITES_PER_USER, respawnDays: config.INVITE_RESPAWN_DAYS };
 const growth = new Growth(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME, skipUsers: [config.SUPPORT_USER_ID, config.NEWS_USER_ID, config.GROUPS_USER_ID] });
 const news = new NewsBot(db, config);
+// ADR 0298, bipe#1567: the app's language from Accept-Language; a change renames the user's news room.
+const languages = new UserLanguages(db, (userId, lang) => news.relabel(userId, lang));
 // First-contact outcomes (bipe#845): off without BIPE_GROWTH_HMAC_SECRET; reports need SYNAPSE_DATABASE_URL.
 const reach = new Reach(db, { secret: config.BIPE_GROWTH_HMAC_SECRET, synapseUrl: config.SYNAPSE_DATABASE_URL, serverName: config.SERVER_NAME });
 // Synapse admin API (account deletion, voice audio expiry, device pushes). Null without SYNAPSE_ADMIN_TOKEN.
@@ -568,6 +571,23 @@ const webCors = cors({
 app.use("/v1/*", (c, next) =>
   c.req.header("origin") === webOrigin && !c.req.path.startsWith("/v1/admin/") ? webCors(c, next) : next(),
 );
+
+// ADR 0298: after a request with an access token of this homeserver succeeds, the app's language (Accept-Language)
+// is stored when it changed. The route's own auth call filled the token cache, so this costs no second whoami.
+// Staff routes, OpenID tokens of other servers and failed requests change nothing; a failure here never fails the request.
+app.use("/v1/*", async (c, next) => {
+  await next();
+  const lang = langFromHeader(c.req.header("accept-language"));
+  const authorization = c.req.header("authorization");
+  if (!lang || !authorization || c.res.status >= 400 || c.req.header("x-matrix-server-name") !== undefined) return;
+  if (c.req.path.startsWith("/v1/admin/")) return;
+  try {
+    const { userId } = await auth.session(authorization);
+    await languages.observe(userId, lang);
+  } catch {
+    // An invalid token or a database error: the language waits for the next request.
+  }
+});
 
 /** Core routes (ADR 0168, bipe-chat/bipe#646): a token of this homeserver, or an OpenID token with X-Matrix-Server-Name. */
 function coreSession(c: Context): Promise<{ userId: string; deviceId: string | null }> {

@@ -41,3 +41,25 @@ test("one transaction ID per item and room", () => {
   assert.notEqual(newsTxnId("a", "!one:example.test"), newsTxnId("a", "!two:example.test"));
   assert.notEqual(newsTxnId("a", "!one:example.test"), newsTxnId("b", "!one:example.test"));
 });
+
+test("news in the user's language (ADR 0298): English text for en, pt-BR without it", async () => {
+  const { appString } = await import("../dist/registry.js");
+  const item = { body: "Figurinhas chegaram.", body_en: "Stickers are here.", link: null };
+  assert.equal(newsBody(item, "en"), `Stickers are here.\n\n${appString("en", "bipe_news_support_line")}`);
+  assert.equal(newsBody(item, "pt"), `Figurinhas chegaram.\n\n${appString("pt", "bipe_news_support_line")}`);
+  // No English text: the whole message stays in pt-BR, the Suporte line too.
+  assert.equal(newsBody({ ...item, body_en: null }, "en"), `Figurinhas chegaram.\n\n${appString("pt", "bipe_news_support_line")}`);
+  assert.equal(NewsItemFile.safeParse({ id: "x", text: "Oi.", text_en: "Hi — there", importance: "normal" }).success, false);
+  assert.equal(NewsItemFile.safeParse({ id: "x", text: "Oi.", text_en: "Hi.", importance: "normal" }).success, true);
+});
+
+test("Accept-Language: pt is pt, any other language is en, no header is nothing", async () => {
+  const { langFromHeader } = await import("../dist/user-language.js");
+  assert.equal(langFromHeader("pt-BR"), "pt");
+  assert.equal(langFromHeader("pt-BR, en;q=0.8"), "pt");
+  assert.equal(langFromHeader("PT"), "pt");
+  assert.equal(langFromHeader("en-US,pt;q=0.9"), "en");
+  assert.equal(langFromHeader("es"), "en");
+  assert.equal(langFromHeader(""), null);
+  assert.equal(langFromHeader(undefined), null);
+});
