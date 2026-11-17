@@ -1764,6 +1764,7 @@
     "bipe_app_media_file": "File",
     "bipe_app_media_sticker": "Sticker",
     "bipe_app_media_voice": "Voice message",
+    "bipe_app_media_voice_on_phone": "To listen, open it on your phone.",
     "bipe_app_voice_play": "Play",
     "bipe_app_voice_pause": "Pause",
     "bipe_app_media_share": "Share",
