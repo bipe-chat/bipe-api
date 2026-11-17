@@ -1093,6 +1093,7 @@
     "bipe_device_kind_unknown": "Unknown device",
     "bipe_device_detail_linked_at": "Linked on %1$s",
     "bipe_device_detail_linked_by": "Approved by %1$s",
+    "bipe_device_detail_bridge_sees": "Beeper sees, outside Brazil, chat names, who is in them and when messages arrive. Message text passes encrypted and shows only on the computer that runs the bridge.",
     "bipe_device_detail_attested": "Checked by Apple or Google",
     "bipe_device_detail_not_attested": "Not checked by Apple or Google",
     "bipe_device_detail_ip": "IP: %1$s",

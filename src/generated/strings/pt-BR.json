@@ -1093,6 +1093,7 @@
     "bipe_device_kind_unknown": "Aparelho desconhecido",
     "bipe_device_detail_linked_at": "Conectado em %1$s",
     "bipe_device_detail_linked_by": "Aprovado por %1$s",
+    "bipe_device_detail_bridge_sees": "O Beeper vê, fora do Brasil, o nome das conversas, quem está nelas e quando chegam mensagens. O texto das mensagens passa criptografado e só aparece no computador onde a ponte roda.",
     "bipe_device_detail_attested": "Conferido pela Apple ou pelo Google",
     "bipe_device_detail_not_attested": "Não conferido pela Apple nem pelo Google",
     "bipe_device_detail_ip": "IP: %1$s",
