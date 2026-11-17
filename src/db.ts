@@ -1226,6 +1226,13 @@ export const MIGRATIONS: readonly string[] = [
    );
    CREATE INDEX public_feed_actions_at ON public_feed_actions (at);
    CREATE INDEX public_feed_actions_owner ON public_feed_actions (owner_id);`,
+  // ADR 0298, bipe#1567: the language of server text per user (no row: pt), and the English text of a news item.
+  `CREATE TABLE user_languages (
+     user_id text PRIMARY KEY,
+     lang text NOT NULL CHECK (lang IN ('pt', 'en')),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   );
+   ALTER TABLE news_items ADD COLUMN body_en text;`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */

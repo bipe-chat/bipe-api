@@ -402,6 +402,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
       "link_flows",
       "work_hours",
       "notification_prefs",
+      "user_languages",
       "profile_changes",
       "profile_snapshots",
       "kept_media",
