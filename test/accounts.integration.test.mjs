@@ -215,6 +215,20 @@ test("a PIN reset start and a token sign-in push; a gateway failure does not fai
   assert.deepEqual(kinds(gateway), ["recovery_started", "recovery_completed"]);
 });
 
+test("a failing notice after a finished recovery still returns the credentials (bipe#1401)", { timeout: 30000 }, async (t) => {
+  const f = await fixture(t, true);
+  const failing = {
+    connect: () => f.db.connect(),
+    query: (sql, params) => String(sql).includes("FROM recovery_emails") ? Promise.reject(new Error("database down")) : f.db.query(sql, params),
+  };
+  const creds = await redeemToken({ ...f.deps, db: failing }, f.token, GOOD_PIN);
+  assert.ok(typeof creds.password === "string", "the credentials come back although the notice failed");
+  assert.equal((await secretRow(f)).token_hash, secretHash(creds.recovery_token), "the new token is stored");
+  f.mailer.sendLater = () => { throw new Error("relay down"); };
+  const again = await redeemToken(f.deps, creds.recovery_token, GOOD_PIN);
+  assert.ok(typeof again.password === "string", "a mailer failure does not fail the recovery either");
+});
+
 test("record the current completed-email-claim retry behaviour for security review", { timeout: 30000 }, async (t) => {
   const f = await fixture(t, true);
   const started = await confirmRecoveryEmail(f.deps, await recoveryLink(f), GOOD_PIN);
