@@ -217,6 +217,34 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
       `SELECT id, service_id, agenda_id, start_at, end_at, status, source, created_at FROM bookings WHERE business_id = $1 ORDER BY start_at`,
       userId,
     ),
+    // A company's own tool setup and records (bipe-chat/bipe#1404): Agenda, Fila, Pedidos and the lines of each quote
+    // version. Customer names and IDs on the company's records stay out: they are other people's data.
+    agenda_settings: await one(
+      db,
+      `SELECT published, tool_off, time_zone, min_notice_minutes, horizon_days, slot_step_minutes, cancel_window_minutes, confirm_mode,
+         max_open_bookings, reminder_minutes, created_at FROM agenda_settings WHERE business_id = $1`,
+      userId,
+    ),
+    agendas: await all(db, "SELECT id, name, photo, active, sort, availability, deleted_at FROM agendas WHERE business_id = $1 ORDER BY sort, id", userId),
+    agenda_overrides: await all(
+      db,
+      "SELECT id, agenda_id, date_from, date_to, closed, ranges FROM agenda_overrides WHERE business_id = $1 ORDER BY date_from, id",
+      userId,
+    ),
+    queue_settings: await one(db, "SELECT no_show_after_minutes FROM queue_settings WHERE business_id = $1", userId),
+    queues: await all(db, "SELECT id, day, time_zone, open FROM queues WHERE business_id = $1 ORDER BY day", userId),
+    business_queue_places: await all(
+      db,
+      "SELECT id, queue_id, service_id, source, status, joined_at, called_at, served_at FROM queue_places WHERE business_id = $1 ORDER BY joined_at",
+      userId,
+    ),
+    order_settings: await one(db, "SELECT time_zone, weekdays, cutoff FROM order_settings WHERE business_id = $1", userId),
+    quote_versions: await all(
+      db,
+      `SELECT quote_id, version, created_at, valid_until, lines, total_amount_cents, visit_service_id FROM quote_versions
+       WHERE quote_id IN (SELECT id FROM quotes WHERE customer_id = $1 OR business_id = $1) ORDER BY quote_id, version`,
+      userId,
+    ),
   };
 }
 

@@ -306,6 +306,7 @@ async function deleteRows(deps: DeletionDeps, userId: string): Promise<void> {
     await q("DELETE FROM agenda_settings WHERE business_id = $1");
     await q("DELETE FROM queues WHERE business_id = $1");
     await q("DELETE FROM queue_settings WHERE business_id = $1");
+    // quote_versions go with their quote (ON DELETE CASCADE).
     await q("DELETE FROM quotes WHERE business_id = $1 OR customer_id = $1");
     await q("DELETE FROM quote_requests WHERE business_id = $1 OR customer_id = $1");
     await q("DELETE FROM orders WHERE business_id = $1");
