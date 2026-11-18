@@ -1,0 +1,20 @@
+{
+  "$comment": "Games in chat (bipe-chat/bipe#1535): par ou ímpar, jokenpô and dice. No server logic; every step is an encrypted timeline event of eventType with a step field, and each phone computes the result itself. Duels (par ou ímpar, jokenpô): the challenger names one opponent; each player sends a commit, and a phone reveals its choice and salt only after both commits are in the timeline. The commit binds the gameId and the player's user ID, so a player cannot copy the other's commit and reveal the same choice. Rolls (dice and the emoji variants): the sender commits a random seed; the first other member whose phone sees the roll answers automatically with its own seed in clear; the sender's phone then reveals. The result comes from both seeds with rejection sampling, so it has no modulo bias. Limit: a person who controls two accounts in the same chat can choose a roll result. No bet or money field anywhere: betting-shaped features are risky with minors. Rules: tools/lib/games.mjs; test-vectors/games.json.",
+  "version": 1,
+  "eventType": "chat.bipe.game",
+  "steps": ["challenge", "commit", "reveal", "decline", "roll", "answer"],
+  "commitDomain": "bipe-game-v1",
+  "saltBytes": 32,
+  "seedBytes": 32,
+  "reasonMaxGraphemes": 60,
+  "duelExpirySeconds": 86400,
+  "rollRevealTimeoutSeconds": 60,
+  "kinds": {
+    "parOuImpar": { "type": "duel", "sides": ["par", "impar"], "minNumber": 0, "maxNumber": 10 },
+    "jokenpo": { "type": "duel", "hands": ["pedra", "papel", "tesoura"] },
+    "dice": { "type": "roll", "emoji": "🎲", "defaultSides": 6, "minSides": 2, "maxSides": 1000, "presetSides": [2, 4, 6, 8, 10, 12, 20, 100], "minCount": 1, "maxCount": 5 },
+    "soccer": { "type": "roll", "emoji": "⚽", "sides": 5, "outcomes": ["miss", "miss", "goal", "goal", "goal"] },
+    "basketball": { "type": "roll", "emoji": "🏀", "sides": 5, "outcomes": ["miss", "miss", "miss", "score", "score"] },
+    "darts": { "type": "roll", "emoji": "🎯", "sides": 6, "outcomes": ["miss", "outer", "outer", "inner", "inner", "bullseye"] }
+  }
+}
