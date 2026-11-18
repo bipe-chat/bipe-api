@@ -654,6 +654,7 @@ export function validateRegions(reg) {
     if (ids.has(r.id)) throw new Error(`regions: duplicate ${r.id}`);
     ids.add(r.id);
     if (typeof r.name !== "string" || !r.name) throw new Error(`regions: ${r.id} needs a name`);
+    if (reg.strings && (!reg.strings.strings[`bipe_region_${r.id}`] || !reg.stringsEn.strings[`bipe_region_${r.id}`])) throw new Error(`regions: string bipe_region_${r.id} missing`);
     if (typeof r.coreApi !== "string" || !r.coreApi.startsWith("https://")) throw new Error(`regions: ${r.id} coreApi must be https`);
     if (!["e2ee", "none"].includes(r.floor)) throw new Error(`regions: ${r.id} floor must be e2ee or none`);
     if (!(Array.isArray(r.phoneProofCountryCodes) && r.phoneProofCountryCodes.length > 0 && r.phoneProofCountryCodes.every((c) => /^[1-9][0-9]{0,2}$/.test(c)))) throw new Error(`regions: ${r.id} phoneProofCountryCodes must be country codes`);

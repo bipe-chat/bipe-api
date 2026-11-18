@@ -93,6 +93,12 @@
           ]
         },
         {
+          "key": "region",
+          "rows": [
+            { "key": "region", "scope": "account", "title": "bipe_settings_region", "footer": "bipe_settings_region_footer", "kind": "link", "adr": "0197" }
+          ]
+        },
+        {
           "key": "leave",
           "rows": [
             { "key": "signOut", "title": "bipe_account_sign_out", "kind": "destructive" },
@@ -144,7 +150,7 @@
             { "key": "appearance", "scope": "device", "title": "bipe_chats_theme", "kind": "choice" },
             { "key": "colors", "scope": "account", "title": "bipe_chats_colors", "footer": "bipe_chats_colors_footer", "kind": "link" },
             { "key": "accessibility", "scope": "device", "title": "bipe_chats_accessibility", "kind": "link" },
-            { "key": "language", "scope": "platform", "title": "bipe_settings_language", "footer": "bipe_settings_language_footer", "kind": "action", "gate": "ios" }
+            { "key": "language", "scope": "device", "title": "bipe_settings_language", "footer": "bipe_settings_language_footer", "kind": "link", "adr": "0298" }
           ]
         },
         {
