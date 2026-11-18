@@ -1233,6 +1233,17 @@ export const MIGRATIONS: readonly string[] = [
      updated_at timestamptz NOT NULL DEFAULT now()
    );
    ALTER TABLE news_items ADD COLUMN body_en text;`,
+  // ADR 0283, bipe#1351: the hardware key of each phone (P-256 SubjectPublicKeyInfo DER), which asks for a one-time
+  // password. One key per Matrix device; the first key stays.
+  `CREATE TABLE device_keys (
+     user_id text NOT NULL,
+     device_id text NOT NULL,
+     public_key bytea NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     last_used_at timestamptz,
+     uses integer NOT NULL DEFAULT 0,
+     PRIMARY KEY (user_id, device_id)
+   );`,
 ];
 
 /** Applies the migrations up to `until` (tests stop before one to check its backfill). */
