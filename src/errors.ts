@@ -72,7 +72,11 @@ export type ErrorId =
   | "chat_taken"
   // Interno (ADR 0284 phase B).
   | "geral_exists"
-  | "recovery_changed";
+  | "recovery_changed"
+  // Device key and one-time password (ADR 0283).
+  | "device_key_exists"
+  | "device_key_missing"
+  | "device_first_required";
 
 const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503> = {
   bad_request: 400,
@@ -144,6 +148,9 @@ const STATUS: Record<ErrorId, 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 50
   chat_taken: 409,
   geral_exists: 409,
   recovery_changed: 409,
+  device_key_exists: 409,
+  device_key_missing: 409,
+  device_first_required: 409,
 };
 
 export class ApiError extends Error {

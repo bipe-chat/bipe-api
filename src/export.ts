@@ -67,6 +67,8 @@ export async function exportData(db: Db, growth: Growth, userId: string, now = n
     notification_prefs: await one(db, "SELECT invite_joined, group_link_joined, booking_reminders, work_alerts, work_summary, updated_at FROM notification_prefs WHERE user_id = $1", userId),
     // ADR 0298: the language of the text the server sends this account.
     language: await one(db, "SELECT lang, updated_at FROM user_languages WHERE user_id = $1", userId),
+    // ADR 0283: the devices that registered a hardware key, and how often each asked for a one-time password.
+    device_keys: await all(db, "SELECT device_id, created_at, last_used_at, uses FROM device_keys WHERE user_id = $1 ORDER BY created_at", userId),
     // ADR 0280: the public feed of the caller's handle and its posts, and the posts the caller wrote in other feeds.
     public_feed: await one(db, "SELECT room_id, status, enabled, created_at, updated_at FROM public_feeds WHERE user_id = $1", userId),
     public_feed_posts: await all(db, "SELECT id, body, created_at, removed_at FROM public_feed_posts WHERE user_id = $1 OR author_id = $1 ORDER BY created_at", userId),

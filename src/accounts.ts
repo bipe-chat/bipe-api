@@ -63,7 +63,7 @@ export interface Credentials {
   recovery_token: string;
 }
 
-function localpartOf(config: Config, userId: string): string {
+export function localpartOf(config: Config, userId: string): string {
   const m = /^@([^:]+):(.+)$/.exec(userId);
   if (!m || m[2] !== config.SERVER_NAME) throw new ApiError("not_found");
   return m[1]!;

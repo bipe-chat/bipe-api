@@ -17,6 +17,7 @@ import { RateLimiter } from "./ratelimit.js";
 import { SignupLimits } from "./signup-limits.js";
 import { newChallenge } from "./attest.js";
 import { refreshKeyAttestationStatus } from "./key-attest.js";
+import { passwordOnce, registerDeviceKey } from "./device-keys.js";
 import { checkInternal, mayInvite, POLICIES, policyOf, setPolicy } from "./messaging.js";
 import { Reach } from "./reach.js";
 import { ReachTiers, reachSettings } from "./reach-tiers.js";
@@ -202,6 +203,10 @@ const limits = {
   credentials: new RateLimiter(5, 3_600_000),
   emailSet: new RateLimiter(5, 3_600_000),
   keychainMove: new RateLimiter(20, 3_600_000),
+  // ADR 0283: a phone registers its key after each new session, and asks for a password at each link approval.
+  deviceKey: new RateLimiter(20, 3_600_000),
+  passwordOnceChallenge: new RateLimiter(20, 3_600_000),
+  passwordOnce: new RateLimiter(10, 3_600_000),
   approvalNudge: new RateLimiter(accountRules.approvalNudgeMaxPerHour, 3_600_000),
   voiceMedia: new RateLimiter(120, 3_600_000),
   keptMedia: new RateLimiter(120, 3_600_000),
@@ -819,6 +824,42 @@ app.post("/v1/me/keychain-move", async (c) => {
   limits.keychainMove.check(userId);
   await recordKeychainMove(db, userId, deviceId);
   return c.body(null, 204);
+});
+
+// ADR 0283 (bipe#1351): phones keep no hidden password. The device comes from the access token, never the body.
+const DeviceKeyBody = z.object({ public_key: z.string().min(1).max(512) });
+const PasswordOnceBody = z.object({
+  device_id: z.string().min(1).max(255),
+  challenge: z.string().min(1).max(128),
+  signature: z.string().min(1).max(512),
+});
+
+app.post("/v1/me/device-key", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  if (!deviceId) throw new ApiError("bad_request", "device_required");
+  limits.deviceKey.check(userId);
+  const { public_key } = await parse(c, DeviceKeyBody);
+  await registerDeviceKey(db, userId, deviceId, public_key);
+  return c.body(null, 204);
+});
+
+app.post("/v1/me/password-once/challenge", async (c) => {
+  const userId = await ownerOf(c);
+  limits.passwordOnceChallenge.check(userId);
+  c.header("cache-control", "no-store");
+  return c.json({ challenge: newChallenge() });
+});
+
+app.post("/v1/me/password-once", async (c) => {
+  const { userId, deviceId } = await auth.session(c.req.header("authorization"));
+  if (!deviceId) throw new ApiError("bad_request", "device_required");
+  // A company account: only an owner device gets the password (ADR 0251 point 11).
+  await requireOwnerDevice({ db, mas }, userId, deviceId);
+  limits.passwordOnce.check(userId);
+  const body = await parse(c, PasswordOnceBody);
+  if (body.device_id !== deviceId) throw new ApiError("bad_request", "device_id");
+  c.header("cache-control", "no-store");
+  return c.json(await passwordOnce(accounts, userId, deviceId, body.challenge, body.signature));
 });
 
 // bipe#628: a new device waits for approval; push a nudge to the account's other Bipe Next devices.
