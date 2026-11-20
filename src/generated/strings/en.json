@@ -2577,6 +2577,8 @@
     "bipe_interno_empty": "Nobody else answers for this account yet.",
     "bipe_govbr_step_sign_file": "In the gov.br app, tap sign document and pick %1$s.",
     "bipe_govbr_reason_wrong_document_file": "This is not the document of this check. Use the file %1$s.",
+    "bipe_windows_sign_out_body": "Bipe clears this account's data from this computer. To come back, link it again from your phone.",
+    "bipe_windows_sign_out_history": "If your old messages are only on this computer, you'll need your recovery key to get them back.",
     "bipe_desktop_pending_title": "Unfinished link",
     "bipe_desktop_pending_body": "This link did not finish. Try signing out this device before starting again. Other accounts on this computer stay signed in.",
     "bipe_desktop_pending_sign_out": "Sign out and clear this link",
